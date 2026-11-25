@@ -56,6 +56,17 @@ function findSystemLength(prompt: LanguageModelV4CallOptions["prompt"]): number 
   return 0;
 }
 
+function wirePromptCachePrefix(options: LanguageModelV4CallOptions): string {
+  const head = options.prompt.find((message) => message.role === "system");
+  return JSON.stringify({
+    tools: options.tools ?? [],
+    system:
+      head?.role === "system"
+        ? { content: head.content, providerOptions: head.providerOptions ?? null }
+        : null,
+  });
+}
+
 function mockToolCallPart(
   toolName: string,
   args: Record<string, unknown>,
@@ -167,6 +178,7 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
           description: t.type === "function" ? (t.description ?? "") : "",
         })),
       );
+      singleton.cachePrefixes.push(wirePromptCachePrefix(options));
       const lastUser = findLastUserText(options.prompt);
       singleton.calls.push({
         model: modelId,

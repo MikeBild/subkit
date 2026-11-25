@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { conversationElicitations, conversationTurns } from "../db/schema/index.ts";
 import { taskGrants, taskRuns, tasks } from "../db/schema/tasks.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
-import { seedTenant } from "../test-helpers/seed.ts";
+import { seedConversation, seedTenant } from "../test-helpers/seed.ts";
 import { readOperatingFigures } from "./operating-figures.ts";
 import {
   getOperationalOverview,
@@ -261,5 +262,60 @@ describe("task runs in the operating figures", () => {
       to: new Date(to.getTime() + 24 * HOUR),
     });
     expect(later.task_runs).toEqual({ total: 1, completed: 0, failed: 1 });
+  });
+});
+
+describe("confirmations in the operating figures", () => {
+  const from = new Date("2026-06-01T00:00:00.000Z");
+  const to = new Date("2026-06-02T00:00:00.000Z");
+  const inside = new Date("2026-06-01T10:00:00.000Z");
+  const asked = new Date(inside.getTime() + HOUR);
+
+  test("a question asked inside a task run counts per turn, per run and per tool", async () => {
+    const conversation = await seedConversation(testDb.db, { tenant_id });
+    const taskId = await seedTask();
+    await testDb.db.insert(taskRuns).values({
+      tenant_id,
+      task_id: taskId,
+      task_revision: 1,
+      fingerprint: FINGERPRINT,
+      conversation_id: conversation.id,
+      trigger: "manual",
+      state: "completed",
+      deadline_at: new Date(inside.getTime() + 4 * HOUR),
+      trace_id: "f".repeat(32),
+      created_at: inside,
+      updated_at: inside,
+    });
+    await testDb.db.insert(conversationTurns).values({
+      tenant_id,
+      conversation_id: conversation.id,
+      state: "completed",
+      created_at: inside,
+      updated_at: inside,
+    });
+    await testDb.db.insert(conversationElicitations).values({
+      tenant_id,
+      conversation_id: conversation.id,
+      tool_name: "ask_user_confirm",
+      summary: "Send the digest",
+      input: { kind: "external_write", target: { tool: "send_email", args: {} } },
+      output: { confirmed: true },
+      status: "resolved",
+      created_at: asked,
+      updated_at: asked,
+    });
+    const { confirmations } = await readOperatingFigures(testDb.db, tenant_id, { from, to });
+    expect(confirmations).toMatchObject({
+      asked: 1,
+      covered: 0,
+      kinds: { policy_gate: 1, ask_user: 0 },
+      outcomes: { granted: 1 },
+      per_turn: { turns: 1, turns_with_ask: 1, asked_per_turn: 1 },
+      per_task_run: { runs: 1, runs_with_ask: 1, asked: 1, asked_per_run: 1, median_per_run: 1 },
+    });
+    expect(confirmations.tools.map((row) => [row.tool, row.asked, row.asked_in_task_runs])).toEqual(
+      [["send_email", 1, 1]],
+    );
   });
 });

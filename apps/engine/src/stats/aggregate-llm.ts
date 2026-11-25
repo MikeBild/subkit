@@ -60,6 +60,28 @@ export interface LlmCacheReported {
   cache_read: number;
 }
 
+export interface PromptCacheAgg {
+  reported_calls: number;
+  reported_prompt_tokens: number;
+  reported_cache_read_tokens: number;
+  hit_percent: number | null;
+}
+
+export const EMPTY_PROMPT_CACHE: PromptCacheAgg = {
+  reported_calls: 0,
+  reported_prompt_tokens: 0,
+  reported_cache_read_tokens: 0,
+  hit_percent: null,
+};
+
+export function promptCacheHitPercent(
+  promptTokens: number,
+  cacheReadTokens: number,
+): number | null {
+  if (promptTokens <= 0) return null;
+  return Math.min(100, Math.round((cacheReadTokens / promptTokens) * 1000) / 10);
+}
+
 export interface LlmBucketRow {
   ts: string;
   calls: number;
@@ -76,6 +98,7 @@ export interface LlmGroup {
     tokens: TokenAgg;
     latency_ms: LatencyAgg;
     result: Record<string, number>;
+    prompt_cache: PromptCacheAgg;
   };
 }
 
@@ -85,6 +108,7 @@ interface LlmStatsResult {
     calls: { total: number; by_result: Record<string, number> };
     tokens: TokenAgg;
     latency_ms: LatencyAgg;
+    prompt_cache: PromptCacheAgg;
   };
 }
 
@@ -108,6 +132,26 @@ function tokenSelect(): SQL {
     coalesce(sum(llm_usage.cache_creation_tokens), 0)::float8 as tok_cache_creation,
     coalesce(sum(llm_usage.total_tokens), 0)::float8 as tok_total
   `;
+}
+
+function promptCacheSelect(): SQL {
+  return sql`
+    (count(*) filter (where llm_usage.cache_reported))::int as pc_calls,
+    coalesce(sum(llm_usage.prompt_tokens) filter (where llm_usage.cache_reported), 0)::float8 as pc_prompt,
+    coalesce(sum(llm_usage.cache_read_tokens) filter (where llm_usage.cache_reported), 0)::float8 as pc_read
+  `;
+}
+
+function readPromptCache(row: Record<string, unknown>): PromptCacheAgg {
+  const n = (k: string): number => Math.round(Number(row[k] ?? 0));
+  const reportedPrompt = n("pc_prompt");
+  const reportedRead = n("pc_read");
+  return {
+    reported_calls: n("pc_calls"),
+    reported_prompt_tokens: reportedPrompt,
+    reported_cache_read_tokens: reportedRead,
+    hit_percent: promptCacheHitPercent(reportedPrompt, reportedRead),
+  };
 }
 
 function latencySelect(): SQL {
@@ -301,7 +345,8 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
               ${dimSelects},
               count(*)::int as calls,
               ${tokenSelect()},
-              ${latencySelect()}
+              ${latencySelect()},
+              ${promptCacheSelect()}
             from ${fromClause(p)}
             where ${where}
             group by ${sql.join(groupCols, sql`, `)}
@@ -314,7 +359,8 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
       select
         count(*)::int as calls,
         ${tokenSelect()},
-        ${latencySelect()}
+        ${latencySelect()},
+        ${promptCacheSelect()}
       from ${fromClause(p)}
       where ${where}
     `)
@@ -351,6 +397,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
           tokens: { prompt: 0, completion: 0, cache_read: 0, cache_creation: 0, total: 0 },
           latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
           result: {},
+          prompt_cache: EMPTY_PROMPT_CACHE,
         },
       };
       groupMap.set(ks, g);
@@ -379,6 +426,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
         tokens: readTokens(row),
         latency_ms: readLatency(row),
         result: g.totals.result,
+        prompt_cache: readPromptCache(row),
       };
     }
   } else {
@@ -388,6 +436,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
       tokens: readTokens(windowRow),
       latency_ms: readLatency(windowRow),
       result: g.totals.result,
+      prompt_cache: readPromptCache(windowRow),
     };
   }
 
@@ -408,6 +457,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
       calls: { total: Number(windowRow.calls ?? 0), by_result: byResult },
       tokens: readTokens(windowRow),
       latency_ms: readLatency(windowRow),
+      prompt_cache: readPromptCache(windowRow),
     },
   };
 }

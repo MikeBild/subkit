@@ -28,7 +28,7 @@ import type {
   IncludedKnowledgeChunk,
   UserTurn,
 } from "../types.ts";
-import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
+import { type CacheBlocks, splitPromptIntoBlocks, stablePrefixHash } from "./cache-blocks.ts";
 import { basePromptFor, type ConversationSurface } from "./context-assembler/base-prompts.ts";
 import {
   applyRuntimeTemplate,
@@ -426,7 +426,7 @@ export async function assembleEnhancedPrompt(
     if (globalIndexBlock) sections.push(globalIndexBlock);
     if (connectorOperatorQuirksBlock) sections.push(connectorOperatorQuirksBlock);
     if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
-    if (connectorRecipeBodiesBlock) sections.push(connectorRecipeBodiesBlock);
+    if (connectorRecipeBodiesBlock) vol(connectorRecipeBodiesBlock);
     if (priorWorkflowsBlock) sections.push(priorWorkflowsBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
@@ -447,7 +447,7 @@ export async function assembleEnhancedPrompt(
     if (userMemory) vol(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
     if (connectorSchemaBlock) sections.push(connectorSchemaBlock);
-    if (probeShapeExamplesBlock) sections.push(probeShapeExamplesBlock);
+    if (probeShapeExamplesBlock) vol(probeShapeExamplesBlock);
     if (latestPreviewEntries.length > 0) {
       vol(formatLatestPreview(latestPreviewEntries));
     }
@@ -686,27 +686,17 @@ export async function assembleEnhancedPrompt(
   };
 }
 
-export async function assembleContext(
-  params: AssembleContextParams & { system?: string },
-  exec?: Db,
-): Promise<AssembledContext> {
-  const prompt = await assembleEnhancedPrompt(params, exec);
-  const blocks = splitPromptIntoBlocks(prompt, params.flow);
-  const effectiveCap = Math.min(params.max_tokens, contextCapFor(params.model ?? "default"));
-  const includedFailureCount = prompt.dropped_sections.includes("failures")
-    ? 0
-    : (params.prior_failures ?? []).length;
+type AssembledEnhancedPrompt = Awaited<ReturnType<typeof assembleEnhancedPrompt>>;
 
-  const {
-    dropped_sections,
-    included_recipe_slugs,
-    included_convention_rule_ids,
-    included_prior_workflow_slugs,
-    ...promptWithoutDropped
-  } = prompt;
-
-  const budget_report = {
-    cap_tokens: effectiveCap,
+export function reportAssembledContext(
+  params: Pick<AssembleContextParams, "tenant_id" | "flow" | "max_tokens" | "model"> & {
+    prior_failure_count: number;
+  },
+  prompt: AssembledEnhancedPrompt,
+  blocks: CacheBlocks = splitPromptIntoBlocks(prompt, params.flow),
+): BudgetReport {
+  const budget_report: BudgetReport = {
+    cap_tokens: Math.min(params.max_tokens, contextCapFor(params.model ?? "default")),
     total_tokens: prompt.token_counts.total,
     stable_tokens: blocks.token_counts.stable,
     volatile_tokens: blocks.token_counts.volatile,
@@ -715,16 +705,13 @@ export async function assembleContext(
       skills: prompt.included_skill_ids.length,
       knowledge: prompt.included_knowledge_chunk_ids.length,
       docs: prompt.included_chunk_ids.length,
-      failures: includedFailureCount,
-      recipe_bodies: included_recipe_slugs.length,
-      conventions: included_convention_rule_ids.length,
-      prior_workflows: included_prior_workflow_slugs.length,
+      failures: prompt.dropped_sections.includes("failures") ? 0 : params.prior_failure_count,
+      recipe_bodies: prompt.included_recipe_slugs.length,
+      conventions: prompt.included_convention_rule_ids.length,
+      prior_workflows: prompt.included_prior_workflow_slugs.length,
     },
-    dropped_sections,
+    dropped_sections: prompt.dropped_sections,
   };
-
-  const idHashes = (ids: string[]): string[] => idHashesCapped(ids);
-
   recordLlmContextAssembled({
     tenant_id: params.tenant_id,
     flow: params.flow,
@@ -735,12 +722,35 @@ export async function assembleContext(
     volatile_tokens: budget_report.volatile_tokens,
     messages_tokens: budget_report.messages_tokens,
     included: budget_report.included,
-    included_skill_id_hashes: idHashes(prompt.included_skill_ids),
-    included_recipe_slugs: included_recipe_slugs.slice(0, 12),
-    included_prior_workflow_slugs: included_prior_workflow_slugs.slice(0, 12),
+    included_skill_id_hashes: idHashesCapped(prompt.included_skill_ids),
+    included_recipe_slugs: prompt.included_recipe_slugs.slice(0, 12),
+    included_prior_workflow_slugs: prompt.included_prior_workflow_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
     section_tokens: prompt.token_counts,
+    stable_prefix_hash: stablePrefixHash(blocks),
   });
+  return budget_report;
+}
+
+export async function assembleContext(
+  params: AssembleContextParams & { system?: string },
+  exec?: Db,
+): Promise<AssembledContext> {
+  const prompt = await assembleEnhancedPrompt(params, exec);
+  const blocks = splitPromptIntoBlocks(prompt, params.flow);
+  const budget_report = reportAssembledContext(
+    { ...params, prior_failure_count: (params.prior_failures ?? []).length },
+    prompt,
+    blocks,
+  );
+
+  const {
+    dropped_sections,
+    included_recipe_slugs,
+    included_convention_rule_ids,
+    included_prior_workflow_slugs,
+    ...promptWithoutDropped
+  } = prompt;
 
   if (params.conversation_id) {
     recordConversationBudgetReport(params.tenant_id, params.conversation_id, {

@@ -9,9 +9,11 @@ import {
   consumptionRows,
   FLOW_ORIGIN,
   flowOrigin,
+  llmGroups,
   mergeModelPrice,
   modelPriceApplied,
   originRows,
+  promptCacheOf,
   runsByWorkflow,
   unpricedModels,
   windowCost,
@@ -468,5 +470,40 @@ describe("merging one model price into the stored list", () => {
     expect(mergeModelPrice(null, "beta", 3, 4)).toEqual([
       { model: "beta", input_per_mtok: 3, output_per_mtok: 4 },
     ]);
+  });
+});
+
+describe("the prompt cache of a conversation", () => {
+  test("reads the cache share over the calls whose provider reported cache figures", () => {
+    const [group] = llmGroups({
+      groups: [
+        {
+          key: { conversation: "c1" },
+          totals: {
+            calls: 4,
+            tokens: { prompt: 4000, cache_read: 1500 },
+            prompt_cache: {
+              reported_calls: 3,
+              reported_prompt_tokens: 3000,
+              reported_cache_read_tokens: 1500,
+              hit_percent: 50,
+            },
+          },
+        },
+      ],
+    });
+    expect(group?.promptCache).toEqual({ hit: 0.5, cachedTokens: 1500, reportedCalls: 3 });
+  });
+
+  test("has no share when no provider reported cache figures", () => {
+    expect(
+      promptCacheOf({
+        reported_calls: 0,
+        reported_prompt_tokens: 0,
+        reported_cache_read_tokens: 0,
+        hit_percent: null,
+      }),
+    ).toEqual({ hit: null, cachedTokens: 0, reportedCalls: 0 });
+    expect(promptCacheOf(undefined)).toEqual({ hit: null, cachedTokens: 0, reportedCalls: 0 });
   });
 });

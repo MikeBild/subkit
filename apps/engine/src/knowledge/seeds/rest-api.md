@@ -275,7 +275,7 @@ Read-only aggregates, all `GET`, filtered by a time window/bucket:
 - `GET /v1/stats/executions` — execution counts/outcomes.
 - `GET /v1/stats/connectors` — per-connector call stats (filterable by HTTP method).
 - `GET /v1/stats/events` — event-class aggregates.
-- `GET /v1/stats/llm` — LLM token/cost usage. `group_by` takes up to two of `model`, `flow`, `user`, `workflow`, `conversation`, `execution`; every group and bucket carries its own `cost` with `cache_savings`. Filter by `result` (`success`, `quota_exhausted`, `context_too_large`, `error`) or `workflow_id`. A breakdown by `user` or `conversation` needs `stats:read:all`; conversation titles need `conversation:read`.
+- `GET /v1/stats/llm` — LLM token/cost usage. `group_by` takes up to two of `model`, `flow`, `user`, `workflow`, `conversation`, `execution`; every group and bucket carries its own `cost` with `cache_savings`, and every group's `totals` and the window `totals` carry `prompt_cache` (`reported_calls`, `reported_prompt_tokens`, `reported_cache_read_tokens`, `hit_percent` — the share of input read from the provider prompt cache over the calls that reported cache figures, `null` when none did). Filter by `result` (`success`, `quota_exhausted`, `context_too_large`, `error`) or `workflow_id`. A breakdown by `user` or `conversation` needs `stats:read:all`; conversation titles need `conversation:read`.
 - `GET /v1/stats/operating-figures` — the Übersicht's operations figures over a window.
 - `GET /v1/stats/quality` — quality metrics.
 

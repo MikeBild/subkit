@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import type { EnhancedPrompt } from "../../types.ts";
-import { splitPromptIntoBlocks, toSystemMessages } from "../cache-blocks.ts";
+import {
+  promptCacheKeyFor,
+  splitPromptIntoBlocks,
+  stablePrefixHash,
+  toolPaletteHash,
+  toSystemMessages,
+  withHistoryCacheBreakpoint,
+} from "../cache-blocks.ts";
 
 function makePrompt(system: string): EnhancedPrompt {
   return {
@@ -101,5 +108,55 @@ describe("toSystemMessages", () => {
     );
     expect(msgs).toHaveLength(1);
     expect(msgs[0]!.content).toBe("tail");
+  });
+});
+
+describe("prompt prefix fingerprints", () => {
+  const blocks = (stable: string, volatile: string) => ({
+    stable,
+    volatile,
+    token_counts: { stable: 1, volatile: 1 },
+  });
+
+  it("hash only the stable block", () => {
+    expect(stablePrefixHash(blocks("head", "turn one"))).toBe(
+      stablePrefixHash(blocks("head", "turn two")),
+    );
+    expect(stablePrefixHash(blocks("head", "x"))).not.toBe(stablePrefixHash(blocks("head2", "x")));
+  });
+
+  it("hash the tool palette independent of insertion order", () => {
+    expect(toolPaletteHash(["b", "a", "c"])).toBe(toolPaletteHash(["a", "b", "c"]));
+    expect(toolPaletteHash(["a", "b"])).not.toBe(toolPaletteHash(["a", "b", "c"]));
+  });
+
+  it("derive one opaque prompt cache key per conversation", () => {
+    const key = promptCacheKeyFor("tenant-1", "conversation-1");
+    expect(key).toBe(promptCacheKeyFor("tenant-1", "conversation-1"));
+    expect(key).not.toBe(promptCacheKeyFor("tenant-1", "conversation-2"));
+    expect(key).not.toContain("conversation-1");
+    expect(key.length).toBeLessThanOrEqual(64);
+  });
+});
+
+describe("the history cache breakpoint", () => {
+  const history = [
+    { role: "user" as const, content: "first" },
+    { role: "assistant" as const, content: "answer" },
+    { role: "user" as const, content: "second" },
+  ];
+
+  it("marks only the last history message with the one-hour hint", () => {
+    const marked = withHistoryCacheBreakpoint(history, { enabled: true, ttl: "1h" });
+    expect(marked.slice(0, -1)).toEqual(history.slice(0, -1));
+    expect(marked.at(-1)?.providerOptions).toEqual({
+      anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+    });
+    expect(history.at(-1)).not.toHaveProperty("providerOptions");
+  });
+
+  it("leaves the history untouched when the route has no prompt cache", () => {
+    expect(withHistoryCacheBreakpoint(history, { enabled: false })).toBe(history);
+    expect(withHistoryCacheBreakpoint([], { enabled: true })).toEqual([]);
   });
 });

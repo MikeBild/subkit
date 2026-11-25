@@ -46,6 +46,16 @@ The amount is then a floor. The real cost is higher.
 Below it you see how many calls have no price, for example **Calls without a price: 12**.
 When no prices are known at all, the tile shows **Cost unknown**.
 
+### Confirmations
+
+**Confirmations** shows in one line how often someone had to confirm something in the window, for example "0.35 per turn · median 0.5 per task run · 3 ran without asking".
+
+- **per turn**: confirmation questions divided by the conversation turns that started in the window.
+- **median per task run**: the middle value over all runs that started in the window. A run without a question counts as 0.
+- **ran without asking**: calls that would have asked but were covered by a rule, your own words or a standing authority.
+
+**Per tool** expands the figures for each tool. When the figure per turn drops after a new rule or authority, it works. When it rises for no reason, take a look.
+
 ### Worth a look
 
 **Worth a look** lists what changed clearly or costs money.
@@ -101,7 +111,7 @@ Click a row to open its details at the side:
 - **Workflow**: **Cost per run**, **AI calls per run**, **Most expensive runs** and **Models used**. **Open workflow** takes you to the workflow.
 - **Person**: **Where usage comes from**, plus their **Workflows** and **Conversations**.
 - **Model**: **Share from cache**, **Error rate**, **Price per 1M tokens** and **Response time (typical)**.
-- **Conversation**: cost and AI calls. **Open conversation** takes you to the chat.
+- **Conversation**: cost, AI calls and **From cache**: the share of input the AI provider reused, with the reused tokens below it. **No data** means the provider reports no cache figures for this conversation. **Open conversation** takes you to the chat.
 - **Origin**: under **Largest items**, the most expensive workflows, people or models of this origin.
 
 Long conversations get more expensive because every reply reads the history so far. A new topic is worth a new conversation.
@@ -192,3 +202,6 @@ subkit stats llm --bucket day --from <from> --to <to> --group-by workflow
 - `result=` filters by result: `success`, `quota_exhausted`, `context_too_large`, `key_rejected` or `error`.
 - `workflow_id=` shows only the calls of one workflow.
 - Breakdowns by `user`, `conversation` or `task` need `stats:read:all`. That does not apply when `user_id` is your own ID.
+- Every group and the window totals carry `prompt_cache`: `reported_calls` (calls whose provider reported cache figures), `reported_prompt_tokens`, `reported_cache_read_tokens` and `hit_percent`, the share of input read from the cache over those calls. `hit_percent` is `null` when no call reported cache figures. Group by `conversation` for the share per conversation.
+
+Every chat answer also reports its own figures in the `completed` event under `usage`: `cache_read_tokens`, `cache_creation_tokens`, `cache_reported` and, when the provider reported cache figures, `cache_read_pct`.

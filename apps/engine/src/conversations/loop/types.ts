@@ -67,6 +67,8 @@ export interface TurnState {
   turnTokensTotal: number;
   turnInputTokens: number;
   turnCacheReadTokens: number;
+  turnCacheCreationTokens: number;
+  turnCacheReported: boolean;
   lastStepHadText: boolean;
   handoffSummaryOnly: boolean;
   paletteSkills: string[];

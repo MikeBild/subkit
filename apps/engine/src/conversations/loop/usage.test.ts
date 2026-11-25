@@ -97,7 +97,18 @@ describe("readStepUsage", () => {
 });
 
 describe("stepPromptTokens / stepTotalTokens", () => {
-  test("prompt size counts uncached input PLUS cache reads and writes", () => {
+  test("prompt size is the SDK input total, which already includes cache reads and writes", () => {
+    expect(
+      stepPromptTokens({
+        inputTokens: 173_000,
+        outputTokens: 50,
+        cacheReadTokens: 170_000,
+        cacheCreationTokens: 2000,
+      }),
+    ).toBe(173_000);
+  });
+
+  test("prompt size never falls below the reported cache figures", () => {
     expect(
       stepPromptTokens({
         inputTokens: 1000,
@@ -105,7 +116,7 @@ describe("stepPromptTokens / stepTotalTokens", () => {
         cacheReadTokens: 170_000,
         cacheCreationTokens: 2000,
       }),
-    ).toBe(173_000);
+    ).toBe(172_000);
   });
 
   test("total adds completion tokens on top of the prompt", () => {
@@ -129,9 +140,9 @@ describe("stepPromptTokens / stepTotalTokens", () => {
 
   test("sum vs last-call: accumulating steps the way the loop does", () => {
     const steps = [
-      { inputTokens: 10_000, outputTokens: 500, cacheReadTokens: 0, cacheCreationTokens: 8000 },
-      { inputTokens: 2000, outputTokens: 700, cacheReadTokens: 18_000, cacheCreationTokens: 0 },
-      { inputTokens: 3000, outputTokens: 900, cacheReadTokens: 20_000, cacheCreationTokens: 0 },
+      { inputTokens: 18_000, outputTokens: 500, cacheReadTokens: 0, cacheCreationTokens: 8000 },
+      { inputTokens: 20_000, outputTokens: 700, cacheReadTokens: 18_000, cacheCreationTokens: 0 },
+      { inputTokens: 23_000, outputTokens: 900, cacheReadTokens: 20_000, cacheCreationTokens: 0 },
     ];
     let promptTokensLastCall: number | null = null;
     let turnTokensTotal = 0;

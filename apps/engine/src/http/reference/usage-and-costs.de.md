@@ -46,6 +46,16 @@ Der Betrag ist dann eine Untergrenze. Die echten Kosten sind höher.
 Darunter steht, wie viele Aufrufe keinen Preis haben, etwa **Aufrufe ohne Preis: 12**.
 Fehlen alle Preise, zeigt die Kachel **Kosten unbekannt**.
 
+### Bestätigungen
+
+Unter **Bestätigungen** steht in einer Zeile, wie oft jemand im Zeitraum etwas bestätigen musste, zum Beispiel „0,35 je Gesprächsrunde · Median 0,5 je Run einer Aufgabe · 3 ohne Frage gelaufen“.
+
+- **je Gesprächsrunde**: Bestätigungsfragen geteilt durch die Gesprächsrunden, die im Zeitraum begonnen haben.
+- **Median je Run einer Aufgabe**: der mittlere Wert über alle Runs, die im Zeitraum gestartet sind. Ein Run ohne Frage zählt mit 0.
+- **ohne Frage gelaufen**: Aufrufe, die gefragt hätten, aber durch eine Regel, deine eigenen Worte oder eine stehende Freigabe gedeckt waren.
+
+**Je Werkzeug** klappt die Zahlen pro Werkzeug auf. Sinkt die Zahl je Gesprächsrunde nach einer neuen Regel oder Freigabe, wirkt sie. Steigt sie ohne Grund, lohnt ein Blick.
+
 ### Auffälligkeiten
 
 Unter **Auffälligkeiten** steht, was sich deutlich verändert hat oder Geld kostet.
@@ -101,7 +111,7 @@ Klick auf eine Zeile, um ihre Details seitlich zu öffnen:
 - **Workflow**: **Kosten je Run**, **KI-Aufrufe je Run**, **Teuerste Runs** und **Genutzte Modelle**. Mit **Workflow öffnen** springst du zum Workflow.
 - **Person**: **Woher die Nutzung kommt**, dazu ihre **Workflows** und **Unterhaltungen**.
 - **Modell**: **Anteil aus Cache**, **Fehlerquote**, **Preis je 1 Mio. Token** und **Antwortzeit (typisch)**.
-- **Unterhaltung**: Kosten und KI-Aufrufe. Mit **Unterhaltung öffnen** springst du in den Chat.
+- **Unterhaltung**: Kosten, KI-Aufrufe und **Aus dem Cache**: der Anteil der Eingabe, den der KI-Anbieter wiederverwendet hat, darunter die wiederverwendeten Token. **Ohne Daten** heißt, dass der Anbieter für diese Unterhaltung keine Cache-Zahlen meldet. Mit **Unterhaltung öffnen** springst du in den Chat.
 - **Herkunft**: unter **Größte Posten** die teuersten Workflows, Personen oder Modelle dieser Herkunft.
 
 Lange Unterhaltungen werden teurer, weil jede Antwort den bisherigen Verlauf mitliest. Für ein neues Thema lohnt eine neue Unterhaltung.
@@ -192,3 +202,6 @@ subkit stats llm --bucket day --from <from> --to <to> --group-by workflow
 - `result=` filtert nach Ergebnis: `success`, `quota_exhausted`, `context_too_large`, `key_rejected` oder `error`.
 - `workflow_id=` zeigt nur die Aufrufe eines Workflows.
 - Aufschlüsselungen nach `user`, `conversation` oder `task` brauchen `stats:read:all`. Das gilt nicht, wenn `user_id` deine eigene Kennung ist.
+- Jede Gruppe und die Summe des Zeitraums enthalten `prompt_cache`: `reported_calls` (Aufrufe, deren Anbieter Cache-Zahlen gemeldet hat), `reported_prompt_tokens`, `reported_cache_read_tokens` und `hit_percent`, den Anteil der Eingabe aus dem Cache über diese Aufrufe. `hit_percent` ist `null`, wenn kein Aufruf Cache-Zahlen gemeldet hat. Mit `group_by=conversation` bekommst du den Anteil je Unterhaltung.
+
+Jede Chat-Antwort meldet ihre eigenen Zahlen außerdem im Ereignis `completed` unter `usage`: `cache_read_tokens`, `cache_creation_tokens`, `cache_reported` und, wenn der Anbieter Cache-Zahlen gemeldet hat, `cache_read_pct`.
