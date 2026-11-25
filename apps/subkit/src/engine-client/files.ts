@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { EngineClient } from "../engine-client.ts";
 import { type ApiBody, type ApiQuery, parseResponseBody } from "./http.ts";
 
+export type CatalogSourceWire = "human" | "llm";
+
 export type FileStatusWire = "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
 
 export interface FileWire {
@@ -16,6 +18,14 @@ export interface FileWire {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  description?: string | null | undefined;
+  description_source?: CatalogSourceWire | undefined;
+  category?: string | undefined;
+  category_source?: CatalogSourceWire | undefined;
+  slug?: string | null | undefined;
+  reference?: string | null | undefined;
+  version?: number | undefined;
+  replaced_at?: string | null | undefined;
 }
 
 export interface FileVersionWire {
@@ -87,18 +97,28 @@ const FileStatusWireSchema = z.enum([
   "expired",
 ]);
 
-const FileWireSchema = z.object({
-  id: z.string(),
-  status: FileStatusWireSchema,
-  filename: z.string(),
-  content_type: z.string().nullable(),
-  size_bytes: z.number(),
-  sha256: z.string().nullable(),
-  scan_result: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  deleted_at: z.string().nullable(),
-});
+const FileWireSchema = z
+  .object({
+    id: z.string(),
+    status: FileStatusWireSchema,
+    filename: z.string(),
+    content_type: z.string().nullable(),
+    size_bytes: z.number(),
+    sha256: z.string().nullable(),
+    scan_result: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+    deleted_at: z.string().nullable(),
+    description: z.string().nullable().optional(),
+    description_source: z.enum(["human", "llm"]).optional(),
+    category: z.string().optional(),
+    category_source: z.enum(["human", "llm"]).optional(),
+    slug: z.string().nullable().optional(),
+    reference: z.string().nullable().optional(),
+    version: z.number().optional(),
+    replaced_at: z.string().nullable().optional(),
+  })
+  .passthrough();
 
 const FileVersionListSchema = z.object({
   items: z.array(

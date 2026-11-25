@@ -217,6 +217,8 @@ const getCommand = defineCommand({
           `  content_type ${row.content_type ?? "—"}`,
           `  sha256       ${row.sha256 ?? "—"}`,
           `  scan_result  ${row.scan_result ?? "—"}`,
+          `  category     ${row.category ?? "—"}`,
+          `  description  ${row.description ?? "—"}`,
           `  created_at   ${row.created_at}`,
           `  updated_at   ${row.updated_at}`,
         ];
