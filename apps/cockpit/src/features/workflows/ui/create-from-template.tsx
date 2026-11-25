@@ -123,17 +123,21 @@ function useSolutionPack(active: boolean) {
     ...(pack.data?.recipes ?? []),
     ...templateRecipeEntries(catalog.data?.items ?? []),
   ];
-  return { pack, catalog, entries };
+  return {
+    catalog,
+    entries,
+    pending: pack.isPending || catalog.isPending,
+    failed: pack.isError || catalog.isError,
+    retry: () => {
+      void pack.refetch();
+      void catalog.refetch();
+    },
+  };
 }
 
 export function useSolutionTemplates(active: boolean) {
-  const { pack, entries } = useSolutionPack(active);
-  return {
-    entries,
-    pending: pack.isPending,
-    failed: pack.isError,
-    retry: () => void pack.refetch(),
-  };
+  const { entries, pending, failed, retry } = useSolutionPack(active);
+  return { entries, pending, failed, retry };
 }
 
 function useBindingService(): (
@@ -242,7 +246,7 @@ export function useSolutionFlow(
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const created = useRef<Record<string, string>>({});
-  const { pack, catalog, entries } = useSolutionPack(active);
+  const { catalog, entries, pending, failed, retry } = useSolutionPack(active);
   const serviceOf = useBindingService();
   const choiceFor = (connector: SolutionConnector): BindingChoice =>
     bindingChoice(connector, choices, catalog.data?.items ?? [], addresses);
@@ -324,9 +328,9 @@ export function useSolutionFlow(
         />
         <SolutionGallery
           entries={entries.filter((entry) => solutionMatches(entry, solutionText(entry, t), query))}
-          pending={pack.isPending}
-          failed={pack.isError}
-          onRetry={() => void pack.refetch()}
+          pending={pending}
+          failed={failed}
+          onRetry={retry}
           onPick={onPick}
         />
       </div>
