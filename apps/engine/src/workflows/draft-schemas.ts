@@ -81,6 +81,12 @@ export const RecipeOriginSchema = z
   .object({
     vertical: z.string().min(1).max(64),
     slug: z.string().min(1).max(128),
+    inputs: z
+      .record(z.string().min(1).max(64), z.unknown())
+      .optional()
+      .describe(
+        "Install-time input values. Each value of a key the recipe lists in install_inputs is written into the request paths before the workflow is saved, so its reviewed boundary stays literal; other keys are ignored.",
+      ),
   })
   .strict()
   .describe("The recipe pack entry this workflow was created from; recorded in the audit trail.")

@@ -320,6 +320,12 @@ export const ConnectorRecipeSchema = z
     estimated_setup_minutes: z.number().int().positive().default(5),
     prerequisites: z.array(z.string().min(1)).default([]),
     sample_input: z.unknown().nullable().default(null),
+    install_inputs: z
+      .array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/))
+      .default([])
+      .describe(
+        "Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal.",
+      ),
     expected_output_preview: z.unknown().nullable().default(null),
     required_connectors: z.array(RecipeRequiredConnectorSchema).default([]),
     version: z

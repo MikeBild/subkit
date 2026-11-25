@@ -65,6 +65,15 @@ export async function saveWorkflow(
       await renderIntent(intent, { jsonMode });
 
       let previewExecutionId: string | undefined;
+      let explicitInput: unknown;
+      if (args.input) {
+        try {
+          explicitInput = JSON.parse(args.input as string);
+        } catch {
+          process.stderr.write("invalid JSON for --input\n");
+          process.exit(1);
+        }
+      }
 
       if (!skip) {
         const validation = await client.validateWorkflowDraft(body);
@@ -80,15 +89,7 @@ export async function saveWorkflow(
           process.exit(1);
         }
 
-        let input: unknown = source.previewInput;
-        if (args.input) {
-          try {
-            input = JSON.parse(args.input as string);
-          } catch {
-            process.stderr.write("invalid JSON for --input\n");
-            process.exit(1);
-          }
-        }
+        const input: unknown = args.input ? explicitInput : source.previewInput;
 
         const environment = parseRunEnvironment(args.environment);
         if (!environment) {
@@ -150,7 +151,7 @@ export async function saveWorkflow(
       }
 
       const created = await (target.kind === "create"
-        ? client.createWorkflow(workflowDefinition(createBodyFor(source)))
+        ? client.createWorkflow(workflowDefinition(createBodyFor(source, explicitInput)))
         : client.updateWorkflow(target.id, body));
       printJson(created);
 

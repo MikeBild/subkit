@@ -15,6 +15,7 @@ import { IdParam } from "../common-schemas.ts";
 import { defineOperation, reject } from "./index.ts";
 import { automationReadinessFor } from "./workflow-automation-readiness.ts";
 import {
+  pinRecipeInputs,
   recipeOriginRejection,
   serializeOne,
   WorkflowDetailSchema,
@@ -88,9 +89,12 @@ export const createWorkflowOperation = defineOperation<CreateRequest, WorkflowSa
   async handler(scope, body) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    const { category, recipe, id: chosenId, ...def } = body;
-    const refused = recipe ? recipeOriginRejection(recipe, def) : null;
+    const { category, recipe, id: chosenId, ...authored } = body;
+    const refused = recipe ? recipeOriginRejection(recipe, authored) : null;
     if (refused) return refused;
+    const pinned = recipe ? pinRecipeInputs(recipe, authored) : { definition: authored };
+    if (pinned.rejection) return pinned.rejection;
+    const def = pinned.definition;
     if (chosenId && !principal.roles.includes("admin"))
       return reject.forbidden("only an admin may choose a workflow id");
     const result = await createWorkflow(

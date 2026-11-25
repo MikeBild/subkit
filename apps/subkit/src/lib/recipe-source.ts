@@ -97,6 +97,11 @@ export function recipeWorkflowSource(
   };
 }
 
-export function createBodyFor(source: WorkflowSource): Record<string, unknown> {
-  return source.recipe ? { ...source.body, recipe: source.recipe } : source.body;
+const isInputObject = (input: unknown): input is Record<string, unknown> =>
+  input !== null && typeof input === "object" && !Array.isArray(input);
+
+export function createBodyFor(source: WorkflowSource, input?: unknown): Record<string, unknown> {
+  if (!source.recipe) return source.body;
+  const recipe = isInputObject(input) ? { ...source.recipe, inputs: input } : source.recipe;
+  return { ...source.body, recipe };
 }

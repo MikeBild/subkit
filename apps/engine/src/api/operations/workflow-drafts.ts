@@ -18,7 +18,7 @@ import {
 } from "../../workflows/drafts.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
-import { recipeOriginRejection } from "./workflow-representation.ts";
+import { pinRecipeInputs, recipeOriginRejection } from "./workflow-representation.ts";
 
 const draftFailures = {
   400: "Invalid draft",
@@ -160,12 +160,16 @@ export const createWorkflowDraftOperation = defineOperation<CreateDraft, Draft>(
     if (!principal) return reject.unauthorized();
     const refused = body.recipe ? recipeOriginRejection(body.recipe, body.definition) : null;
     if (refused) return refused;
+    const pinned = body.recipe
+      ? pinRecipeInputs(body.recipe, body.definition)
+      : { definition: body.definition };
+    if (pinned.rejection) return pinned.rejection;
     const result = await saveWorkflowDraft(
       {
         tenant_id: scope.tenant_id,
         actor_id: principal.id,
         actor_type: principal.kind,
-        def: body.definition,
+        def: pinned.definition,
         ...(body.spec !== undefined ? { spec: body.spec } : {}),
         spec_authority: principal,
         request_source: scope.request_source ?? "api",

@@ -34677,6 +34677,10 @@ export interface components {
         RecipeOrigin: {
             vertical: string;
             slug: string;
+            /** @description Install-time input values. Each value of a key the recipe lists in install_inputs is written into the request paths before the workflow is saved, so its reviewed boundary stays literal; other keys are ignored. */
+            inputs?: {
+                [key: string]: unknown;
+            };
         };
         UpdateWorkflowDraft: {
             definition: components["schemas"]["WorkflowDef"];
@@ -36284,6 +36288,11 @@ export interface components {
             /** @default [] */
             prerequisites?: string[];
             sample_input?: unknown;
+            /**
+             * @description Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal.
+             * @default []
+             */
+            install_inputs?: string[];
             expected_output_preview?: unknown;
             /** @default [] */
             required_connectors?: components["schemas"]["RecipeRequiredConnector"][];
@@ -36332,6 +36341,11 @@ export interface components {
             /** @default [] */
             prerequisites: string[];
             sample_input?: unknown;
+            /**
+             * @description Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal.
+             * @default []
+             */
+            install_inputs: string[];
             expected_output_preview?: unknown;
             /** @default [] */
             required_connectors: components["schemas"]["RecipeRequiredConnector"][];

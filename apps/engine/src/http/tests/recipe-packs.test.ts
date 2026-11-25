@@ -200,3 +200,54 @@ describe("creating a workflow from a recipe records its origin", () => {
     expect(res.status).toBe(422);
   });
 });
+
+describe("install inputs a recipe pins into its request paths (#519)", () => {
+  const analyticsDraft = async (slug: string, inputs?: Record<string, unknown>) => {
+    const entry = (await solutions()).find((e) => e.recipe_slug === "daily-analytics-report");
+    return fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+      method: "POST",
+      headers: auth(),
+      body: JSON.stringify({
+        definition: { ...entry?.workflow, slug },
+        recipe: {
+          vertical: "solutions",
+          slug: "daily-analytics-report",
+          ...(inputs ? { inputs } : {}),
+        },
+      }),
+    });
+  };
+  const paths = (draft: { definition: { steps: Array<{ id: string; path?: string }> } }) =>
+    draft.definition.steps.flatMap((step) =>
+      step.id === "totals" || step.id === "top_pages" ? [step.path] : [],
+    );
+
+  test("the property id given at install is written into both report paths", async () => {
+    const res = await analyticsDraft("daily-analytics-pinned", {
+      property_id: "123456789",
+      recipient: "team@example.com",
+    });
+    expect(res.status).toBe(201);
+    expect(paths(await res.json())).toEqual([
+      "/v1beta/properties/123456789:runReport",
+      "/v1beta/properties/123456789:runReport",
+    ]);
+  });
+
+  test("without install inputs the placeholder paths are saved unchanged", async () => {
+    const res = await analyticsDraft("daily-analytics-unpinned");
+    expect(res.status).toBe(201);
+    expect(paths(await res.json())).toEqual([
+      "/v1beta/properties/${input.property_id}:runReport",
+      "/v1beta/properties/${input.property_id}:runReport",
+    ]);
+  });
+
+  test("a property id that is not one plain path segment is refused", async () => {
+    const res = await analyticsDraft("daily-analytics-forged", { property_id: "1/../2" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { details?: { reason?: string } }).details?.reason).toBe(
+      "recipe_input_invalid",
+    );
+  });
+});

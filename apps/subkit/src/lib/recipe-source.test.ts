@@ -86,6 +86,23 @@ describe("subkit workflows create --from-recipe", () => {
     });
   });
 
+  test("an explicit install input travels with the origin so the engine pins it (#519)", () => {
+    const source = recipeWorkflowSource(
+      pack("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+      "webhook-to-slack",
+    );
+    expect(createBodyFor(source, { property_id: "123456789" }).recipe).toEqual({
+      vertical: "solutions",
+      slug: "webhook-to-slack",
+      inputs: { property_id: "123456789" },
+    });
+    for (const input of [undefined, null, ["123"], "123"])
+      expect(createBodyFor(source, input).recipe).toEqual({
+        vertical: "solutions",
+        slug: "webhook-to-slack",
+      });
+  });
+
   test("a solution with a missing connector names it, how to bind it and how to create it", () => {
     expect(() => recipeWorkflowSource(pack(null), "webhook-to-slack")).toThrow(
       'solution "webhook-to-slack" needs a connector — Slack: --bind slack=<connector id or slug>, or subkit connectors create --template slack',
