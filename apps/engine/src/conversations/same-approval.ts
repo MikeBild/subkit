@@ -78,6 +78,8 @@ export function asksForSameApproval(open: OpenQuestion, next: OpenQuestion): boo
   if (!openAction || !nextAction || openAction.name !== nextAction.name) return false;
   return (
     agrees(openAction.targetArgs, nextAction.targetArgs) &&
-    agrees(openAction.intent, nextAction.intent)
+    agrees(openAction.intent, nextAction.intent) &&
+    isDeepStrictEqual(record(open.input)?.verification, record(next.input)?.verification) &&
+    isDeepStrictEqual(record(open.input)?.effect, record(next.input)?.effect)
   );
 }

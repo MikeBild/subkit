@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { saveVerificationEvidence } from "./handoff-summary.ts";
 import { approvalAction, asksForSameApproval } from "./same-approval.ts";
+import type { DraftDocument } from "./types.ts";
 
 const saveCard = {
   tool_name: "ask_user_confirm",
@@ -53,6 +55,31 @@ describe("conversations/same-approval", () => {
   test("an open save card and a save gate ask for the same approval", () => {
     expect(asksForSameApproval(saveCard, saveGate)).toBe(true);
     expect(asksForSameApproval(saveGate, saveGate)).toBe(true);
+  });
+
+  test("save approval reuse is bound to the draft even with identical arguments and preview", () => {
+    const card = (name: string) => ({
+      ...saveGate,
+      input: {
+        ...saveGate.input,
+        verification: saveVerificationEvidence({ workflow: { name } } as DraftDocument, true),
+      },
+    });
+    expect(asksForSameApproval(card("first"), card("first"))).toBe(true);
+    expect(asksForSameApproval(card("first"), card("second"))).toBe(false);
+  });
+
+  test("changed or missing verification and effects require a new approval", () => {
+    for (const field of ["verification", "effect"] as const) {
+      const card = (value?: string) => ({
+        ...saveGate,
+        input: { ...saveGate.input, ...(value ? { [field]: { summary: value } } : {}) },
+      });
+      expect(asksForSameApproval(card("first"), card("first"))).toBe(true);
+      expect(asksForSameApproval(card("first"), card("second"))).toBe(false);
+      expect(asksForSameApproval(card("first"), card())).toBe(false);
+      expect(asksForSameApproval(card(), card("first"))).toBe(false);
+    }
   });
 
   test("a different action or different arguments is not the same approval", () => {
