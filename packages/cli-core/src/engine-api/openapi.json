@@ -20021,6 +20021,11 @@
           "file": {
             "$ref": "#/components/schemas/ParseFileConfig"
           },
+          "input_from": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Dot path to an earlier step's output that this transform reads instead of the workflow input, such as `fetch.data`. Inside a for_each step, `$item.<field>` reads the current item. Without it the transform receives the workflow input. `data_selector` still only narrows this step's own output."
+          },
           "input_schema": {
             "type": "object",
             "additionalProperties": {}
@@ -20104,6 +20109,11 @@
           },
           "file": {
             "$ref": "#/components/schemas/ParseFileConfig"
+          },
+          "input_from": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Dot path to an earlier step's output that this transform reads instead of the workflow input, such as `fetch.data`. Inside a for_each step, `$item.<field>` reads the current item. Without it the transform receives the workflow input. `data_selector` still only narrows this step's own output."
           },
           "input_schema": {
             "type": "object",

@@ -34142,6 +34142,8 @@ export interface components {
             markdown?: components["schemas"]["MarkdownConfig"];
             structured_data?: components["schemas"]["StructuredDataConfig"];
             file?: components["schemas"]["ParseFileConfig"];
+            /** @description Dot path to an earlier step's output that this transform reads instead of the workflow input, such as `fetch.data`. Inside a for_each step, `$item.<field>` reads the current item. Without it the transform receives the workflow input. `data_selector` still only narrows this step's own output. */
+            input_from?: string;
             input_schema?: {
                 [key: string]: unknown;
             };
@@ -34171,6 +34173,8 @@ export interface components {
             markdown?: components["schemas"]["MarkdownConfig"];
             structured_data?: components["schemas"]["StructuredDataConfig"];
             file?: components["schemas"]["ParseFileConfig"];
+            /** @description Dot path to an earlier step's output that this transform reads instead of the workflow input, such as `fetch.data`. Inside a for_each step, `$item.<field>` reads the current item. Without it the transform receives the workflow input. `data_selector` still only narrows this step's own output. */
+            input_from?: string;
             input_schema?: {
                 [key: string]: unknown;
             };

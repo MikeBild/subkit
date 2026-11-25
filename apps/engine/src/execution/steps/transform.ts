@@ -24,6 +24,7 @@ import { TRANSFORM_TIMEOUT_DEFAULT_MS, TRANSFORM_WALL_CEILING_DEFAULT_MS } from 
 import type { RequestMeta, StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
 import { runParseFile } from "./parse-file.ts";
+import { transformInputFor } from "./transform-input.ts";
 import { detectTransformWarnings } from "./transform-warnings.ts";
 import { runHtmlToMarkdown, runReadability, runStructuredData } from "./transform-web-scraper.ts";
 
@@ -116,6 +117,24 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
   const language = p.step.language ?? "javascript";
   p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
+  const transformInput = transformInputFor(p.step, p.scope, p.input);
+  if (!transformInput.ok) {
+    clearTimeout(timer);
+    logger.warn({
+      module: "execution",
+      action: "step.transform.input_missing",
+      step_id: p.step.id,
+      language,
+      input_from: p.step.input_from,
+    });
+    return {
+      status: "failed",
+      error: { code: "transform_input_missing", message: transformInput.message },
+      retry_count: 0,
+      duration_ms: Date.now() - start,
+    };
+  }
+  p.input = transformInput.value;
   if (language === "readability") {
     clearTimeout(timer);
     return runReadability({ ctx: p.ctx, step: p.step, input: p.input });

@@ -14,6 +14,7 @@ export interface StepEdge {
     | "jsonata_bare"
     | "js_scope"
     | "data_selector"
+    | "transform_input"
     | "branch_arm"
     | "parallel_branch";
 }
@@ -92,6 +93,11 @@ function collectStepReferences(
     walk(rest);
   } else {
     walk(step);
+  }
+
+  if (step.kind === "transform" && typeof step.input_from === "string") {
+    const head = step.input_from.split(/[.[]/)[0] ?? "";
+    if (head !== step.id) add(head, "transform_input");
   }
 
   if (typeof step.data_selector === "string") {

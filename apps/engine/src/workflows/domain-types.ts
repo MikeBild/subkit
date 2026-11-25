@@ -60,6 +60,7 @@ export interface DomainRequestStep extends DomainStepBase {
 export interface DomainTransformStep extends DomainStepBase {
   kind: "transform";
   expression?: string | undefined;
+  input_from?: string | undefined;
   language?:
     | "javascript"
     | "readability"

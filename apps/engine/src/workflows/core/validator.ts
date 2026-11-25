@@ -30,6 +30,7 @@ import { cycleIssues } from "./definition.ts";
 import { modelStepValidationErrors } from "./model-step-checks.ts";
 import { parseFileValidationErrors } from "./parse-file-checks.ts";
 import { parsePlaceholders } from "./placeholder-parser.ts";
+import { transformInputValidationErrors } from "./transform-input-checks.ts";
 
 export { validateOutputSchemaSuperset } from "./output-schema-gate.ts";
 
@@ -96,6 +97,10 @@ export function validateWorkflowDef(
     ids.add(step.id);
   }
   errors.push(...cycleIssues(wf));
+  const stepOrder = new Map<string, number>();
+  wf.steps.forEach((step, index) => {
+    if (!stepOrder.has(step.id)) stepOrder.set(step.id, index);
+  });
   for (const step of wf.steps) {
     if (typeof step.for_each === "string") {
       const selector = step.for_each.trim();
@@ -178,6 +183,7 @@ export function validateWorkflowDef(
         errors.push(...modelStepValidationErrors(step, compileJsonSchemaContract));
         break;
       case "transform":
+        errors.push(...transformInputValidationErrors(step, stepOrder, allowForwardRefs));
         switch (step.language ?? "javascript") {
           case "javascript": {
             let parsesAsFunctionBody = true;
