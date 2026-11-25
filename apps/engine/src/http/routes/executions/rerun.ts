@@ -79,7 +79,7 @@ const rerunRoute = createRoute({
     },
     429: {
       description:
-        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved.',
+        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage, retry_after}` with a `Retry-After` header in seconds until the daily limit resets) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved.',
       content: { "application/json": { schema: CallerBudgetRefusalSchema } },
     },
   },

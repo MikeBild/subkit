@@ -123,3 +123,12 @@ describe("resolveImport", () => {
     );
   });
 });
+
+test("execution run route stays within its subsystem entry import budget", () => {
+  const file = "apps/engine/src/http/routes/executions/run.ts";
+  const imports = collectImports(file, readFileSync(file, "utf8")).map((entry) => ({
+    ...entry,
+    resolved: resolveImport(file, entry.specifier),
+  }));
+  expect(subsystemEntryHits(file, imports).length).toBeLessThanOrEqual(1);
+});

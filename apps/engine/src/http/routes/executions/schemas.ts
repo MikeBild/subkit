@@ -248,5 +248,6 @@ export const CallerBudgetRefusalSchema = z
     code: z.enum(["rate_limited", "turn_busy", "turn_limit", "invalid"]),
     message: z.string(),
     usage: z.object({ usedToday: z.number().int(), dailyLimit: z.number().int() }).optional(),
+    retry_after: z.number().int().positive().optional(),
   })
   .openapi("CallerBudgetRefusal");

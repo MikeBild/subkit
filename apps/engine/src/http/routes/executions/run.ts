@@ -17,6 +17,7 @@ import {
 import { logger } from "../../../logging/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import { getBoss } from "../../../queue/index.ts";
+import { now } from "../../../utils/index.ts";
 import { normalizeWorkflowRunInput } from "../../../workflows/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -72,7 +73,7 @@ const runExecutionRoute = createRoute({
     },
     429: {
       description:
-        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved.',
+        'The workflow\'s caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage, retry_after}` with a `Retry-After` header in seconds until the daily limit resets) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved.',
       content: { "application/json": { schema: CallerBudgetRefusalSchema } },
     },
   },
@@ -138,6 +139,11 @@ const callerBudgetStatuses = {
   invalid: { status: 400, error: "invalid" },
 } as const;
 
+export function retryAfterSeconds(resetsAt: unknown, currentTime = now()): number | undefined {
+  const resetAt = typeof resetsAt === "string" ? Date.parse(resetsAt) : Number.NaN;
+  return Number.isNaN(resetAt) ? undefined : Math.max(1, Math.ceil((resetAt - currentTime) / 1000));
+}
+
 function refusalDetails(refusal: RunRefusal): Record<string, unknown> | undefined {
   const raw = refusal.details;
   const execution = refusal.execution_id ? { execution_id: refusal.execution_id } : undefined;
@@ -166,12 +172,16 @@ export function refusalResponse(
         callerBudgetStatuses[refusal.code as keyof typeof callerBudgetStatuses] ??
         callerBudgetStatuses.invalid;
       const usage = (refusal.details as { usage?: Record<string, unknown> } | undefined)?.usage;
+      const retryAfter =
+        refusal.code === "rate_limited" ? retryAfterSeconds(usage?.resetsAt) : undefined;
+      if (retryAfter !== undefined) c.header("Retry-After", String(retryAfter));
       return c.json(
         {
           error: status.error,
           code: refusal.code,
           message: refusal.message,
           ...(usage ? { usage: { usedToday: usage.usedToday, dailyLimit: usage.dailyLimit } } : {}),
+          ...(retryAfter !== undefined ? { retry_after: retryAfter } : {}),
         },
         status.status,
       );
