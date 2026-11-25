@@ -77078,6 +77078,17 @@
           {
             "schema": {
               "type": "string",
+              "format": "uuid",
+              "description": "Only conversations of this person. Ignored together with `owner=me`. Admins see another person's private conversations as metadata only."
+            },
+            "required": false,
+            "description": "Only conversations of this person. Ignored together with `owner=me`. Admins see another person's private conversations as metadata only.",
+            "name": "owner_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "enum": [
                 "exclude",
                 "only",

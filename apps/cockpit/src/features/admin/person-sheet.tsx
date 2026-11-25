@@ -46,7 +46,9 @@ import {
   roleName,
 } from "./model/admin-model";
 import { personApps, personEmailText, personNameText } from "./model/apps-model";
+import { mayDeletePersonConversations } from "./model/person-conversations";
 import { PermissionGroups, RoleChangeConsequence } from "./parts";
+import { PersonConversations } from "./person-conversations";
 
 export function PersonSheet({
   user,
@@ -322,6 +324,9 @@ export function PersonSheet({
             )}
           </p>
         </Section>
+        {user && !self && mayDeletePersonConversations(session.permissions) ? (
+          <PersonConversations personId={user.id} name={personNameText(user, t)} />
+        ) : null}
         {user && changed ? (
           <SaveBar
             count={1}

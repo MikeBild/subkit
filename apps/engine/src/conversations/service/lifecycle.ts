@@ -707,7 +707,7 @@ export async function deleteConversation(
         result: "success",
         metadata: ConversationDeletedMetadataSchema.parse({
           conversation_id: p.conversation_id,
-          title: row.title,
+          title: canReadConversation(viewer, access) ? row.title : null,
           owner_id: row.owner_id,
           message_count: Number(counted?.n ?? 0),
           file_links_removed: links.length,
@@ -717,7 +717,11 @@ export async function deleteConversation(
       tx as unknown as Db,
     );
   });
-  return { kind: "deleted", id: row.id, title: row.title };
+  return {
+    kind: "deleted",
+    id: row.id,
+    title: canReadConversation(viewer, access) ? row.title : null,
+  };
 }
 
 export async function countConversations(p: ListConversationsParams, exec: Db): Promise<number> {

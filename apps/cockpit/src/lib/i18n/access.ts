@@ -229,6 +229,17 @@ export const accessEn = {
   "people.sheet.unreadable": "The role's rights could not be read with your access.",
   "people.sheet.grantsNote":
     "Access to single workflows or connectors comes on top; it is listed under",
+  "people.conversations": "Conversations",
+  "people.conversations.help":
+    "Private conversations stay private: you see when they were last active and can delete them, but you cannot read them.",
+  "people.conversations.empty": "No conversations yet.",
+  "people.conversations.loadFailed": "The conversations could not be loaded.",
+  "people.conversations.updated": "Last active {date}",
+  "people.conversations.deleteLabel": "Delete “{title}”",
+  "people.conversations.object": "conversation of {name}",
+  "people.conversations.consequenceHidden":
+    "The private conversation last active {date} is removed for good, with its messages.",
+  "people.conversations.deleted": "Conversation deleted",
   "access.systemAccount": "System account",
   "access.grantRecord": "Record",
   "access.chooseRecord": "Choose a record",
@@ -499,6 +510,17 @@ export const accessDe: Record<keyof typeof accessEn, string> = {
   "people.sheet.unreadable": "Die Rechte der Rolle sind mit deinem Zugang nicht lesbar.",
   "people.sheet.grantsNote":
     "Zugriffe auf einzelne Workflows oder Connectors kommen hinzu; sie stehen unter",
+  "people.conversations": "Unterhaltungen",
+  "people.conversations.help":
+    "Private Unterhaltungen bleiben privat: Du siehst, wann sie zuletzt aktiv waren, und kannst sie löschen, aber nicht lesen.",
+  "people.conversations.empty": "Noch keine Unterhaltungen.",
+  "people.conversations.loadFailed": "Die Unterhaltungen ließen sich nicht laden.",
+  "people.conversations.updated": "Zuletzt aktiv am {date}",
+  "people.conversations.deleteLabel": "„{title}“ löschen",
+  "people.conversations.object": "Unterhaltung von {name}",
+  "people.conversations.consequenceHidden":
+    "Die private Unterhaltung, zuletzt aktiv am {date}, wird mit ihren Nachrichten endgültig entfernt.",
+  "people.conversations.deleted": "Unterhaltung gelöscht",
   "access.systemAccount": "Systemkonto",
   "access.grantRecord": "Eintrag",
   "access.chooseRecord": "Eintrag auswählen",

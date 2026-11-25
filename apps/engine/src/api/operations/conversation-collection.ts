@@ -29,6 +29,13 @@ const ListConversationsQuery = z
   .object({
     status: z.enum(["active", "awaiting_input", "committed", "abandoned"]).optional(),
     owner: z.literal("me").optional(),
+    owner_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        "Only conversations of this person. Ignored together with `owner=me`. Admins see another person's private conversations as metadata only.",
+      ),
     hidden: z.enum(["exclude", "only", "all"]).optional(),
     task_runs: z
       .enum(["exclude", "only", "all"])
@@ -186,7 +193,7 @@ function listParams(principal: ResolvedPrincipal, q: ListQuery): ListParams {
   return {
     tenant_id: principal.tenant_id,
     ...(q.status ? { status: q.status } : {}),
-    ...(q.owner === "me" ? { owner_id: principal.id } : {}),
+    ...(q.owner === "me" ? { owner_id: principal.id } : q.owner_id ? { owner_id: q.owner_id } : {}),
     ...(principal.kind === "user" ? { viewer_user_id: principal.id } : {}),
     ...(q.hidden ? { hidden: q.hidden } : {}),
     ...(q.task_runs ? { task_runs: q.task_runs } : {}),

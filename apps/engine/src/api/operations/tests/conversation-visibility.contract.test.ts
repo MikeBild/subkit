@@ -100,6 +100,23 @@ describe("conversation visibility contract", () => {
     expect(searched.body.items?.some((entry) => entry.id === conversationId)).toBe(false);
   });
 
+  test("an admin lists one person's conversations by owner_id, private ones as metadata only", async () => {
+    const [row] = await ctx.db
+      .select({ owner_id: conversations.owner_id })
+      .from(conversations)
+      .where(and(eq(conversations.tenant_id, ctx.tenantId), eq(conversations.id, conversationId)));
+    const ownerId = row?.owner_id ?? "";
+    const theirs = await call("GET", `/v1/conversations?owner_id=${ownerId}&limit=200`, admin);
+    expect(theirs.status).toBe(200);
+    expect(theirs.body.items?.every((entry) => entry.owner_id === ownerId)).toBe(true);
+    expect(theirs.body.items?.find((entry) => entry.id === conversationId)).toMatchObject({
+      content_hidden: true,
+      title: null,
+    });
+    const mine = await call("GET", `/v1/conversations?owner_id=${ctx.userId}&limit=200`, admin);
+    expect(mine.body.items?.some((entry) => entry.id === conversationId)).toBe(false);
+  });
+
   test("sharing needs the owner's confirmation in a browser session", async () => {
     const path = `/v1/conversations/${conversationId}/share`;
     expect((await call("POST", path, member, {})).status).toBe(400);
@@ -160,5 +177,17 @@ describe("conversation visibility contract", () => {
     expect(await auditCount("conversation.unshared")).toBe(1);
     expect((await call("GET", `/v1/conversations/${conversationId}`, admin)).status).toBe(404);
     expect((await call("DELETE", `/v1/conversations/${conversationId}`, admin)).status).toBe(200);
+    const [deleted] = await ctx.db
+      .select({ metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "conversation.deleted"),
+          eq(auditLog.resource_id, conversationId),
+        ),
+      );
+    expect(deleted?.metadata).toMatchObject({ title: null });
+    expect(JSON.stringify(deleted?.metadata)).not.toContain(TITLE);
   });
 });

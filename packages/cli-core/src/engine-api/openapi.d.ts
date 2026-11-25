@@ -20795,6 +20795,8 @@ export interface paths {
                 query?: {
                     status?: "active" | "awaiting_input" | "committed" | "abandoned";
                     owner?: "me";
+                    /** @description Only conversations of this person. Ignored together with `owner=me`. Admins see another person's private conversations as metadata only. */
+                    owner_id?: string;
                     hidden?: "exclude" | "only" | "all";
                     /** @description Conversations that belong to a task run. They are left out by default; `only` lists just them, `all` lists both. */
                     task_runs?: "exclude" | "only" | "all";
