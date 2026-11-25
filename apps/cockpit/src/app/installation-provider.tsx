@@ -167,19 +167,23 @@ export function InstallationProvider({
   useEffect(() => {
     if (available || !capabilities.push) return;
     let active = true;
-    void restoreBrowserPush({
-      container: navigator.serviceWorker,
-      origin: window.location.origin,
-      pathname: window.location.pathname,
-      permission: Notification.permission,
-      status: pushSubscriptionStatus,
-      prepare: preparePushSubscription,
-      rebind: (subscription) => rebindPushSubscriptionBinding(subscription, pushDeviceId()),
-    })
-      .then((bound) => {
+    const restore = async () => {
+      try {
+        const bound = await restoreBrowserPush({
+          container: navigator.serviceWorker,
+          origin: window.location.origin,
+          pathname: window.location.pathname,
+          permission: Notification.permission,
+          status: pushSubscriptionStatus,
+          prepare: preparePushSubscription,
+          rebind: (subscription) => rebindPushSubscriptionBinding(subscription, pushDeviceId()),
+        });
         if (bound && active) setPushSubscribed(true);
-      })
-      .catch(() => {});
+      } catch {
+        // Restoring push is best effort: the settings page offers a manual subscribe.
+      }
+    };
+    void restore();
     return () => {
       active = false;
     };
@@ -216,26 +220,33 @@ export function InstallationProvider({
     };
     navigator.serviceWorker?.addEventListener("message", receive);
     const current = () => active && generation.current === currentGeneration;
-    void registerInstallationWorker()
-      .then((registration) => {
-        if (!current()) return;
-        takeIncoming(registration);
-        if (!registration || !installationCapabilities().push) return;
-        void rebindPushSubscription({
+    const rebind = async (registration: ServiceWorkerRegistration) => {
+      try {
+        const bound = await rebindPushSubscription({
           registration,
           permission: Notification.permission,
           status: pushSubscriptionStatus,
           prepare: preparePushSubscription,
           save: (subscription) => savePushSubscription(subscription, { device: pushDeviceId() }),
-        })
-          .then((bound) => {
-            if (bound && current()) setPushSubscribed(true);
-          })
-          .catch(() => {});
-      })
-      .catch(() => {
+        });
+        if (bound && current()) setPushSubscribed(true);
+      } catch {
+        // Rebinding push is best effort: the settings page offers a manual subscribe.
+      }
+    };
+    const register = async () => {
+      let registration: ServiceWorkerRegistration | null | undefined;
+      try {
+        registration = await registerInstallationWorker();
+      } catch {
         if (current()) setIncomingError("unavailable");
-      });
+        return;
+      }
+      if (!current()) return;
+      takeIncoming(registration);
+      if (registration && installationCapabilities().push) void rebind(registration);
+    };
+    void register();
     takeIncoming();
     const launchQueue = window as LaunchQueueWindow;
     launchQueue.launchQueue?.setConsumer((params) => {
@@ -243,13 +254,15 @@ export function InstallationProvider({
         announceLaunch(params.targetURL);
         return;
       }
-      void incomingFromLaunchFiles(params.files ?? [])
-        .then((value) => {
+      const launch = async (files: readonly LaunchFileHandle[]) => {
+        try {
+          const value = await incomingFromLaunchFiles(files);
           if (active && generation.current === currentGeneration) stageIncoming(value);
-        })
-        .catch(() => {
+        } catch {
           if (active && generation.current === currentGeneration) setIncomingError("retry");
-        });
+        }
+      };
+      void launch(params.files ?? []);
     });
     return () => {
       active = false;
@@ -296,10 +309,13 @@ export function InstallationProvider({
     if (!registration) return false;
     const device = pushDeviceId();
     const { public_key } = await preparePushSubscription();
-    const release = () =>
-      void releaseBrowserPush(navigator.serviceWorker, window.location.origin, public_key).catch(
-        () => false,
-      );
+    const release = async () => {
+      try {
+        await releaseBrowserPush(navigator.serviceWorker, window.location.origin, public_key);
+      } catch {
+        // Releasing the old browser subscription is best effort; the new one is already saved.
+      }
+    };
     const rebound = await rebindPushSubscription({
       registration,
       permission,
@@ -309,7 +325,7 @@ export function InstallationProvider({
     });
     if (rebound) {
       setPushSubscribed(true);
-      release();
+      void release();
       return true;
     }
     const subscription = await registration.pushManager.subscribe({
@@ -319,11 +335,15 @@ export function InstallationProvider({
     try {
       await savePushSubscription(subscription, { device });
     } catch (error) {
-      await subscription.unsubscribe().catch(() => {});
+      try {
+        await subscription.unsubscribe();
+      } catch {
+        // The save already failed; that error is the one to report.
+      }
       throw error;
     }
     setPushSubscribed(true);
-    release();
+    void release();
     return true;
   }, [available, capabilities.push]);
   const disablePush = useCallback(async () => {

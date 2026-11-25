@@ -80,7 +80,9 @@ export function BrandingSettings({
     onDraft(
       dirty
         ? {
-            save: () => mutateAsync(false).then(() => undefined),
+            save: async () => {
+              await mutateAsync(false);
+            },
             discard: () => {
               setDraft(null);
               setFailure(null);
@@ -162,14 +164,13 @@ export function BrandingSettings({
                 variant="ghost"
                 data-testid="branding-reload"
                 disabled={mutation.isPending}
-                onClick={() =>
-                  void query.refetch().then((result) => {
-                    if (result.data) {
-                      setDraft(null);
-                      setFailure(null);
-                    }
-                  })
-                }
+                onClick={async () => {
+                  const result = await query.refetch();
+                  if (result.data) {
+                    setDraft(null);
+                    setFailure(null);
+                  }
+                }}
               >
                 {t("settings.reload")}
               </Button>
@@ -196,12 +197,13 @@ export function BrandingSettings({
         consequence={t("branding.resetConsequence")}
         pending={mutation.isPending}
         testId="branding-reset-dialog"
-        onConfirm={() =>
-          mutation
-            .mutateAsync(true)
-            .then(() => undefined)
-            .catch(() => undefined)
-        }
+        onConfirm={async () => {
+          try {
+            await mutation.mutateAsync(true);
+          } catch {
+            // The mutation's onError already shows the failure inline.
+          }
+        }}
       />
     </div>
   );

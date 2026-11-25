@@ -162,9 +162,11 @@ function FeedbackDialog({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void collect().then((next) => {
+    const load = async () => {
+      const next = await collect();
       if (!cancelled) setDiagnostics(next);
-    });
+    };
+    void load();
     return () => {
       cancelled = true;
     };
@@ -462,31 +464,43 @@ function useQueuedFeedback(): {
   const [reports, setReports] = useState<readonly FailedReport[]>([]);
   const [busy, setBusy] = useState(false);
   const unsent = useMemo<UnsentReports>(() => {
-    const settle = (work: Promise<void>) => {
+    const settle = async (work: Promise<void>) => {
       setBusy(true);
-      void work.finally(() => setBusy(false));
+      try {
+        await work;
+      } finally {
+        setBusy(false);
+      }
     };
     return {
       reports,
       busy,
-      resend: (id) => settle(feedbackQueue().resend(identity, id, crypto.randomUUID())),
-      discard: (id) => settle(feedbackQueue().discard(identity, id)),
+      resend: (id) => void settle(feedbackQueue().resend(identity, id, crypto.randomUUID())),
+      discard: (id) => void settle(feedbackQueue().discard(identity, id)),
     };
   }, [identity, reports, busy]);
   useEffect(() => {
     const queue = feedbackQueue();
     let live = true;
     const refresh = () => {
-      void queue.waiting(identity).then((count) => {
+      const loadWaiting = async () => {
+        const count = await queue.waiting(identity);
         if (live) setWaiting(count);
-      });
-      void queue.failed(identity).then((next) => {
+      };
+      const loadFailed = async () => {
+        const next = await queue.failed(identity);
         if (live) setReports(next);
-      });
+      };
+      void loadWaiting();
+      void loadFailed();
     };
     const flush = () => void queue.flush(identity);
     const off = queue.subscribe(refresh);
-    void queue.signedIn(identity).then(flush);
+    const start = async () => {
+      await queue.signedIn(identity);
+      flush();
+    };
+    void start();
     refresh();
     window.addEventListener("online", flush);
     window.addEventListener("focus", flush);
