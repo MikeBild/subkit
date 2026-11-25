@@ -37,6 +37,7 @@ import { readOwnConversations } from "../../operator/attention-conversations.ts"
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
+import { opened } from "../../test-helpers/elicitations.ts";
 import { seedConversation } from "../../test-helpers/seed.ts";
 import { expireDueElicitations } from "../elicitation-expiry.ts";
 import { getElicitation, resolveElicitation } from "../elicitations.ts";
@@ -106,26 +107,28 @@ async function askedStep(
     })
     .returning({ id: conversationToolCalls.id });
   if (!call) throw new Error("tool call fixture missing");
-  const asked = await requestLocalConfirmation(server.db, {
-    tenant_id: server.tenantId,
-    conversation_id,
-    tool_call_id: call.id,
-    parent_message_id: null,
-    actor_id: owner_id,
-    tool: "browser_press",
-    args: { ref: "e12" },
-    question: "„Zahlungspflichtig bestellen“ auf shop.example drücken?",
-    device: {
-      device_id: DEVICE_ID,
-      capability: "browser",
-      target: "„Zahlungspflichtig bestellen“ auf shop.example",
-      command_id: COMMAND_ID,
-      binding_hash: BINDING_HASH,
-    },
-    requested_at: new Date(getTestNow()),
-    limits: [],
-    ...extra,
-  });
+  const asked = opened(
+    await requestLocalConfirmation(server.db, {
+      tenant_id: server.tenantId,
+      conversation_id,
+      tool_call_id: call.id,
+      parent_message_id: null,
+      actor_id: owner_id,
+      tool: "browser_press",
+      args: { ref: "e12" },
+      question: "„Zahlungspflichtig bestellen“ auf shop.example drücken?",
+      device: {
+        device_id: DEVICE_ID,
+        capability: "browser",
+        target: "„Zahlungspflichtig bestellen“ auf shop.example",
+        command_id: COMMAND_ID,
+        binding_hash: BINDING_HASH,
+      },
+      requested_at: new Date(getTestNow()),
+      limits: [],
+      ...extra,
+    }),
+  );
   return { tool_call_id: call.id, ...asked };
 }
 

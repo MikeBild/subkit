@@ -23,6 +23,7 @@ import { logger } from "../../logging/index.ts";
 import { withConnectorAuthenticated } from "../authoring-state/index.ts";
 import { decidedByFor } from "../decided-by.ts";
 import { ElicitationUnsupportedError } from "../elicitation-bridge.ts";
+import { elicitationRefusalResult } from "../elicitation-refusal.ts";
 import {
   createNativeElicitation,
   demoteElicitationToPortal,
@@ -72,7 +73,7 @@ function openOAuthApprovalElicitation(
     connectorId: string;
     connectorSlug: string;
   },
-): Promise<import("../elicitations.ts").ElicitationRecord> {
+): Promise<import("../elicitations.ts").ElicitationOpening> {
   return createNativeElicitation(
     {
       tenant_id: ctx.tenant_id,
@@ -307,7 +308,7 @@ export const authenticateOAuthTool: ConversationTool = {
     const bridge = ctx.elicitationBridge;
 
     if (bridge?.capabilities.oob) {
-      const approval = await openOAuthApprovalElicitation(ctx, {
+      const opening = await openOAuthApprovalElicitation(ctx, {
         connectorLabel,
         authorizationUrl: started.authorization_url,
         redirectUri: redirect_uri,
@@ -315,6 +316,8 @@ export const authenticateOAuthTool: ConversationTool = {
         connectorId,
         connectorSlug: connector.slug,
       });
+      if (!opening.ok) return elicitationRefusalResult(opening.reason);
+      const approval = opening.elicitation;
       const bridgeStartedAt = performance.now();
       try {
         await bridge.elicitOob({
@@ -373,7 +376,7 @@ export const authenticateOAuthTool: ConversationTool = {
     }
 
     if (bridge?.capabilities.form) {
-      const approval = await openOAuthApprovalElicitation(ctx, {
+      const opening = await openOAuthApprovalElicitation(ctx, {
         connectorLabel,
         authorizationUrl: started.authorization_url,
         redirectUri: redirect_uri,
@@ -381,6 +384,8 @@ export const authenticateOAuthTool: ConversationTool = {
         connectorId,
         connectorSlug: connector.slug,
       });
+      if (!opening.ok) return elicitationRefusalResult(opening.reason);
+      const approval = opening.elicitation;
       const bridgeStartedAt = performance.now();
       try {
         const result = await bridge.elicitForm({

@@ -28,6 +28,7 @@ import {
 } from "../../../tools/policy.ts";
 import { truncateForLlm } from "../../../tools/truncate.ts";
 import { runConfirmGate } from "../../confirmation.ts";
+import { elicitationRefusalOutput } from "../../elicitation-refusal.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persistence/index.ts";
 import type { TaskRunMarker, TurnEvent } from "../../types.ts";
@@ -515,7 +516,7 @@ async function executeExternalMcpTool(
         ...(approvalUrl ? { approval_url: approvalUrl } : {}),
       };
       const elicitationSummary = `Run "${spec.suffix}" on ${connector_name}`;
-      const elicitation = await createElicitation(
+      const opened = await createElicitation(
         {
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
@@ -531,6 +532,25 @@ async function executeExternalMcpTool(
         },
         db,
       );
+      if (!opened.ok) {
+        const refused = elicitationRefusalOutput(opened.reason);
+        await updateToolCallOutput(db, toolCallId, refused, "denied");
+        events.push({
+          type: "tool_result",
+          call_id: toolCallId,
+          tool: name,
+          output: refused,
+          parent_message_id: assistantMessageId,
+        });
+        recordConversationToolCall({
+          category: "tenant_write",
+          tool: name,
+          outcome: "denied",
+          duration_ms: Date.now() - startedAt,
+        });
+        return { ok: false, data: refused };
+      }
+      const elicitation = opened.elicitation;
       signals.pendingChildElicitationIds.push(elicitation.id);
       const operatorInput = withoutApprovalHandle(elicitationInput);
       const pendingOutput = { connector_slug, remote_tool: spec.target, input_keys: inputKeys };

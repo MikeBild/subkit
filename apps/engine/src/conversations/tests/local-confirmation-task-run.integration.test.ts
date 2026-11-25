@@ -16,6 +16,7 @@ import {
 } from "../../queue/handlers/task-run-turn-fixtures.ts";
 import { continueTaskRunOfConversation } from "../../tasks/run-driver.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { opened } from "../../test-helpers/elicitations.ts";
 import { expireDueElicitations } from "../elicitation-expiry.ts";
 import { requestLocalConfirmation } from "../local-confirmation.ts";
 import { respondElicitationForTest } from "./setup.ts";
@@ -41,25 +42,27 @@ async function waitingOnLocalStep(w: Workspace, requested_at: Date) {
     })
     .returning({ id: conversationToolCalls.id });
   if (!call) throw new Error("tool call fixture missing");
-  const asked = await requestLocalConfirmation(db, {
-    tenant_id: w.tenant_id,
-    conversation_id: run.conversation_id,
-    tool_call_id: call.id,
-    parent_message_id: null,
-    actor_id: w.owner.id,
-    tool: "browser_press",
-    args: { ref: "e12" },
-    question: "„Senden“ auf portal.example drücken?",
-    device: {
-      device_id: "d1000000-0000-4000-8000-0000000000e7",
-      capability: "browser",
-      target: "„Senden“ auf portal.example",
-      command_id: "c".repeat(64),
-      binding_hash: "b".repeat(64),
-    },
-    requested_at,
-    limits: [],
-  });
+  const asked = opened(
+    await requestLocalConfirmation(db, {
+      tenant_id: w.tenant_id,
+      conversation_id: run.conversation_id,
+      tool_call_id: call.id,
+      parent_message_id: null,
+      actor_id: w.owner.id,
+      tool: "browser_press",
+      args: { ref: "e12" },
+      question: "„Senden“ auf portal.example drücken?",
+      device: {
+        device_id: "d1000000-0000-4000-8000-0000000000e7",
+        capability: "browser",
+        target: "„Senden“ auf portal.example",
+        command_id: "c".repeat(64),
+        binding_hash: "b".repeat(64),
+      },
+      requested_at,
+      limits: [],
+    }),
+  );
   await db
     .update(taskRuns)
     .set({ state: "waiting", waiting_reason: "question" })

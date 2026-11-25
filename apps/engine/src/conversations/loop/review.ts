@@ -101,7 +101,7 @@ async function raiseAbstention(
     criticFailedChecks,
   });
   try {
-    const elicitation = await askUserText(p, {
+    const opening = await askUserText(p, {
       summary: abstain.summary,
       input: {
         question: abstain.question,
@@ -114,6 +114,8 @@ async function raiseAbstention(
         },
       },
     });
+    if (!opening.ok) return;
+    const elicitation = opening.elicitation;
     signals.pendingChildElicitationIds.push(elicitation.id);
     env.events.push({
       type: "activity",

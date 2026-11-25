@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, conversationToolCalls } from "../db/schema/index.ts";
+import { openedElicitation } from "../test-helpers/elicitations.ts";
 import { createElicitation, resolveElicitation } from "./elicitations.ts";
 import {
   PlaybookConflictError,
@@ -67,7 +68,7 @@ describe("persisted playbook evidence and lifecycle", () => {
           expires_at: timestamp(60_000),
         },
         fixture.db,
-      );
+      ).then(openedElicitation);
     }
     async function answer(id: string, output: unknown) {
       return resolveElicitation(

@@ -1,12 +1,14 @@
 import type { Db } from "../../../../db/client.ts";
 import { recordConversationToolCall } from "../../../../observability/instrumentation.ts";
 import type { ToolPolicies } from "../../../../tools/types.ts";
+import type { CONVERSATION_ABANDONED } from "../../../core/conversation-status.ts";
+import { elicitationRefusalOutput } from "../../../elicitation-refusal.ts";
 import type { PolicyRecord } from "../../../instruction-cover/gate.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
 import type { TurnEvent } from "../../../types.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 import type { ToolCallOutcome } from "../../result-payload.ts";
-import type { TurnSignals } from "../state.ts";
+import type { TurnSignals, WrappedToolOutput } from "../state.ts";
 
 export interface InvokeEnv {
   inner: ConversationTool;
@@ -50,6 +52,17 @@ export async function persistToolResult(
 ): Promise<void> {
   await updateToolCallOutput(env.db, call.toolCallId, output, outcome);
   pushToolResult(env, call, output);
+}
+
+export async function refuseInvocation(
+  env: InvokeEnv,
+  call: InvokeCall,
+  reason: typeof CONVERSATION_ABANDONED,
+): Promise<WrappedToolOutput> {
+  const output = elicitationRefusalOutput(reason);
+  await persistToolResult(env, call, output, "denied");
+  recordCall(env, call, "denied");
+  return { ok: false, data: output };
 }
 
 export function pushToolResult(env: InvokeEnv, call: InvokeCall, output: unknown): void {

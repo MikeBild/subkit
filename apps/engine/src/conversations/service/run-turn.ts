@@ -13,6 +13,7 @@ import { recordConversationToolCall } from "../../observability/instrumentation.
 import { withRawResultScope } from "../../tools/truncate.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
+import { elicitationRefusalOutput } from "../elicitation-refusal.ts";
 import { createElicitation } from "../elicitations.ts";
 import { tryFastPath } from "../fast-path.ts";
 import { type RunLoopResult, runLoop } from "../loop/index.ts";
@@ -290,7 +291,7 @@ async function runRequestCredentialFormEvent(
     input: formInput,
     approval_required: false,
   });
-  const elicitation = await createElicitation(
+  const opening = await createElicitation(
     {
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
@@ -304,6 +305,25 @@ async function runRequestCredentialFormEvent(
     },
     exec,
   );
+  if (!opening.ok) {
+    const refused = elicitationRefusalOutput(opening.reason);
+    await updateToolCallOutput(exec, toolCallId, refused, "denied");
+    return {
+      events: [
+        { type: "message", role: "assistant", content: assistantText, id: assistantMessageId },
+        {
+          type: "tool_result",
+          call_id: toolCallId,
+          tool: "ask_user_form",
+          output: refused,
+          parent_message_id: assistantMessageId,
+        },
+        { type: "completed", status: "abandoned" },
+      ],
+      status: "abandoned",
+    };
+  }
+  const elicitation = opening.elicitation;
   await updateToolCallOutput(
     exec,
     toolCallId,

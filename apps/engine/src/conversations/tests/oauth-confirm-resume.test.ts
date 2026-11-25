@@ -7,6 +7,7 @@ import {
 } from "../../credentials/oauth2/tests/mock-server.ts";
 import { connectors, conversations } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { requestApproval } from "../../tools/approval.ts";
 import { humanChatAnswer } from "../answer-actor.ts";
 import { createElicitation, getElicitation, resolveElicitation } from "../elicitations.ts";
@@ -72,25 +73,27 @@ for (const signIn of [false, true])
       execution_mode: null,
       args: { connector_id: connector!.id },
     });
-    const elicitation = await createElicitation(
-      {
-        tenant_id: server.tenantId,
-        conversation_id: conversation!.id,
-        tool_call_id: null,
-        tool_name: "ask_user_confirm",
-        summary: "Prepare sign-in",
-        actor_id: server.userId,
-        input: {
-          kind: "external_write",
-          question: "Prepare sign-in?",
-          commit_intent: {
-            kind: "execute_confirmed_tool_call",
-            payload: { tool: "authenticate_oauth", approval_id: approvalId },
-            description: "Prepare sign-in",
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: server.tenantId,
+          conversation_id: conversation!.id,
+          tool_call_id: null,
+          tool_name: "ask_user_confirm",
+          summary: "Prepare sign-in",
+          actor_id: server.userId,
+          input: {
+            kind: "external_write",
+            question: "Prepare sign-in?",
+            commit_intent: {
+              kind: "execute_confirmed_tool_call",
+              payload: { tool: "authenticate_oauth", approval_id: approvalId },
+              description: "Prepare sign-in",
+            },
           },
         },
-      },
-      server.db,
+        server.db,
+      ),
     );
     await resolveElicitation(
       {

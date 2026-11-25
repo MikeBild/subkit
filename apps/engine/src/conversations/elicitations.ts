@@ -5,17 +5,20 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
-import { assertInsertRow } from "../db/assert-insert.ts";
-import type { Db, Executor } from "../db/client.ts";
 import {
+  assertInsertRow,
   conversationElicitations,
   conversations,
   conversationToolCalls,
-} from "../db/schema/index.ts";
+  type Db,
+  type Executor,
+  taskRuns,
+} from "../db/index.ts";
 import { LocalConfirmationForbiddenError } from "../devices/confirmation-errors.ts";
 import { grantsConfirmation, NOTHING_CHANGED } from "../devices/core/local-confirmation.ts";
 import { logger } from "../logging/index.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
+import { type CONVERSATION_ABANDONED, canOpenElicitation } from "./core/conversation-status.ts";
 import { type ElicitationStatus, elicitationSources } from "./core/elicitation-status.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
 import { transitionConversation } from "./persistence/conversation-status.ts";
@@ -205,18 +208,83 @@ function elicitationExpiry(input: unknown, now: Date): Date {
   return new Date(now.getTime() + ELICITATION_HUMAN_TTL_MS);
 }
 
+export type ElicitationOpening =
+  | { ok: true; elicitation: ElicitationRecord }
+  | { ok: false; reason: typeof CONVERSATION_ABANDONED };
+
 export function createElicitation(
   p: CreateElicitationParams,
   exec: Executor,
-): Promise<ElicitationRecord> {
-  return insertElicitation(p, false, exec);
+): Promise<ElicitationOpening> {
+  return openElicitation(p, false, exec);
 }
 
 export function createNativeElicitation(
   p: CreateElicitationParams,
   exec: Executor,
-): Promise<ElicitationRecord> {
-  return insertElicitation(p, true, exec);
+): Promise<ElicitationOpening> {
+  return openElicitation(p, true, exec);
+}
+
+const OPEN_TASK_RUN_STATES = ["running", "waiting", "sleeping"] as const;
+
+async function holdTaskRunOfConversation(
+  p: CreateElicitationParams,
+  reason: typeof CONVERSATION_ABANDONED,
+  exec: Executor,
+): Promise<void> {
+  const [run] = await exec
+    .select({ id: taskRuns.id })
+    .from(taskRuns)
+    .where(
+      and(
+        eq(taskRuns.tenant_id, p.tenant_id),
+        eq(taskRuns.conversation_id, p.conversation_id),
+        inArray(taskRuns.state, [...OPEN_TASK_RUN_STATES]),
+      ),
+    )
+    .limit(1);
+  if (!run) return;
+  const { observeTaskRun } = await import("../tasks/run-driver.ts");
+  await observeTaskRun(exec as Db, {
+    tenant_id: p.tenant_id,
+    task_run_id: run.id,
+    turn: {
+      id: null,
+      driver: "task",
+      failure: { code: reason, retry_at: null },
+      interrupted: false,
+    },
+    source: "chat",
+  });
+}
+
+async function openElicitation(
+  p: CreateElicitationParams,
+  protocolNative: boolean,
+  exec: Executor,
+): Promise<ElicitationOpening> {
+  const [conversation] = await exec
+    .select({ status: conversations.status })
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
+    .limit(1)
+    .for("update");
+  const admission = conversation ? canOpenElicitation(conversation.status) : { ok: true as const };
+  if (admission.ok)
+    return { ok: true, elicitation: await insertElicitation(p, protocolNative, exec) };
+  logger.info({
+    module: "conversation",
+    action: "elicitation.refused",
+    msg: "refused a question on an abandoned conversation; no elicitation was opened",
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    tool_name: p.tool_name,
+    reason: admission.reason,
+    ...(p.tool_call_id ? { tool_call_id: p.tool_call_id } : {}),
+  });
+  await holdTaskRunOfConversation(p, admission.reason, exec);
+  return admission;
 }
 
 async function insertElicitation(

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../../llm/tests/setup.ts";
+import { openedElicitation } from "../../../test-helpers/elicitations.ts";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;
@@ -32,25 +33,27 @@ describe("post-execution review pause", () => {
 
   test("review-after-execution elicitation row carries kind=review_after_execution + the tool result", async () => {
     const { createElicitation } = await import("../../elicitations.ts");
-    const synthetic = await createElicitation(
-      {
-        tenant_id: ctx.tenant_id,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_confirm",
-        summary: "Review result of authenticate_oauth",
-        input: {
-          kind: "review_after_execution",
+    const synthetic = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_confirm",
           summary: "Review result of authenticate_oauth",
-          target: { tool: "authenticate_oauth", args: { connector_id: "x" } },
-          pending_output: {
-            scopes: ["read", "write"],
-            expires_at: "2026-12-31T00:00:00.000Z",
+          input: {
+            kind: "review_after_execution",
+            summary: "Review result of authenticate_oauth",
+            target: { tool: "authenticate_oauth", args: { connector_id: "x" } },
+            pending_output: {
+              scopes: ["read", "write"],
+              expires_at: "2026-12-31T00:00:00.000Z",
+            },
           },
+          actor_id: null,
         },
-        actor_id: null,
-      },
-      ctx.testDb.db as unknown as Db,
+        ctx.testDb.db as unknown as Db,
+      ),
     );
     const rows = await ctx.testDb.db
       .select()

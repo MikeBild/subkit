@@ -19,10 +19,12 @@ async function parkOnProseQuestion(env: TurnEnv, outcome: TurnOutcome): Promise<
   const closingAsk = unattendedTurn ? closingProseQuestion(signals.lastAssistantText) : null;
   if (!closingAsk) return outcome;
   try {
-    const elicitation = await askUserText(p, {
+    const opening = await askUserText(p, {
       summary: "the assistant asked a question",
       input: { question: closingAsk, metadata: { source: "loop.prose_question_parked" } },
     });
+    if (!opening.ok) return outcome;
+    const elicitation = opening.elicitation;
     logger.info({
       module: "conversation",
       action: "loop.prose_question_parked",
@@ -65,10 +67,12 @@ async function parkOnBudgetExhaustion(env: TurnEnv, outcome: TurnOutcome): Promi
   });
   if (signals.lastAssistantText) return outcome;
   try {
-    const elicitation = await askUserText(p, {
+    const opening = await askUserText(p, {
       summary: "step limit reached before finishing",
       input: budgetExhaustedQuestion(budget),
     });
+    if (!opening.ok) return outcome;
+    const elicitation = opening.elicitation;
     logger.info({
       module: "conversation",
       action: "loop.budget_exhausted.elicited",

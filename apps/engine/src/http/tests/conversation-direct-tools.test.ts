@@ -9,6 +9,7 @@ import {
   conversations,
   conversationToolCalls,
 } from "../../db/schema/index.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -268,17 +269,19 @@ describe("conversation direct tool routes", () => {
   });
 
   test("a pending elicitation blocks direct invocation with 409", async () => {
-    const elicitation = await createElicitation(
-      {
-        tenant_id: srv.tenantId,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_text",
-        summary: "test pending dialog",
-        input: { question: "?" },
-        actor_id: null,
-      },
-      srv.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: srv.tenantId,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_text",
+          summary: "test pending dialog",
+          input: { question: "?" },
+          actor_id: null,
+        },
+        srv.db,
+      ),
     );
     try {
       const res = await api("POST", `/v1/conversations/${conversation_id}/preview`, {});

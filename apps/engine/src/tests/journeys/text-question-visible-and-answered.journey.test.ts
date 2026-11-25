@@ -4,6 +4,7 @@ import { createElicitation } from "../../conversations/elicitations.ts";
 import { appendMessage, buildModelMessages } from "../../conversations/persistence/index.ts";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -170,17 +171,19 @@ describe("a text question is visible and answered on purpose", () => {
     const id = ((await created.json()) as { conversation: { id: string } }).conversation.id;
     const asked = "Welcher Endpoint soll aufgerufen werden?";
     await appendMessage(ctx.db, ctx.tenantId, id, "assistant", { text: asked });
-    const parked = await createElicitation(
-      {
-        tenant_id: ctx.tenantId,
-        conversation_id: id,
-        tool_call_id: null,
-        tool_name: "ask_user_text",
-        summary: "the assistant asked a question",
-        input: { question: asked, metadata: { source: "loop.prose_question_parked" } },
-        actor_id: ctx.userId,
-      },
-      ctx.db,
+    const parked = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: ctx.tenantId,
+          conversation_id: id,
+          tool_call_id: null,
+          tool_name: "ask_user_text",
+          summary: "the assistant asked a question",
+          input: { question: asked, metadata: { source: "loop.prose_question_parked" } },
+          actor_id: ctx.userId,
+        },
+        ctx.db,
+      ),
     );
     await ctx.db
       .update(conversations)

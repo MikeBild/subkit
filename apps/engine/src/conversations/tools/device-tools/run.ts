@@ -41,6 +41,7 @@ import {
   recordDeviceStep,
   recordPendingCommand,
 } from "../../device-tool-store.ts";
+import { elicitationRefusalResult } from "../../elicitation-refusal.ts";
 import { decideDeviceTool } from "../../instruction-cover/device-decision.ts";
 import { loadTaskRunFacts } from "../../instruction-cover/evidence.ts";
 import {
@@ -342,6 +343,7 @@ export async function executeDeviceTool(
       requested_at: now,
       limits: [],
     });
+    if (!requested.ok) return elicitationRefusalResult(requested.reason);
     const data = {
       pending: true,
       status: "awaiting_confirmation",

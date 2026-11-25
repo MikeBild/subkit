@@ -5,7 +5,7 @@ import type { ToolResultPause } from "../../index.ts";
 import { prepareGate } from "../gate-subjects.ts";
 import { confirmationMetadataForTool, REVIEW_AFTER_EXECUTION_KIND } from "../policy-helpers.ts";
 import type { WrappedToolOutput } from "../state.ts";
-import { elicitationActor, type InvokeCall, type InvokeEnv } from "./env.ts";
+import { elicitationActor, type InvokeCall, type InvokeEnv, refuseInvocation } from "./env.ts";
 import type { Executed } from "./execute.ts";
 
 export async function forwardToolPause(
@@ -75,7 +75,7 @@ export async function pauseForReview(
   const { inner, ctx, signals, events, db } = env;
   const { rawArgs, toolCallId, assistantMessageId } = call;
   const { result, resultPayload, modelVisibleOutput } = executed;
-  const reviewElicitation = await createElicitation(
+  const reviewOpening = await createElicitation(
     {
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
@@ -94,7 +94,8 @@ export async function pauseForReview(
     },
     db,
   );
-  const reviewElicitationId = reviewElicitation.id;
+  if (!reviewOpening.ok) return await refuseInvocation(env, call, reviewOpening.reason);
+  const reviewElicitationId = reviewOpening.elicitation.id;
   signals.pendingChildElicitationIds.push(reviewElicitationId);
   const reviewInput = () => ({
     kind: REVIEW_AFTER_EXECUTION_KIND,

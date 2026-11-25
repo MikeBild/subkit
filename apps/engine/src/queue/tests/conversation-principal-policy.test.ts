@@ -23,6 +23,7 @@ import { getMcpTask, insertMcpTask } from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { requestApproval } from "../../tools/approval.ts";
 import { enqueueApprovalElicitationResume } from "../approval-resume.ts";
 import { registerConversationRunTurnHandler } from "../handlers/conversation-run-turn.ts";
@@ -250,17 +251,19 @@ for (const invalidation of ["none", "revoked", "missing", "wrong_kind"] as const
         })
         .where(and(eq(toolApprovals.tenant_id, ctx.tenantId), eq(toolApprovals.id, approvalId)));
     }
-    const elicitation = await createElicitation(
-      {
-        tenant_id: ctx.tenantId,
-        conversation_id: f.data.conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_text",
-        summary: "approved action",
-        input: {},
-        actor_id: f.user.id,
-      },
-      ctx.testDb.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: ctx.tenantId,
+          conversation_id: f.data.conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_text",
+          summary: "approved action",
+          input: {},
+          actor_id: f.user.id,
+        },
+        ctx.testDb.db,
+      ),
     );
     let captured: ConversationRunTurnJob | undefined;
     const boss = {
@@ -319,17 +322,19 @@ test("portal approval that arrives while the asking turn still runs is queued on
     .update(toolApprovals)
     .set({ granted_at: sql`clock_timestamp()` })
     .where(and(eq(toolApprovals.tenant_id, ctx.tenantId), eq(toolApprovals.id, approvalId)));
-  const elicitation = await createElicitation(
-    {
-      tenant_id: ctx.tenantId,
-      conversation_id: f.data.conversation_id,
-      tool_call_id: null,
-      tool_name: "ask_user_text",
-      summary: "approved action",
-      input: {},
-      actor_id: f.user.id,
-    },
-    ctx.testDb.db,
+  const elicitation = openedElicitation(
+    await createElicitation(
+      {
+        tenant_id: ctx.tenantId,
+        conversation_id: f.data.conversation_id,
+        tool_call_id: null,
+        tool_name: "ask_user_text",
+        summary: "approved action",
+        input: {},
+        actor_id: f.user.id,
+      },
+      ctx.testDb.db,
+    ),
   );
   const asking = await reserveConversationTurn(ctx.testDb.db, ctx.tenantId, f.data.conversation_id);
   let sent = 0;

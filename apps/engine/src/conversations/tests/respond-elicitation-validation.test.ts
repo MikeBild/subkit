@@ -11,6 +11,7 @@ import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { createElicitation, getElicitation } from "../elicitations.ts";
 import { PlaybookDocumentSchema } from "../playbook-contract.ts";
 import { ElicitationValidationError } from "../service/elicit.ts";
@@ -49,23 +50,25 @@ describe("respondElicitation — validation re-prompt", () => {
   test("empty values for a required form field throws ElicitationValidationError and leaves the row pending", async () => {
     const conversation_id = await freshConversation();
 
-    const elicitation = await createElicitation(
-      {
-        tenant_id,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_form",
-        summary: "Enter your API credentials",
-        input: {
-          question: "API Credentials",
-          fields: [
-            { name: "api_key", label: "API Key", type: "text", required: true },
-            { name: "region", label: "Region", type: "text", required: false },
-          ],
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_form",
+          summary: "Enter your API credentials",
+          input: {
+            question: "API Credentials",
+            fields: [
+              { name: "api_key", label: "API Key", type: "text", required: true },
+              { name: "region", label: "Region", type: "text", required: false },
+            ],
+          },
+          actor_id: null,
         },
-        actor_id: null,
-      },
-      testDb.db,
+        testDb.db,
+      ),
     );
 
     getMockProvider().setConversePlan(conversation_id, []);
@@ -110,20 +113,22 @@ describe("respondElicitation — validation re-prompt", () => {
   test("valid answer for a required form field does NOT throw a validation error", async () => {
     const conversation_id = await freshConversation();
 
-    const elicitation = await createElicitation(
-      {
-        tenant_id,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_form",
-        summary: "Enter your name",
-        input: {
-          question: "Name",
-          fields: [{ name: "name", label: "Name", type: "text", required: true }],
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_form",
+          summary: "Enter your name",
+          input: {
+            question: "Name",
+            fields: [{ name: "name", label: "Name", type: "text", required: true }],
+          },
+          actor_id: null,
         },
-        actor_id: null,
-      },
-      testDb.db,
+        testDb.db,
+      ),
     );
 
     getMockProvider().setConversePlan(conversation_id, []);
@@ -195,20 +200,22 @@ describe("respondElicitation — validation re-prompt", () => {
       provider: "test",
     };
 
-    const elicitation = await createElicitation(
-      {
-        tenant_id,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_form",
-        summary: "Enter your name",
-        input: {
-          question: "Name",
-          fields: [{ name: "name", label: "Name", type: "text", required: true }],
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_form",
+          summary: "Enter your name",
+          input: {
+            question: "Name",
+            fields: [{ name: "name", label: "Name", type: "text", required: true }],
+          },
+          actor_id: null,
         },
-        actor_id: null,
-      },
-      testDb.db,
+        testDb.db,
+      ),
     );
     getMockProvider().setConversePlan(conversation_id, [
       { tool: "inspect_playbook", args: {} },
@@ -250,20 +257,22 @@ describe("respondElicitation — validation re-prompt", () => {
   test("decline {confirmed:false} bypasses validation and resolves the row", async () => {
     const conversation_id = await freshConversation();
 
-    const elicitation = await createElicitation(
-      {
-        tenant_id,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_form",
-        summary: "Enter your API key",
-        input: {
-          question: "API Key",
-          fields: [{ name: "api_key", label: "API Key", type: "text", required: true }],
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_form",
+          summary: "Enter your API key",
+          input: {
+            question: "API Key",
+            fields: [{ name: "api_key", label: "API Key", type: "text", required: true }],
+          },
+          actor_id: null,
         },
-        actor_id: null,
-      },
-      testDb.db,
+        testDb.db,
+      ),
     );
 
     getMockProvider().setConversePlan(conversation_id, []);

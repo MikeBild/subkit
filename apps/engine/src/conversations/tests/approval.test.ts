@@ -5,6 +5,7 @@ import {
   conversationElicitations,
   conversationToolCalls,
 } from "../../db/schema/index.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { decidedByFor } from "../decided-by.ts";
 import { createElicitation, resolveElicitation } from "../elicitations.ts";
 import { buildModelMessages } from "../persistence/index.ts";
@@ -33,17 +34,19 @@ describe("conversations/elicitation", () => {
       { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
       ctx.testDb.db,
     );
-    const pending = await createElicitation(
-      {
-        tenant_id: ctx.tenant_id,
-        conversation_id: created.conversation.id,
-        tool_call_id: null,
-        tool_name: "ask_user_text",
-        summary: "unknown decider probe",
-        input: { question: "Continue?" },
-        actor_id: ctx.user_id,
-      },
-      ctx.testDb.db,
+    const pending = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id: created.conversation.id,
+          tool_call_id: null,
+          tool_name: "ask_user_text",
+          summary: "unknown decider probe",
+          input: { question: "Continue?" },
+          actor_id: ctx.user_id,
+        },
+        ctx.testDb.db,
+      ),
     );
     await resolveElicitation(
       {
@@ -293,17 +296,19 @@ test("a prose answer does not resolve or change an older text tool call", async 
       interaction_log: [],
     })
     .returning();
-  const pending = await createElicitation(
-    {
-      tenant_id: ctx.tenant_id,
-      conversation_id,
-      tool_name: "ask_user_text",
-      tool_call_id: null,
-      summary: "the assistant asked a question",
-      input: { question: "Which colour?", metadata: { source: "loop.prose_question_parked" } },
-      actor_id: ctx.user_id,
-    },
-    ctx.testDb.db,
+  const pending = openedElicitation(
+    await createElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_text",
+        tool_call_id: null,
+        summary: "the assistant asked a question",
+        input: { question: "Which colour?", metadata: { source: "loop.prose_question_parked" } },
+        actor_id: ctx.user_id,
+      },
+      ctx.testDb.db,
+    ),
   );
   await respondElicitationForTest(
     {
@@ -360,17 +365,19 @@ test("a choice is validated, resolved once, and rehydrated as answered without r
       outcome: "pending",
     })
     .returning();
-  const pending = await createElicitation(
-    {
-      tenant_id: ctx.tenant_id,
-      conversation_id,
-      tool_name: "ask_user_choice",
-      tool_call_id: call!.id,
-      summary: input.question,
-      input,
-      actor_id: ctx.user_id,
-    },
-    ctx.testDb.db,
+  const pending = openedElicitation(
+    await createElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_choice",
+        tool_call_id: call!.id,
+        summary: input.question,
+        input,
+        actor_id: ctx.user_id,
+      },
+      ctx.testDb.db,
+    ),
   );
   const params = {
     tenant_id: ctx.tenant_id,
@@ -443,17 +450,19 @@ for (const status of ["timeout", "cancelled"] as const) {
         outcome: "pending",
       })
       .returning();
-    const pending = await createElicitation(
-      {
-        tenant_id: ctx.tenant_id,
-        conversation_id,
-        tool_name: "ask_user_choice",
-        tool_call_id: call!.id,
-        summary: "Choose",
-        input,
-        actor_id: ctx.user_id,
-      },
-      ctx.testDb.db,
+    const pending = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id,
+          tool_name: "ask_user_choice",
+          tool_call_id: call!.id,
+          summary: "Choose",
+          input,
+          actor_id: ctx.user_id,
+        },
+        ctx.testDb.db,
+      ),
     );
     await resolveElicitation(
       {
@@ -497,17 +506,19 @@ for (const [answer, action] of [
         outcome: "pending",
       })
       .returning();
-    const pending = await createElicitation(
-      {
-        tenant_id: ctx.tenant_id,
-        conversation_id,
-        tool_name: "ask_user_confirm",
-        tool_call_id: call!.id,
-        summary: "Confirm",
-        input,
-        actor_id: ctx.user_id,
-      },
-      ctx.testDb.db,
+    const pending = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id,
+          tool_name: "ask_user_confirm",
+          tool_call_id: call!.id,
+          summary: "Confirm",
+          input,
+          actor_id: ctx.user_id,
+        },
+        ctx.testDb.db,
+      ),
     );
     await resolveElicitation(
       {

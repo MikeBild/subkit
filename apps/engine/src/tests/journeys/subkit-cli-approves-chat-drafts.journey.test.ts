@@ -7,6 +7,7 @@ import {
   respondElicitationForTest,
 } from "../../conversations/tests/setup.ts";
 import { auditLog, conversationElicitations, workflows } from "../../db/schema/index.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 describe("a person reviews, approves or rejects a chat draft from the subkit CLI", () => {
@@ -27,40 +28,42 @@ describe("a person reviews, approves or rejects a chat draft from the subkit CLI
       );
       conversationId = outcome.conversation.id;
 
-      const elicitation = await createElicitation(
-        {
-          tenant_id: ctx.tenantId,
-          conversation_id: conversationId,
-          tool_call_id: null,
-          tool_name: "ask_user_confirm",
-          summary: "commit 2-step workflow",
-          input: {
-            question: "Commit this workflow?",
-            kind: "save_workflow_draft",
+      const elicitation = openedElicitation(
+        await createElicitation(
+          {
+            tenant_id: ctx.tenantId,
+            conversation_id: conversationId,
+            tool_call_id: null,
+            tool_name: "ask_user_confirm",
             summary: "commit 2-step workflow",
-            diff: {
-              name: "invoice-digest",
-              slug: "invoice-digest",
-              description: "Fetch overnight invoices and summarize",
-              steps: [
-                {
-                  id: "fetch",
-                  kind: "request",
-                  connector_id: "00000000-0000-0000-0000-000000000001",
-                  path: "/v1/invoices?since=yesterday",
-                },
-                {
-                  id: "summarize",
-                  kind: "transform",
-                  language: "javascript",
-                  expression: "return input.scope.fetch.data.items;",
-                },
-              ],
+            input: {
+              question: "Commit this workflow?",
+              kind: "save_workflow_draft",
+              summary: "commit 2-step workflow",
+              diff: {
+                name: "invoice-digest",
+                slug: "invoice-digest",
+                description: "Fetch overnight invoices and summarize",
+                steps: [
+                  {
+                    id: "fetch",
+                    kind: "request",
+                    connector_id: "00000000-0000-0000-0000-000000000001",
+                    path: "/v1/invoices?since=yesterday",
+                  },
+                  {
+                    id: "summarize",
+                    kind: "transform",
+                    language: "javascript",
+                    expression: "return input.scope.fetch.data.items;",
+                  },
+                ],
+              },
             },
+            actor_id: ctx.userId,
           },
-          actor_id: ctx.userId,
-        },
-        ctx.db,
+          ctx.db,
+        ),
       );
       elicitationId = elicitation.id;
     }, JOURNEY_HOOK_TIMEOUT);

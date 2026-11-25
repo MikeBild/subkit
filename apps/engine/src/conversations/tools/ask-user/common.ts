@@ -13,6 +13,7 @@ import {
   mintDraftCredentialSetupUrl,
 } from "../../draft-credential-setup.ts";
 import { ElicitationUnsupportedError, FORM_FAST_CANCEL_MS } from "../../elicitation-bridge.ts";
+import { elicitationRefusalResult } from "../../elicitation-refusal.ts";
 import {
   createElicitation,
   createNativeElicitation,
@@ -191,7 +192,7 @@ export async function pauseForUserInput(
     const mapped = mapAskUserToPrimitiveSchema(p.tool_name as FormBridgeToolName, p.input);
 
     if (mapped.degrade && "sensitive" in mapped) {
-      const sensitiveRow = await createNativeElicitation(
+      const sensitiveOpening = await createNativeElicitation(
         {
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
@@ -204,6 +205,8 @@ export async function pauseForUserInput(
         },
         ctx.db,
       );
+      if (!sensitiveOpening.ok) return elicitationRefusalResult(sensitiveOpening.reason);
+      const sensitiveRow = sensitiveOpening.elicitation;
 
       if (bridge.capabilities.oob) {
         await resolveElicitationAndReactivate(
@@ -247,7 +250,7 @@ export async function pauseForUserInput(
     }
 
     if (!mapped.degrade) {
-      const row = await createNativeElicitation(
+      const opening = await createNativeElicitation(
         {
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
@@ -260,6 +263,8 @@ export async function pauseForUserInput(
         },
         ctx.db,
       );
+      if (!opening.ok) return elicitationRefusalResult(opening.reason);
+      const row = opening.elicitation;
       try {
         const sentAt = Date.now();
         let result = await bridge.elicitForm({
@@ -424,7 +429,7 @@ export async function pauseForUserInput(
     }
   }
 
-  const row = await createElicitation(
+  const opening = await createElicitation(
     {
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
@@ -439,6 +444,8 @@ export async function pauseForUserInput(
     },
     ctx.db,
   );
+  if (!opening.ok) return elicitationRefusalResult(opening.reason);
+  const row = opening.elicitation;
   return {
     ok: true,
     data: { status: "awaiting_input", elicitation_id: row.id },

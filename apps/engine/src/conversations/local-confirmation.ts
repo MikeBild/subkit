@@ -20,6 +20,7 @@ import {
 } from "../devices/core/local-confirmation.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { principalHolds } from "../rbac/evaluator.ts";
+import type { CONVERSATION_ABANDONED } from "./core/conversation-status.ts";
 import { createElicitation } from "./elicitations.ts";
 
 async function taskRunOf(
@@ -49,10 +50,9 @@ export interface LocalConfirmationRequest {
   readonly limits: readonly (Date | null)[];
 }
 
-export interface RequestedLocalConfirmation {
-  readonly elicitation_id: string;
-  readonly confirmation: LocalConfirmation;
-}
+export type RequestedLocalConfirmation =
+  | { readonly ok: true; readonly elicitation_id: string; readonly confirmation: LocalConfirmation }
+  | { readonly ok: false; readonly reason: typeof CONVERSATION_ABANDONED };
 
 export async function requestLocalConfirmation(
   db: Db,
@@ -68,7 +68,7 @@ export async function requestLocalConfirmation(
       ...request.device,
       deadline_at: deadline.toISOString(),
     };
-    const elicitation = await createElicitation(
+    const opening = await createElicitation(
       {
         tenant_id: request.tenant_id,
         conversation_id: request.conversation_id,
@@ -88,6 +88,8 @@ export async function requestLocalConfirmation(
       },
       tx,
     );
+    if (!opening.ok) return opening;
+    const elicitation = opening.elicitation;
     await tx
       .update(conversationToolCalls)
       .set({
@@ -120,7 +122,7 @@ export async function requestLocalConfirmation(
         conversation_id: request.conversation_id,
       },
     });
-    return { elicitation_id: elicitation.id, confirmation };
+    return { ok: true, elicitation_id: elicitation.id, confirmation };
   });
 }
 

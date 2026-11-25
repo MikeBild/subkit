@@ -21,6 +21,7 @@ import {
   type InvokeEnv,
   pushToolResult,
   recordCall,
+  refuseInvocation,
 } from "./env.ts";
 import type { Gate, PreparedGate } from "./gate.ts";
 
@@ -129,7 +130,7 @@ export async function pauseForConfirmation(
         }
       : {}),
   };
-  const elicitation = await createElicitation(
+  const opened = await createElicitation(
     {
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
@@ -142,6 +143,8 @@ export async function pauseForConfirmation(
     },
     db,
   );
+  if (!opened.ok) return await refuseInvocation(env, call, opened.reason);
+  const elicitation = opened.elicitation;
   signals.pendingChildElicitationIds.push(elicitation.id);
   const operatorInput = withoutApprovalHandle(elicitationInput);
   logger.info({

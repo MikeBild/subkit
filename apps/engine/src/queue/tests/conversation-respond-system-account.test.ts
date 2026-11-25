@@ -19,6 +19,7 @@ import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { insertMcpTask } from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { registerConversationRunTurnHandler } from "../handlers/conversation-run-turn.ts";
 import type { ConversationRunTurnJob } from "../queues.ts";
 import { ensureTestConfig } from "./test-config.ts";
@@ -89,17 +90,19 @@ test("a respond_elicitation job from a system account records the bot as the dec
     ctx.testDb.db,
   );
   const conversation_id = created.conversation.id;
-  const elicitation = await createElicitation(
-    {
-      tenant_id: ctx.tenantId,
-      conversation_id,
-      tool_call_id: null,
-      tool_name: "ask_user_text",
-      summary: "Which region?",
-      input: { question: "Which region?" },
-      actor_id: principal.id,
-    },
-    ctx.testDb.db,
+  const elicitation = openedElicitation(
+    await createElicitation(
+      {
+        tenant_id: ctx.tenantId,
+        conversation_id,
+        tool_call_id: null,
+        tool_name: "ask_user_text",
+        summary: "Which region?",
+        input: { question: "Which region?" },
+        actor_id: principal.id,
+      },
+      ctx.testDb.db,
+    ),
   );
   const staged = await stageElicitationAnswer(
     { tenant_id: ctx.tenantId, conversation_id, id: elicitation.id, output: { text: "eu-west" } },

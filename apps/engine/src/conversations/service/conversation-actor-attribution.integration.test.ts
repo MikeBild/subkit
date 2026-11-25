@@ -4,6 +4,7 @@ import { AuditAction, type AuditActionValue } from "../../audit/types.ts";
 import { auditLog, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { createElicitation } from "../elicitations.ts";
 import { dispatchRollbackSkipped } from "../persistence/auto-persist/dispatch.ts";
 import type { CommitIntent } from "../tools/ask-user/commit-intent.ts";
@@ -116,18 +117,20 @@ describe("conversation actor attribution", () => {
 
   test("elicitation audit retains a typed system-account actor", async () => {
     const conversation_id = await createConversation();
-    const elicitation = await createElicitation(
-      {
-        tenant_id,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_confirm",
-        summary: "Confirm the action",
-        input: { question: "Proceed?" },
-        actor_id: SYSTEM_ACCOUNT_ID,
-        actor_type: "system_account",
-      },
-      testDb.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_confirm",
+          summary: "Confirm the action",
+          input: { question: "Proceed?" },
+          actor_id: SYSTEM_ACCOUNT_ID,
+          actor_type: "system_account",
+        },
+        testDb.db,
+      ),
     );
 
     expect(await auditFor(AuditAction.APPROVAL_REQUESTED, elicitation.id)).toEqual({

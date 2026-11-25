@@ -10,6 +10,7 @@ import {
   tearDownDeviceRunner,
 } from "../http/tests/device-runner-fixtures.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { opened } from "../test-helpers/elicitations.ts";
 import { seedConversation } from "../test-helpers/seed.ts";
 
 let runner: Runner;
@@ -37,25 +38,27 @@ async function asked(owner_id: string) {
     })
     .returning({ id: conversationToolCalls.id });
   if (!call) throw new Error("tool call fixture missing");
-  const requested = await requestLocalConfirmation(db, {
-    tenant_id: tenantId,
-    conversation_id: conversation.id,
-    tool_call_id: call.id,
-    parent_message_id: null,
-    actor_id: owner_id,
-    tool: "browser_press",
-    args: { ref: "e12" },
-    question: "„Bestellen“ auf shop.example drücken?",
-    device: {
-      device_id: runner.device_id,
-      capability: "browser",
-      target: "„Bestellen“ auf shop.example",
-      command_id: "c".repeat(64),
-      binding_hash: "b".repeat(64),
-    },
-    requested_at: new Date(getTestNow()),
-    limits: [],
-  });
+  const requested = opened(
+    await requestLocalConfirmation(db, {
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      tool_call_id: call.id,
+      parent_message_id: null,
+      actor_id: owner_id,
+      tool: "browser_press",
+      args: { ref: "e12" },
+      question: "„Bestellen“ auf shop.example drücken?",
+      device: {
+        device_id: runner.device_id,
+        capability: "browser",
+        target: "„Bestellen“ auf shop.example",
+        command_id: "c".repeat(64),
+        binding_hash: "b".repeat(64),
+      },
+      requested_at: new Date(getTestNow()),
+      limits: [],
+    }),
+  );
   return { conversation_id: conversation.id, tool_call_id: call.id, ...requested };
 }
 

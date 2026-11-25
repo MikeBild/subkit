@@ -25,3 +25,13 @@ export function conversationSources(
 ): ConversationStatus[] {
   return transitionSourcesIn(CONVERSATION_TRANSITIONS, to, allowed);
 }
+
+export const CONVERSATION_ABANDONED = "conversation_abandoned";
+
+export type ElicitationAdmission =
+  | { ok: true }
+  | { ok: false; reason: typeof CONVERSATION_ABANDONED };
+
+export function canOpenElicitation(status: ConversationStatus): ElicitationAdmission {
+  return status === "abandoned" ? { ok: false, reason: CONVERSATION_ABANDONED } : { ok: true };
+}

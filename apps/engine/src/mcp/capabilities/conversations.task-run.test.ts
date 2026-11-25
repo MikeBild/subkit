@@ -8,6 +8,7 @@ import {
   conversationTurns,
   mcpTasks,
 } from "../../db/schema/index.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { ConversationTaskStore } from "../tasks/task-store.ts";
 import { handleConversationTool } from "./conversations.ts";
 import {
@@ -89,19 +90,21 @@ describe("MCP writes to a task run conversation", () => {
 
   test("a foreign answer is not staged", async () => {
     const conversation_id = await runConversation();
-    const pending = await createElicitation(
-      {
-        tenant_id: principal.tenant_id,
-        conversation_id,
-        tool_call_id: null,
-        parent_message_id: null,
-        tool_name: "ask_user_text",
-        summary: "Which month?",
-        input: { question: "Which month?" },
-        actor_id: OWNER,
-        actor_type: "user",
-      },
-      testDb.db,
+    const pending = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: principal.tenant_id,
+          conversation_id,
+          tool_call_id: null,
+          parent_message_id: null,
+          tool_name: "ask_user_text",
+          summary: "Which month?",
+          input: { question: "Which month?" },
+          actor_id: OWNER,
+          actor_type: "user",
+        },
+        testDb.db,
+      ),
     );
     const outcome = await handleConversationTool({
       db: testDb.db,

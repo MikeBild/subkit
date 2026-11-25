@@ -10,6 +10,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { testEnv } from "../test-helpers/determinism/env.ts";
+import { openedElicitation } from "../test-helpers/elicitations.ts";
 import { createElicitation, resolveElicitation } from "./elicitations.ts";
 import { appendMessage, buildModelMessages } from "./persistence/index.ts";
 import { ELICITATION_REDACTED_MARKER } from "./tools/ask-user/redact-answer.ts";
@@ -148,23 +149,25 @@ describe("resolveElicitation — secret form answers persist redacted", () => {
     if (skip) return;
     const conv_id = await makeConversation();
     const secret = "hunter2-super-secret";
-    const elicitation = await createElicitation(
-      {
-        tenant_id,
-        conversation_id: conv_id,
-        tool_call_id: null,
-        actor_id: null,
-        tool_name: "ask_user_form",
-        summary: "Enter API credentials",
-        input: {
-          kind: "ask_user_form",
-          fields: [
-            { name: "base_url", label: "Base URL", type: "text" },
-            { name: "api_token", label: "API token", type: "password" },
-          ],
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id,
+          conversation_id: conv_id,
+          tool_call_id: null,
+          actor_id: null,
+          tool_name: "ask_user_form",
+          summary: "Enter API credentials",
+          input: {
+            kind: "ask_user_form",
+            fields: [
+              { name: "base_url", label: "Base URL", type: "text" },
+              { name: "api_token", label: "API token", type: "password" },
+            ],
+          },
         },
-      },
-      ctx.db,
+        ctx.db,
+      ),
     );
 
     await resolveElicitation(
@@ -190,17 +193,19 @@ describe("resolveElicitation — secret form answers persist redacted", () => {
   test("a form with no secret fields persists its answer verbatim", async () => {
     if (skip) return;
     const conv_id = await makeConversation();
-    const elicitation = await createElicitation(
-      {
-        tenant_id,
-        conversation_id: conv_id,
-        tool_call_id: null,
-        actor_id: null,
-        tool_name: "ask_user_form",
-        summary: "Pick a name",
-        input: { kind: "ask_user_form", fields: [{ name: "name", label: "Name", type: "text" }] },
-      },
-      ctx.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id,
+          conversation_id: conv_id,
+          tool_call_id: null,
+          actor_id: null,
+          tool_name: "ask_user_form",
+          summary: "Pick a name",
+          input: { kind: "ask_user_form", fields: [{ name: "name", label: "Name", type: "text" }] },
+        },
+        ctx.db,
+      ),
     );
     await resolveElicitation(
       { tenant_id, id: elicitation.id, output: { values: { name: "acme" } }, decided_by: null },

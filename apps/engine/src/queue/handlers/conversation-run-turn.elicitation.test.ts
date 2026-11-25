@@ -15,6 +15,7 @@ import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { SUPERSEDED_WHILE_PARKED_FAILURE_REASON } from "./conversation-run-turn.ts";
 import {
   enqueueConversationRunTurn,
@@ -43,17 +44,19 @@ describe("conversation.run-turn worker — respond_elicitation surface threading
       { tenant_id: tenantId, actor_id: userId, initial_message: "portal failure seed" },
       queue.testDb.db,
     );
-    const elicitation = await createElicitation(
-      {
-        tenant_id: tenantId,
-        conversation_id: created.conversation.id,
-        tool_call_id: null,
-        tool_name: "ask_user_text",
-        summary: "portal failure probe",
-        input: { question: "probe?" },
-        actor_id: userId,
-      },
-      queue.testDb.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: tenantId,
+          conversation_id: created.conversation.id,
+          tool_call_id: null,
+          tool_name: "ask_user_text",
+          summary: "portal failure probe",
+          input: { question: "probe?" },
+          actor_id: userId,
+        },
+        queue.testDb.db,
+      ),
     );
     const mcp_task_id = await insertMcpTask(
       {
@@ -132,17 +135,19 @@ describe("conversation.run-turn worker — respond_elicitation surface threading
       { tenant_id: tenantId, actor_id: userId, initial_message: "disabled portal failure seed" },
       queue.testDb.db,
     );
-    const elicitation = await createElicitation(
-      {
-        tenant_id: tenantId,
-        conversation_id: created.conversation.id,
-        tool_call_id: null,
-        tool_name: "ask_user_text",
-        summary: "disabled portal failure probe",
-        input: { question: "probe?" },
-        actor_id: userId,
-      },
-      queue.testDb.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: tenantId,
+          conversation_id: created.conversation.id,
+          tool_call_id: null,
+          tool_name: "ask_user_text",
+          summary: "disabled portal failure probe",
+          input: { question: "probe?" },
+          actor_id: userId,
+        },
+        queue.testDb.db,
+      ),
     );
     const mcp_task_id = await insertMcpTask(
       {
@@ -212,17 +217,19 @@ describe("conversation.run-turn worker — respond_elicitation surface threading
       queue.testDb.db,
     );
     const conversation_id = created.conversation.id;
-    const elicitation = await createElicitation(
-      {
-        tenant_id: tenantId,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_text",
-        summary: "surface probe",
-        input: { question: "probe?" },
-        actor_id: userId,
-      },
-      queue.testDb.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: tenantId,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_text",
+          summary: "surface probe",
+          input: { question: "probe?" },
+          actor_id: userId,
+        },
+        queue.testDb.db,
+      ),
     );
     const mcp_task_id = await insertMcpTask(
       {
@@ -270,17 +277,19 @@ describe("conversation.run-turn worker — respond_elicitation surface threading
       queue.testDb.db,
     );
     const conversation_id = created.conversation.id;
-    const elicitation = await createElicitation(
-      {
-        tenant_id: tenantId,
-        conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_confirm",
-        summary: "approve native action",
-        input: { question: "Approve?" },
-        actor_id: userId,
-      },
-      queue.testDb.db,
+    const elicitation = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: tenantId,
+          conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_confirm",
+          summary: "approve native action",
+          input: { question: "Approve?" },
+          actor_id: userId,
+        },
+        queue.testDb.db,
+      ),
     );
     const mcp_task_id = await insertMcpTask(
       {

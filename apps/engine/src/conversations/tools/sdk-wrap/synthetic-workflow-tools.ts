@@ -404,7 +404,7 @@ async function executeSyntheticRun(
         },
       };
       const operatorInput = withoutApprovalHandle(elicitationInput);
-      const elicitation = await createElicitation(
+      const opened = await createElicitation(
         {
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
@@ -418,31 +418,34 @@ async function executeSyntheticRun(
         },
         db,
       );
-      signals.pendingChildElicitationIds.push(elicitation.id);
-      events.push({
-        type: "elicit_request",
-        elicitation_id: elicitation.id,
-        tool_call_id: toolCallId,
-        tool_name: "ask_user_confirm",
-        summary,
-        input: operatorInput,
-        parent_message_id: assistantMessageId,
-        pending_output: { held_steps: heldSteps, would_write: wouldWrite },
-      });
-      signals.pendingElicitation = {
-        elicitation_id: elicitation.id,
-        tool_name: "ask_user_confirm",
-        kind: "external_write",
-        summary,
-        input: operatorInput,
-      };
-      pause = {
-        tool_name: "ask_user_confirm",
-        kind: "external_write",
-        summary,
-        elicitation_id: elicitation.id,
-        input: operatorInput,
-      };
+      if (opened.ok) {
+        const elicitation = opened.elicitation;
+        signals.pendingChildElicitationIds.push(elicitation.id);
+        events.push({
+          type: "elicit_request",
+          elicitation_id: elicitation.id,
+          tool_call_id: toolCallId,
+          tool_name: "ask_user_confirm",
+          summary,
+          input: operatorInput,
+          parent_message_id: assistantMessageId,
+          pending_output: { held_steps: heldSteps, would_write: wouldWrite },
+        });
+        signals.pendingElicitation = {
+          elicitation_id: elicitation.id,
+          tool_name: "ask_user_confirm",
+          kind: "external_write",
+          summary,
+          input: operatorInput,
+        };
+        pause = {
+          tool_name: "ask_user_confirm",
+          kind: "external_write",
+          summary,
+          elicitation_id: elicitation.id,
+          input: operatorInput,
+        };
+      }
     }
     logger.info({
       module: "conversation_tool",

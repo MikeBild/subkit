@@ -10,6 +10,7 @@ import {
 } from "../../db/schema/index.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { createElicitation, listElicitationsForConversation } from "../elicitations.ts";
 import { appendMessage, insertToolCall } from "../persistence/index.ts";
 import {
@@ -72,19 +73,21 @@ async function storedQuestion(
     input,
     approval_required: false,
   });
-  const elicitation = await createElicitation(
-    {
-      tenant_id: ctx.tenant_id,
-      conversation_id,
-      tool_call_id,
-      parent_message_id: message,
-      tool_name,
-      summary: "Go ahead?",
-      input,
-      actor_id: owner.id,
-      actor_type: "user",
-    },
-    db,
+  const elicitation = openedElicitation(
+    await createElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_call_id,
+        parent_message_id: message,
+        tool_name,
+        summary: "Go ahead?",
+        input,
+        actor_id: owner.id,
+        actor_type: "user",
+      },
+      db,
+    ),
   );
   await db
     .update(conversations)

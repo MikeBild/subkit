@@ -13,6 +13,7 @@ import {
 } from "../db/schema/index.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { FROZEN_NOW, setTestNow } from "../test-helpers/determinism/clock.ts";
+import { openedElicitation } from "../test-helpers/elicitations.ts";
 import { createEmptyDraftDocument } from "./authoring-state/index.ts";
 import { createElicitation, resolveElicitation } from "./elicitations.ts";
 import { buildMessages } from "./parts.ts";
@@ -47,18 +48,20 @@ describe("persisted playbook evidence and lifecycle", () => {
       expected_revision: 0,
       plan: plan([step(criterion)]),
     });
-    const decision = await createElicitation(
-      {
-        tenant_id: tenantId,
-        conversation_id: context.conversation_id,
-        tool_call_id: null,
-        tool_name: "ask_user_confirm",
-        summary: question,
-        input: { question },
-        actor_id: actorId,
-        expires_at: timestamp(1000),
-      },
-      fixture.db,
+    const decision = openedElicitation(
+      await createElicitation(
+        {
+          tenant_id: tenantId,
+          conversation_id: context.conversation_id,
+          tool_call_id: null,
+          tool_name: "ask_user_confirm",
+          summary: question,
+          input: { question },
+          actor_id: actorId,
+          expires_at: timestamp(1000),
+        },
+        fixture.db,
+      ),
     );
     await resolveElicitation(
       {
@@ -118,18 +121,20 @@ describe("persisted playbook evidence and lifecycle", () => {
         expected_revision: 0,
         plan: plan([step(criterion)]),
       });
-      const decision = await createElicitation(
-        {
-          tenant_id: tenantId,
-          conversation_id: context.conversation_id,
-          tool_call_id: null,
-          tool_name: "ask_user_confirm",
-          summary: question,
-          input: { question },
-          actor_id: actorId,
-          expires_at: timestamp(1000),
-        },
-        fixture.db,
+      const decision = openedElicitation(
+        await createElicitation(
+          {
+            tenant_id: tenantId,
+            conversation_id: context.conversation_id,
+            tool_call_id: null,
+            tool_name: "ask_user_confirm",
+            summary: question,
+            input: { question },
+            actor_id: actorId,
+            expires_at: timestamp(1000),
+          },
+          fixture.db,
+        ),
       );
       const expectedRevision = changedContext === "step" ? 2 : 1;
       if (changedContext === "draft") {
