@@ -21,6 +21,7 @@ import {
   recordInstallAttempt,
   reportPreviousUpdate,
 } from "./update-diagnostics.ts";
+import { verifyDownloadedUpdate } from "./update-verify.ts";
 
 declare const SUBKIT_DESKTOP_UPDATES: boolean;
 
@@ -108,7 +109,8 @@ export class UpdateController {
     if (this.state.phase === "disabled") return;
     const autoUpdater = await updater();
     autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+    const verifyChecksums = process.platform === "win32";
+    autoUpdater.autoInstallOnAppQuit = !verifyChecksums;
     autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = false;
     autoUpdater.disableWebInstaller = true;
@@ -135,14 +137,38 @@ export class UpdateController {
     autoUpdater.on("download-progress", (progress) =>
       this.dispatch({ type: "progress", percent: progress.percent }),
     );
-    autoUpdater.on("update-downloaded", (info) => {
-      this.diagnostics.downloaded(info.version);
-      pendingVersion = info.version;
+    const accept = (version: string) => {
+      pendingVersion = version;
+      autoUpdater.autoInstallOnAppQuit = true;
       this.install = () => {
         beforeInstall();
         autoUpdater.quitAndInstall();
       };
-      this.dispatch({ type: "downloaded", version: info.version });
+      this.dispatch({ type: "downloaded", version });
+    };
+    autoUpdater.on("update-downloaded", (info) => {
+      this.diagnostics.downloaded(info.version);
+      if (!verifyChecksums) {
+        accept(info.version);
+        return;
+      }
+      void (async () => {
+        try {
+          const verdict = await verifyDownloadedUpdate(info.version, info.downloadedFile);
+          if (verdict.ok) {
+            appLog.info("update.verified", { version: info.version });
+            accept(info.version);
+            return;
+          }
+          appLog.warn("update.rejected", { version: info.version, reason: verdict.reason });
+          this.fail(
+            new Error(`update ${info.version} failed its checksum check: ${verdict.reason}`),
+          );
+        } catch (error) {
+          appLog.warn("update.verify_failed", { version: info.version, error: messageOf(error) });
+          this.fail(error);
+        }
+      })();
     });
     autoUpdater.on("error", (error) => this.fail(error));
     this.timer = setInterval(() => void this.check(), CHECK_INTERVAL_MS);
