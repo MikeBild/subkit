@@ -118,6 +118,7 @@ describe("save verification evidence", () => {
     expect(saveVerificationEvidence(previewed, false)).toEqual({
       preview: "passed_metadata",
       summary: "Sensitive test run succeeded",
+      draft_fingerprint: expect.any(String),
     });
   });
 
@@ -126,6 +127,7 @@ describe("save verification evidence", () => {
     expect(saveVerificationEvidence(draft, false)).toEqual({
       preview: "passed",
       summary: "3 rows",
+      draft_fingerprint: expect.any(String),
     });
   });
 

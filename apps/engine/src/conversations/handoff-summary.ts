@@ -1,4 +1,5 @@
 import { getWorkflowDraft } from "./authoring-state/index.ts";
+import { workflowDefinitionFingerprint } from "./preview-judge.ts";
 import { missingFreshCheckpoints } from "./tools/authoring-contract.ts";
 import type { DraftDocument } from "./types.ts";
 
@@ -16,6 +17,7 @@ export type SavePreviewEvidence =
 
 export interface SaveVerificationEvidence {
   preview: SavePreviewEvidence;
+  draft_fingerprint?: string;
   summary?: string;
 }
 
@@ -103,6 +105,16 @@ export function inferReplyLocale(text: string | null | undefined): ReplyLocale {
 }
 
 export function saveVerificationEvidence(
+  draft: DraftDocument,
+  previewsSkippedByUser: boolean,
+): SaveVerificationEvidence {
+  return {
+    ...previewVerificationEvidence(draft, previewsSkippedByUser),
+    draft_fingerprint: workflowDefinitionFingerprint(getWorkflowDraft(draft)),
+  };
+}
+
+function previewVerificationEvidence(
   draft: DraftDocument,
   previewsForbiddenByUser: boolean,
 ): SaveVerificationEvidence {

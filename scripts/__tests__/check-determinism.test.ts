@@ -98,6 +98,12 @@ describe("fast-check seeds", () => {
 });
 
 describe("existing rules stay line-based", () => {
+  test("policy confirmation reuse fixtures remain deterministic", () => {
+    const file = "apps/engine/src/conversations/tests/policy-confirm-reuse.test.ts";
+    const source = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");
+    expect(checkSource(file, source)).toEqual([]);
+  });
+
   test("schedule occurrence merge fixtures remain deterministic", () => {
     const file = "apps/engine/src/scheduler/tests/schedule-occurrence-merge.test.ts";
     const source = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");

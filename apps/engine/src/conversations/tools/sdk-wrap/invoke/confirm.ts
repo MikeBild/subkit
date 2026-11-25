@@ -5,6 +5,7 @@ import { createElicitation } from "../../../elicitations.ts";
 import { saveEvidenceLabel } from "../../../handoff-summary.ts";
 import { resolveSaveVerification } from "../../../persistence/commit-workflow.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
+import { REUSABLE_APPROVAL_TOOLS } from "../../../same-approval.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../../ask-user/commit-intent.ts";
 import type { GateSubject } from "../gate-subjects.ts";
 import {
@@ -140,13 +141,17 @@ export async function pauseForConfirmation(
       summary: policyGateSummary,
       input: elicitationInput,
       ...elicitationActor(ctx),
+      ...(REUSABLE_APPROVAL_TOOLS.has(inner.name) ? { reuse_open_approval: true } : {}),
     },
     db,
   );
   if (!opened.ok) return await refuseInvocation(env, call, opened.reason);
   const elicitation = opened.elicitation;
   signals.pendingChildElicitationIds.push(elicitation.id);
-  const operatorInput = withoutApprovalHandle(elicitationInput);
+  const persistedInput = elicitation.input as Record<string, unknown>;
+  const operatorInput = withoutApprovalHandle(persistedInput);
+  const approvalUrl =
+    typeof persistedInput.approval_url === "string" ? persistedInput.approval_url : null;
   logger.info({
     module: "conversation_tool",
     action: "policy.gate_paused",
@@ -166,8 +171,8 @@ export async function pauseForConfirmation(
     status: "awaiting_confirmation" as const,
     policy_mode: resolvedMode,
     elicitation_id: elicitation.id,
-    ...(policyApprovalUrl ? { approval_url: policyApprovalUrl } : {}),
-    note: policyPauseNote(inner.name, Boolean(policyCommitIntent), policyApprovalUrl),
+    ...(approvalUrl ? { approval_url: approvalUrl } : {}),
+    note: policyPauseNote(inner.name, Boolean(persistedInput.commit_intent), approvalUrl),
   };
   await updateToolCallOutput(db, toolCallId, output, "pending");
   pushToolResult(env, call, output);
@@ -179,13 +184,15 @@ export async function pauseForConfirmation(
     summary: elicitation.summary,
     input: operatorInput,
     parent_message_id: assistantMessageId,
-    ...(pendingOutput ? { pending_output: pendingOutput } : {}),
+    ...(persistedInput.pending_output
+      ? { pending_output: persistedInput.pending_output as Record<string, unknown> }
+      : {}),
   });
   signals.pendingElicitation = {
     elicitation_id: elicitation.id,
     tool_name: "ask_user_confirm",
     kind: topLevelKind,
-    summary: policyGateSummary,
+    summary: elicitation.summary,
     input: operatorInput,
   };
   recordCall(env, call, "denied");
@@ -195,7 +202,7 @@ export async function pauseForConfirmation(
     pause: {
       elicitation_id: elicitation.id,
       tool_name: "ask_user_confirm",
-      summary: policyGateSummary,
+      summary: elicitation.summary,
       kind: topLevelKind,
       input: operatorInput,
     },

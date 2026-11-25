@@ -17,13 +17,14 @@ import {
 import { LocalConfirmationForbiddenError } from "../devices/confirmation-errors.ts";
 import { grantsConfirmation, NOTHING_CHANGED } from "../devices/core/local-confirmation.ts";
 import { logger } from "../logging/index.ts";
-import { APPROVAL_TTL_MS } from "../tools/approval.ts";
+import { APPROVAL_TTL_MS, openApprovalCoversRequest } from "../tools/approval.ts";
 import { type CONVERSATION_ABANDONED, canOpenElicitation } from "./core/conversation-status.ts";
 import { type ElicitationStatus, elicitationSources } from "./core/elicitation-status.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
 import { transitionConversation } from "./persistence/conversation-status.ts";
 import { applyPlaybookDecision } from "./playbook.ts";
 import { humanConfirmationContextFingerprint } from "./playbook-evidence.ts";
+import { approvalHandleOf, asksForSameApproval } from "./same-approval.ts";
 import {
   approvalHandleFromElicitationInput,
   isWorkflowInputForm,
@@ -54,6 +55,22 @@ async function transitionElicitations(exec: Executor, transition: ElicitationTra
       ),
     )
     .returning();
+}
+
+function attachedToolCalls(row: {
+  id: string;
+  tenant_id: string;
+  conversation_id: string;
+  tool_call_id: string | null;
+}) {
+  return and(
+    eq(conversationToolCalls.tenant_id, row.tenant_id),
+    eq(conversationToolCalls.conversation_id, row.conversation_id),
+    or(
+      row.tool_call_id ? eq(conversationToolCalls.id, row.tool_call_id) : undefined,
+      sql`${conversationToolCalls.output} ->> 'elicitation_id' = ${row.id}`,
+    ),
+  );
 }
 
 export interface ElicitationRecord {
@@ -189,6 +206,7 @@ interface CreateElicitationParams {
   actor_id: string | null;
   actor_type?: import("../audit/types.ts").AuditActorType;
   expires_at?: Date;
+  reuse_open_approval?: boolean;
 }
 
 export const ELICITATION_HUMAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -287,6 +305,37 @@ async function openElicitation(
   return admission;
 }
 
+const markAwaitingInput = (exec: Executor, p: CreateElicitationParams) =>
+  transitionConversation(exec, {
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    to: "awaiting_input",
+    set: { updated_at: new Date() },
+  });
+
+async function findReusableApproval(
+  exec: Executor,
+  p: CreateElicitationParams,
+  pending: readonly Row[],
+  protocolNative: boolean,
+): Promise<Row | undefined> {
+  if (protocolNative) return undefined;
+  const lookupAt = new Date();
+  const request = { tool_name: p.tool_name, input: p.input };
+  const requestedHandle = approvalHandleOf(p.input);
+  for (const row of pending) {
+    if (!asksForSameApproval(row, request, lookupAt)) continue;
+    const openHandle = approvalHandleOf(row.input);
+    if (openHandle === null) return row;
+    if (
+      requestedHandle !== null &&
+      (await openApprovalCoversRequest(exec, p.tenant_id, openHandle, requestedHandle))
+    )
+      return row;
+  }
+  return undefined;
+}
+
 async function insertElicitation(
   p: CreateElicitationParams,
   protocolNative: boolean,
@@ -319,6 +368,24 @@ async function insertElicitation(
         eq(conversationElicitations.status, "pending"),
       ),
     );
+  const openApproval = p.reuse_open_approval
+    ? await findReusableApproval(exec, p, stale, protocolNative)
+    : undefined;
+  if (openApproval) {
+    await markAwaitingInput(exec, p);
+    logger.info({
+      module: "conversation",
+      action: "elicitation.reused_open_approval",
+      msg: "open approval for the same draft save kept; no new elicitation created",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      elicitation_id: openApproval.id,
+      tool_name: p.tool_name,
+      kept_approval_handle: approvalHandleOf(openApproval.input) !== null,
+      ...(p.tool_call_id ? { tool_call_id: p.tool_call_id } : {}),
+    });
+    return rowToRecord(openApproval);
+  }
   if (stale.length > 0) {
     const staleIds = stale.map((row) => row.id);
     await transitionElicitations(exec, {
@@ -331,21 +398,16 @@ async function insertElicitation(
         updated_at: new Date(),
       },
     });
-    const staleToolCallIds = stale
-      .map((row) => row.tool_call_id)
-      .filter((id): id is string => typeof id === "string" && id.length > 0);
-    if (staleToolCallIds.length > 0) {
-      await exec
-        .update(conversationToolCalls)
-        .set({
-          output: {
-            ok: false,
-            abandoned: true,
-            reason: "elicitation_superseded",
-          } as Record<string, unknown>,
-        })
-        .where(inArray(conversationToolCalls.id, staleToolCallIds));
-    }
+    await exec
+      .update(conversationToolCalls)
+      .set({
+        output: {
+          ok: false,
+          abandoned: true,
+          reason: "elicitation_superseded",
+        } as Record<string, unknown>,
+      })
+      .where(or(...stale.map(attachedToolCalls)));
   }
   const [inserted] = await exec
     .insert(conversationElicitations)
@@ -364,12 +426,7 @@ async function insertElicitation(
     })
     .returning();
   assertInsertRow(inserted, "elicitation");
-  await transitionConversation(exec, {
-    tenant_id: p.tenant_id,
-    conversation_id: p.conversation_id,
-    to: "awaiting_input",
-    set: { updated_at: new Date() },
-  });
+  await markAwaitingInput(exec, p);
   const inputKind =
     p.input && typeof p.input === "object" && p.input !== null
       ? ((p.input as { kind?: unknown }).kind ?? null)
@@ -696,23 +753,14 @@ async function resolveElicitationWithin(
     if (!existing) return { kind: "not_found" };
     return { kind: "already_resolved", existing: rowToRecord(existing) };
   }
-  if (
-    (row.tool_name === "ask_user_confirm" || row.tool_name === "ask_user_choice") &&
-    row.tool_call_id
-  ) {
+  if (row.tool_name === "ask_user_confirm" || row.tool_name === "ask_user_choice") {
     const accepted =
       status === "resolved" &&
       (row.tool_name === "ask_user_choice" || interpretConfirmDecision(p.output) === "confirmed");
     await exec
       .update(conversationToolCalls)
       .set({ outcome: accepted ? "ok" : "denied" })
-      .where(
-        and(
-          eq(conversationToolCalls.tenant_id, p.tenant_id),
-          eq(conversationToolCalls.id, row.tool_call_id),
-          eq(conversationToolCalls.outcome, "pending"),
-        ),
-      );
+      .where(and(attachedToolCalls(row), eq(conversationToolCalls.outcome, "pending")));
   }
   if (row.tool_name === "ask_user_choice" && status === "resolved") {
     const input =
@@ -891,13 +939,10 @@ export async function expireElicitationAndReactivate(
       from: ["awaiting_input"],
       set: { updated_at: new Date() },
     });
-    const toolCallId = resolution.record.tool_call_id;
-    if (toolCallId) {
-      await tx
-        .update(conversationToolCalls)
-        .set(expiredToolCallUpdate(reason))
-        .where(eq(conversationToolCalls.id, toolCallId));
-    }
+    await tx
+      .update(conversationToolCalls)
+      .set(expiredToolCallUpdate(reason))
+      .where(attachedToolCalls({ ...resolution.record, tenant_id: p.tenant_id }));
   });
   return resolution;
 }
