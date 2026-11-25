@@ -656,7 +656,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.boundary.readHosts": "Von einer Adresse auf erlaubten Hosts lesen",
   "authority.boundary.sendHosts": "An eine Adresse auf erlaubten Hosts senden",
   "authority.boundary.allowedHosts":
-    "{name} kommt aus dem Lauf und darf jede https-Adresse ohne Port und Zugangsdaten auf genau diesen Hosts sein: {hosts}",
+    "{name} kommt aus dem Run und darf jede https-Adresse ohne Port und Zugangsdaten auf genau diesen Hosts sein: {hosts}",
   "authority.boundary.target": "{method} {target}",
   "authority.boundary.variable": "{name} darf nur sein: {values}",
   "authority.boundary.variableEncoded":
