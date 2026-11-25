@@ -103,6 +103,55 @@ describe("http /v1/vault", () => {
     expect(noPassword.status).toBe(400);
   });
 
+  test("rotating a login with one field keeps the other stored field", async () => {
+    const created = await call("/v1/vault", {
+      method: "POST",
+      body: JSON.stringify({
+        kind: "login",
+        name: "erp-login",
+        environment: "dev",
+        username: "erp.user",
+        password: "fixture-erp-password-1",
+      }),
+    });
+    expect(created.status).toBe(201);
+    const item = (await created.json()) as { id: string };
+    const revealValues = async () =>
+      (
+        (await (await call(`/v1/vault/${item.id}/reveal`, { method: "POST" })).json()) as {
+          values: Record<string, string>;
+        }
+      ).values;
+
+    const passwordOnly = await call(`/v1/vault/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ password: "fixture-erp-password-2" }),
+    });
+    expect(passwordOnly.status).toBe(200);
+    expect(((await passwordOnly.json()) as { version: number }).version).toBe(2);
+    expect(await revealValues()).toEqual({
+      username: "erp.user",
+      password: "fixture-erp-password-2",
+    });
+
+    const usernameOnly = await call(`/v1/vault/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ username: "erp.renamed" }),
+    });
+    expect(usernameOnly.status).toBe(200);
+    expect(((await usernameOnly.json()) as { version: number }).version).toBe(3);
+    expect(await revealValues()).toEqual({
+      username: "erp.renamed",
+      password: "fixture-erp-password-2",
+    });
+
+    const emptyPassword = await call(`/v1/vault/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ password: "" }),
+    });
+    expect(emptyPassword.status).toBe(400);
+  });
+
   test("deleting a connector item removes the row; a repeat delete 404s", async () => {
     const id = await seedCredential(ctx.tenantId);
     const res = await call(`/v1/vault/${id}`, { method: "DELETE" });

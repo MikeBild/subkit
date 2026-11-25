@@ -22,11 +22,13 @@ import {
 import {
   handleMatches,
   isEditableKind,
+  mergedLoginValue,
   VAULT_PERMISSION,
   type VaultAction,
   type VaultEntryKind,
   type VaultEnvironment,
   type VaultItemKind,
+  type VaultLoginPatch,
   type VaultValue,
   type VaultViewer,
   vaultAccess,
@@ -366,24 +368,29 @@ export async function updateVaultItem(
     actor: Actor | null;
     viewer: VaultViewer;
     description?: string | null;
-    value?: VaultValue;
+    value?: VaultValue | VaultLoginPatch;
   },
 ): Promise<VaultItemView> {
   const action: VaultAction = input.value ? "rotate" : "write";
   const row = await withTenantScope(db, input.tenant_id, (tx) =>
     loadItem(tx, input.tenant_id, input.id, input.viewer, action),
   );
-  if (input.value && input.value.kind !== row.kind) {
+  const valueKind = input.value?.kind === "login_patch" ? "login" : input.value?.kind;
+  if (valueKind && valueKind !== row.kind) {
     throw new VaultError("invalid", `this item holds a ${row.kind}`);
   }
   const rotatedVersion = await withTenantScope(db, input.tenant_id, async (tx) => {
+    const value =
+      input.value?.kind === "login_patch"
+        ? await mergedRotationValue(tx, input.tenant_id, row, input.value)
+        : input.value;
     const [updated] = await tx
       .update(vaultItems)
       .set({
         ...(input.description !== undefined ? { description: input.description } : {}),
-        ...(input.value
+        ...(value
           ? {
-              ...sealed(input.tenant_id, row.id, input.value),
+              ...sealed(input.tenant_id, row.id, value),
               credential_generation: sql`${vaultItems.credential_generation} + 1`,
               rotated_at: new Date(),
             }
@@ -433,6 +440,17 @@ export async function deleteVaultItem(
       .where(and(eq(vaultItems.tenant_id, input.tenant_id), eq(vaultItems.id, row.id)));
     await record(tx, input.tenant_id, input.actor, AuditAction.VAULT_ITEM_DELETED, row);
   });
+}
+
+async function mergedRotationValue(
+  db: Executor,
+  tenant_id: string,
+  row: ItemRow,
+  patch: VaultLoginPatch,
+): Promise<VaultValue> {
+  const merged = mergedLoginValue(revealedFields(row, await openRow(db, tenant_id, row)), patch);
+  if (typeof merged === "string") throw new VaultError("invalid", merged);
+  return merged;
 }
 
 async function openRow(db: Executor, tenant_id: string, row: ItemRow): Promise<string> {

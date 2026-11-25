@@ -86,6 +86,43 @@ export function vaultValueOf(
   return { kind, username: input.username, password: input.password };
 }
 
+export interface VaultLoginPatch {
+  readonly kind: "login_patch";
+  readonly username?: string;
+  readonly password?: string;
+}
+
+export function vaultRotationOf(
+  kind: VaultEntryKind,
+  input: {
+    token?: string | undefined;
+    username?: string | undefined;
+    password?: string | undefined;
+  },
+): VaultValue | VaultLoginPatch | string {
+  const partialLogin =
+    kind === "login" && (input.username === undefined) !== (input.password === undefined);
+  if (!partialLogin) return vaultValueOf(kind, input);
+  if (input.username !== undefined) {
+    return input.username
+      ? { kind: "login_patch", username: input.username }
+      : "a login needs a username";
+  }
+  return input.password
+    ? { kind: "login_patch", password: input.password }
+    : "a login needs a password";
+}
+
+export function mergedLoginValue(
+  stored: Readonly<Record<string, string>>,
+  patch: VaultLoginPatch,
+): VaultValue | string {
+  return vaultValueOf("login", {
+    username: patch.username ?? stored.username,
+    password: patch.password ?? stored.password,
+  });
+}
+
 export function vaultFieldValue(value: VaultValue, field: VaultField | null): string | null {
   if (value.kind === "secret") return field === null || field === "token" ? value.token : null;
   if (field === "username") return value.username;
