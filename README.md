@@ -27,6 +27,7 @@
   <a href="https://github.com/MikeBild/subkit/actions/workflows/quality.yml"><img alt="Workflow status: quality" src="https://img.shields.io/github/actions/workflow/status/MikeBild/subkit/quality.yml?branch=main&style=flat-square&labelColor=141414&label=quality" /></a>
   <a href="https://github.com/MikeBild/subkit/actions/workflows/security.yml"><img alt="Workflow status: security" src="https://img.shields.io/github/actions/workflow/status/MikeBild/subkit/security.yml?branch=main&style=flat-square&labelColor=141414&label=security" /></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/MikeBild/subkit"><img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/MikeBild/subkit?style=flat-square&labelColor=141414&label=openssf%20scorecard" /></a>
+  <a href="https://www.bestpractices.dev/projects/17092"><img alt="OpenSSF Best Practices" src="https://img.shields.io/cii/level/17092?style=flat-square&labelColor=141414&label=openssf%20best%20practices" /></a>
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache_2.0-1E4FD6?style=flat-square&labelColor=141414" /></a>
 </p>
 
