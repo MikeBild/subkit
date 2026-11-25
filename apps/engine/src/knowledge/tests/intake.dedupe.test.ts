@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { CapturedAtInputSchema } from "../../api/intake-schemas.ts";
 import { auditLog, dataMigrations, intakeItems } from "../../db/index.ts";
 import { runIntakeGroupKeyBackfill } from "../backfills/intake-group-key-v1.ts";
 import {
@@ -68,6 +69,27 @@ async function evidenceAudits(item_id: string) {
 }
 
 describe.skipIf(skip)("intake backlog dedupe", () => {
+  test.each(["2026-10-25T00:30:00Z", "2026-10-25T00:30:00.123456Z"])(
+    "replays a pre-deployment UTC capture without changing its request digest: %s",
+    async (captured_at) => {
+      const input = { client_request_id: nextUuid(), captured_at };
+      const original = await clipWith(input);
+      const replay = await clipWith({
+        ...input,
+        captured_at: CapturedAtInputSchema.parse(captured_at),
+      });
+      expect(replay.id).toBe(original.id);
+      expect(replay.original_snapshot.captured_at).toBe(captured_at);
+      await expect(
+        clipWith({
+          ...input,
+          captured_at: CapturedAtInputSchema.parse(captured_at),
+          body: "Changed content must still conflict.",
+        }),
+      ).rejects.toBeInstanceOf(IntakeConflictError);
+    },
+  );
+
   test("a capture of the same normalized address appends evidence to the open item", async () => {
     const first = await clipWith({ source_url: "https://www.dedupe-a.test/post/" });
     expect(first.group_key).toBe("site:dedupe-a.test");

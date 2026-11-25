@@ -11,7 +11,7 @@ import { FileIdSchema } from "./files-schemas.ts";
 export const CapturedAtInputSchema = z
   .string()
   .datetime({ offset: true })
-  .transform((value) => new Date(value).toISOString());
+  .transform((value) => (value.endsWith("Z") ? value : new Date(value).toISOString()));
 
 const IntakeTagsSchema = z.array(z.string().min(1).max(40)).max(20);
 
