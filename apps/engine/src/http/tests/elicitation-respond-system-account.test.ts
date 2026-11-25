@@ -50,14 +50,14 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-async function seedPendingQuestion(): Promise<{
+async function seedPendingQuestion(owner_id: string = botId): Promise<{
   conversationId: string;
   elicitationId: string;
   toolCallId: string;
 }> {
   const [conversation] = await srv.db
     .insert(conversations)
-    .values({ tenant_id: srv.tenantId, owner_id: botId, status: "awaiting_input" })
+    .values({ tenant_id: srv.tenantId, owner_id, status: "awaiting_input" })
     .returning({ id: conversations.id });
   if (!conversation) throw new Error("seed conversation failed");
   await srv.db.insert(conversationMessages).values({
@@ -152,7 +152,7 @@ for (const route of ["elicitations", "tool-calls"]) {
       });
 
       test("a human answering through the same route is still recorded as a user", async () => {
-        const { conversationId, elicitationId, toolCallId } = await seedPendingQuestion();
+        const { conversationId, elicitationId, toolCallId } = await seedPendingQuestion(srv.userId);
 
         const res = await fetch(
           `${srv.baseUrl}/v1/conversations/${conversationId}/${route}/${route === "elicitations" ? elicitationId : toolCallId}/respond`,

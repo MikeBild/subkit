@@ -87,10 +87,10 @@ describe("deleteConversation", () => {
     });
   });
 
-  test("someone else may not delete it; an administrator may", async () => {
+  test("someone else does not find a private one; an administrator may delete it", async () => {
     const id = await newConversation("Somebody's chat");
     const stranger = "7f3c2a10-5b4e-4c6d-9e8f-0a1b2c3d4e5f";
-    expect(await del(id, stranger, false)).toEqual({ kind: "forbidden" });
+    expect(await del(id, stranger, false)).toEqual({ kind: "not_found" });
     expect((await del(id, stranger, true)).kind).toBe("deleted");
   });
 
