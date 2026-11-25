@@ -10,6 +10,7 @@ import {
 import { compatibilityWarning, engineCompatibility, isIncompatible } from "./compatibility.ts";
 import {
   backgroundCheckAllowed,
+  managingPackageManager,
   refreshDue,
   runsAsCompiledBinary,
   UPDATE_CHECK_INTERVAL_MS,
@@ -154,6 +155,22 @@ describe("update policy", () => {
     expect(hint?.includes("\n")).toBe(false);
     expect(updateHint("12.1.0", "12.1.0")).toBeNull();
     expect(updateHint("12.1.0", null)).toBeNull();
+  });
+
+  test("names winget when winget manages the binary", () => {
+    expect(updateHint("12.1.0", "12.2.0", "winget")).toContain("winget upgrade MikeBild.SubKitCLI");
+    expect(
+      managingPackageManager(
+        "C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Packages\\MikeBild.SubKitCLI_x\\subkit.exe",
+      ),
+    ).toBe("winget");
+    expect(
+      managingPackageManager("C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Links\\subkit.exe"),
+    ).toBe("winget");
+    expect(
+      managingPackageManager("C:\\Users\\a\\AppData\\Local\\Programs\\subkit\\subkit.exe"),
+    ).toBeNull();
+    expect(managingPackageManager("/home/a/.local/bin/subkit")).toBeNull();
   });
 
   test("replaces only a compiled binary, never the runtime it was started with", () => {

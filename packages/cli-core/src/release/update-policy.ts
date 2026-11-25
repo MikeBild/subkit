@@ -30,9 +30,25 @@ export function refreshDue(
   return now - lastCheck >= intervalMs || now < lastCheck;
 }
 
-export function updateHint(current: string, latest: string | null): string | null {
+export const WINGET_PACKAGE_ID = "MikeBild.SubKitCLI";
+
+export type PackageManager = "winget";
+
+export function managingPackageManager(execPath: string): PackageManager | null {
+  return /[\\/]Microsoft[\\/]WinGet[\\/](Packages|Links)[\\/]/i.test(execPath) ? "winget" : null;
+}
+
+export const packageManagerUpdateCommand = (manager: PackageManager): string =>
+  manager === "winget" ? `winget upgrade ${WINGET_PACKAGE_ID}` : "";
+
+export function updateHint(
+  current: string,
+  latest: string | null,
+  manager: PackageManager | null = null,
+): string | null {
   if (!latest || !isNewer(latest, current)) return null;
-  return `${CLI_BINARY} ${latest} is available (you have ${current}). Run \`${CLI_BINARY} update\` to install it.`;
+  const command = manager ? packageManagerUpdateCommand(manager) : `${CLI_BINARY} update`;
+  return `${CLI_BINARY} ${latest} is available (you have ${current}). Run \`${command}\` to install it.`;
 }
 
 export function runsAsCompiledBinary(execPath: string): boolean {

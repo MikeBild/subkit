@@ -13,7 +13,11 @@ import {
   updateAction,
   VERSION,
 } from "@cli-core/index.ts";
-import { runsAsCompiledBinary } from "@cli-core/release/update-policy.ts";
+import {
+  managingPackageManager,
+  packageManagerUpdateCommand,
+  runsAsCompiledBinary,
+} from "@cli-core/release/update-policy.ts";
 import { defineCommand } from "citty";
 import { z } from "zod";
 import { resolveProfile } from "../config.ts";
@@ -142,6 +146,13 @@ async function install(config: UpdaterConfig, info: UpdateInfo): Promise<void> {
   if (!runsAsCompiledBinary(process.execPath)) {
     fail(
       `this subkit runs from source under ${process.execPath}; only an installed binary updates itself`,
+      2,
+    );
+  }
+  const manager = managingPackageManager(process.execPath);
+  if (manager) {
+    fail(
+      `this subkit is installed by ${manager}; update it with \`${packageManagerUpdateCommand(manager)}\``,
       2,
     );
   }
