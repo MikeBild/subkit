@@ -18,10 +18,10 @@ let tenant_id: string;
 const SYSTEM_ACCOUNT_ID = "10000000-0000-4000-8000-000000000011";
 const UNKNOWN_ACTOR_ID = "10000000-0000-4000-8000-000000000012";
 
-async function createConversation(): Promise<string> {
+async function createConversation(owner_id: string | null = null): Promise<string> {
   const [conversation] = await testDb.db
     .insert(conversations)
-    .values({ tenant_id, status: "active" })
+    .values({ tenant_id, status: "active", owner_id })
     .returning({ id: conversations.id });
   if (!conversation) throw new Error("conversation seed failed");
   return conversation.id;
@@ -58,7 +58,7 @@ afterAll(async () => {
 
 describe("conversation actor attribution", () => {
   test("memory injection preserves a typed system-account principal", async () => {
-    const conversation_id = await createConversation();
+    const conversation_id = await createConversation(SYSTEM_ACCOUNT_ID);
 
     await appendUserMessage(
       {
