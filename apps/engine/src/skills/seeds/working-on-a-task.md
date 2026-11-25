@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [tasks, playbook]
+audience: [runtime]
 version: 4
 ---
 

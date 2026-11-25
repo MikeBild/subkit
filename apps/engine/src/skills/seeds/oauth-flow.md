@@ -9,6 +9,7 @@ side_effects: write
 idempotency: key_required
 maturity: stable
 tags: [auth, oauth]
+audience: [runtime]
 version: 3
 ---
 

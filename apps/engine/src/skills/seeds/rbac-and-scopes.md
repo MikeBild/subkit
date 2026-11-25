@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [security, rbac]
+audience: [runtime]
 version: 3
 ---
 

@@ -98,6 +98,7 @@ describe.skipIf(skip)("seed loader → DB round trip", () => {
       idempotency: "key_required",
       maturity: "experimental",
       tags: ["a", "b"],
+      audience: ["driver:http", "runtime"],
       input_schema: { type: "object", required: ["x"], properties: { x: { type: "string" } } },
       output_schema: { type: "object", properties: { y: { type: "number" } } },
       version: 7,
@@ -116,6 +117,7 @@ describe.skipIf(skip)("seed loader → DB round trip", () => {
     expect(row.idempotency).toBe("key_required");
     expect(row.maturity).toBe("experimental");
     expect(row.tags).toEqual(["a", "b"]);
+    expect(row.audience).toEqual(["driver:http", "runtime"]);
     expect(row.input_schema).toEqual({
       type: "object",
       required: ["x"],

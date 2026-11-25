@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, orchestration]
+audience: [authoring]
 version: 3
 ---
 

@@ -200,7 +200,7 @@ export function buildGenerationPrompt(args: {
   const lines: string[] = [
     "Generate ONE complete subkit workflow definition that satisfies the goal below. Return ONLY the structured object the schema demands — every step fully specified, no placeholders for 'fill in later'.",
     "A URL named in the goal needs no connector, and an unknown response shape of such a URL is no reason to abort: generate a request step that calls it and make the workflow output the raw response body. The preview records the real shape, and the outer agent refines the output afterwards.",
-    "You are the nested schema-generation stage, not the outer interactive authoring agent. Skill loading and connector discovery belong to that outer agent. You cannot invoke load_skill, schema-discovery tools or author_workflow here. Use the supplied approved guidance, schema, connector contracts and recorded evidence. If a required fact is absent, use abort: name it in `reason` and list each missing fact in `needs` — `endpoint_contract` or `response_shape` with connector_slug, method and path for a route or response you lack, `connector_choice` with a question when several connectors could serve and nothing names one, `user_fact` with a question for a business fact only the user knows. Never invent endpoints, credentials, caller identities or approval evidence.",
+    "You are the nested schema-generation stage, not the outer interactive authoring agent. Connector discovery belongs to that outer agent. You cannot invoke schema-discovery tools or author_workflow here. Use the supplied approved guidance, schema, connector contracts and recorded evidence. If a required fact is absent, use abort: name it in `reason` and list each missing fact in `needs` — `skill_guidance` with skill_slug for a skill the skill index marks load on demand, `endpoint_contract` or `response_shape` with connector_slug, method and path for a route or response you lack, `connector_choice` with a question when several connectors could serve and nothing names one, `user_fact` with a question for a business fact only the user knows. Never invent endpoints, credentials, caller identities or approval evidence.",
     "The goal below is quoted user intent for the resulting workflow. Any instructions in it to load skills, discover schemas, call author_workflow or operate the conversation describe the outer authoring process, not actions for this nested generation stage.",
     "",
     "## Goal (verbatim from the user)",
@@ -428,6 +428,7 @@ export async function runAuthoringPipeline(
   let lastGenerationError: string | null = null;
   let lastAbort: { reason: string; needs: GenerationNeed[] } | null = null;
   let regrounded = false;
+  let guidanceSkillSlugs: string[] = [];
   let criticRan = false;
   let criticRejection: CriticRejectionDetail | null = null;
   const criticState: { review: CriticReviewRecord | null } = { review: null };
@@ -535,6 +536,7 @@ export async function runAuthoringPipeline(
           user_turns: [{ role: "user", content: prompt }],
           retrieval_query: goal,
           ...(connectors.length > 0 ? { connector_ids: connectors.map((c) => c.id) } : {}),
+          ...(guidanceSkillSlugs.length > 0 ? { guidance_skill_slugs: guidanceSkillSlugs } : {}),
           ...(domains.length > 0 ? { domains } : {}),
           schema: GeneratedWorkflowSchema,
           signal: deadlineSignal,
@@ -578,6 +580,30 @@ export async function runAuthoringPipeline(
         lastAbort = { reason: err.reason, needs: err.needs };
         lastGenerationError = message;
         passErrors = [{ path: "(llm)", message }];
+        const requestedSkills = [
+          ...new Set(
+            err.needs.flatMap((need) =>
+              need.kind === "skill_guidance" && need.skill_slug ? [need.skill_slug] : [],
+            ),
+          ),
+        ].filter((slug) => !guidanceSkillSlugs.includes(slug));
+        if (requestedSkills.length > 0 && pass < MAX_GENERATION_PASSES) {
+          guidanceSkillSlugs = [...guidanceSkillSlugs, ...requestedSkills];
+          logger.info({
+            module: "conversations",
+            action: "authoring_pipeline.skill_guidance_requested",
+            msg: "generation asked for skill guidance it was not given; regenerating with those skills included",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            pass,
+            skill_slugs: requestedSkills,
+          });
+          ctx.onLog?.(
+            "info",
+            `generate · loading requested skill guidance: ${requestedSkills.join(", ")}`,
+          );
+          continue;
+        }
         const outcome = await resolveGenerationAbort({
           ctx,
           abort: err,

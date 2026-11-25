@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [chat, integration, sk-platform-reference]
+audience: [runtime]
 version: 2
 ---
 

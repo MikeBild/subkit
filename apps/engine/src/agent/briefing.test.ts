@@ -40,6 +40,7 @@ function makeSkill(n: number, bodyWords = 200): Skill {
     maturity: "stable",
     tags: ["domain:blog-de"],
     applies_to: "both",
+    audience: [],
     rules: [],
     domains: [],
     status: "active",

@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [workflows, execution, agent-briefing]
+audience: [runtime]
 version: 1
 ---
 

@@ -25,6 +25,7 @@ function fakeSkill(overrides: Partial<Skill> & { id: string; title: string }): S
     maturity: "stable",
     tags: [],
     applies_to: "both",
+    audience: [],
     rules: [],
     domains: [],
     status: "active",

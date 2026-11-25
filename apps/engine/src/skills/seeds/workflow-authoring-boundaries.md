@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow, automation, boundary]
+audience: [authoring]
 version: 1
 ---
 

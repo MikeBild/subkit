@@ -31,6 +31,7 @@ import sql0010TenantRowSecurityForce from "./0010_tenant_row_security_force.sql"
 import sql0011TaskRunConversationAbandoned from "./0011_task_run_conversation_abandoned.sql" with { type: "text" };
 import sql0012LlmUsageCacheReported from "./0012_llm_usage_cache_reported.sql" with { type: "text" };
 import sql0013FilesActiveContentUnique from "./0013_files_active_content_unique.sql" with { type: "text" };
+import sql0014SkillsGuidanceAudience from "./0014_skills_guidance_audience.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -69,6 +70,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0011_task_run_conversation_abandoned": sql0011TaskRunConversationAbandoned,
   "0012_llm_usage_cache_reported": sql0012LlmUsageCacheReported,
   "0013_files_active_content_unique": sql0013FilesActiveContentUnique,
+  "0014_skills_guidance_audience": sql0014SkillsGuidanceAudience,
 };
 
 const journal = journalMeta as unknown as Journal;

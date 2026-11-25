@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, contract]
+audience: [runtime]
 version: 9
 ---
 

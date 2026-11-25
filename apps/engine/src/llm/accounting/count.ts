@@ -74,9 +74,16 @@ export function countModelMessagesTokens(messages: ModelMessage[]): number {
 
 const CLAUDE_1M_USABLE = 900_000;
 const CLAUDE_DEFAULT_USABLE = 180_000;
+const MILLION_TOKEN_USABLE = 900_000;
+const GPT5_USABLE = 360_000;
 
 function isClaudeId(id: string): boolean {
-  return id.includes("sonnet") || id.includes("opus") || id.includes("haiku");
+  return (
+    id.includes("sonnet") ||
+    id.includes("opus") ||
+    id.includes("haiku") ||
+    bareModelId(id).startsWith("claude-")
+  );
 }
 
 function isOneMillionContextActive(id: string): boolean {
@@ -96,6 +103,9 @@ export function contextCapFor(model: string): number {
   if (isClaudeId(id)) {
     return isOneMillionContextActive(id) ? CLAUDE_1M_USABLE : CLAUDE_DEFAULT_USABLE;
   }
+  if (id.includes("gpt-4.1")) return MILLION_TOKEN_USABLE;
+  if (id.includes("gpt-5")) return GPT5_USABLE;
+  if (bareModelId(id).startsWith("gemini-")) return MILLION_TOKEN_USABLE;
   if (id.includes("gpt-4o")) return 120_000;
   if (id.includes("gpt-4")) return 110_000;
   if (id.includes("gpt-3.5")) return 15_000;

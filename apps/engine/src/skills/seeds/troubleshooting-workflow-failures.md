@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [diagnosis, execution, failures]
+audience: [runtime]
 version: 3
 ---
 

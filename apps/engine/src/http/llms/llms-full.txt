@@ -2325,6 +2325,19 @@ SubKit proposes skills when a pattern keeps recurring. You decide them on the **
 
 Discarding needs `skill:write`; accepting also needs `skill:activate`. SubKit does not propose a discarded candidate again.
 
+### Say who a skill is for
+
+When the assistant drafts a workflow, it gets a list of all skills and the full text of the skills that fit the request best. It loads any other skill from the list when it needs it. A skill always arrives whole, never cut short. The skill field `audience` helps choose:
+
+| Value | When the full text comes along |
+|---|---|
+| `authoring` | Rules for drafting workflows. Comes along with every draft that has room for it. |
+| `connector:<slug>` | Only when the draft uses a connector with this slug or built from this template, for example `connector:google-gmail`. Comes first then. |
+| `driver:<driver>` | Only when the draft uses a connector of this kind, for example `driver:http`. |
+| `runtime` | Never ahead of time. Help for the chat and for running workflows. Loaded only on request. |
+
+A skill without `audience` keeps its previous behaviour: it ranks like `authoring`. Set the field with `PATCH /v1/skills/{id}`, for example `{"audience": ["connector:google-gmail"]}`.
+
 ### Replace a file
 
 1. Open **Files** and click the file.

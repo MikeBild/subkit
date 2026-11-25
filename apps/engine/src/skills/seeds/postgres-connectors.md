@@ -8,6 +8,7 @@ side_effects: write
 idempotency: naturally
 maturity: stable
 tags: [driver, sql, postgres]
+audience: [driver:postgres]
 version: 4
 ---
 

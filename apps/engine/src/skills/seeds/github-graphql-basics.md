@@ -8,6 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [connector, github, graphql]
+audience: [connector:github-graphql]
 version: 6
 ---
 

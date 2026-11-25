@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [sk-platform-reference, status, health, identity, observability, ai-budget]
+audience: [runtime]
 version: 1
 ---
 

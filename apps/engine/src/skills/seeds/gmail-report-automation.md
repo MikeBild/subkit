@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [connector, gmail, report-delivery, automation]
+audience: [connector:google-gmail]
 version: 1
 ---
 

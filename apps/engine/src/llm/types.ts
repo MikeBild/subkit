@@ -109,6 +109,7 @@ export interface AssembleContextParams {
   user_memory?: string;
   loaded_skill_slugs?: string[];
   loaded_skill_membership?: string[];
+  guidance_skill_slugs?: string[];
   authoring_context?: string;
   automation_context?: string;
   referenced_entities?: { block: string; trim_ref: string };

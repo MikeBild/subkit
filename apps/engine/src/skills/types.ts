@@ -37,6 +37,24 @@ export const SkillIdempotencySchema = z.enum(["none", "naturally", "key_required
 export const SkillMaturitySchema = z.enum(["experimental", "stable"]);
 export const SkillAppliesToSchema = z.enum(["chat", "authoring", "both"]);
 
+export const SKILL_GUIDANCE_AUDIENCE_PATTERN =
+  /^(authoring|runtime|(connector|driver):[A-Za-z0-9][A-Za-z0-9_-]{0,63})$/;
+
+export const SkillGuidanceAudienceSchema = z
+  .array(
+    z
+      .string()
+      .regex(
+        SKILL_GUIDANCE_AUDIENCE_PATTERN,
+        "an audience: authoring, runtime, connector:<slug> or driver:<driver>",
+      ),
+  )
+  .max(16)
+  .refine((audience) => new Set(audience).size === audience.length, "audience must be unique")
+  .describe(
+    "Who needs this guidance; one ranking signal for workflow generation. authoring: core drafting rules, ranked high. runtime: interactive and operator guidance, never pre-included. connector:<slug>: ranked first when a connector with that slug or template slug is in scope. driver:<driver>: ranked high when a connector of that driver is in scope. Empty ranks the skill like authoring. Every applicable skill stays listed in the generation skill index and loadable on demand.",
+  );
+
 export const SkillActivationSchema = z
   .discriminatedUnion("kind", [
     z.object({ kind: z.literal("baseline") }).openapi("SkillActivationBaseline"),
@@ -293,6 +311,7 @@ export const SkillSchema = z
     maturity: SkillMaturitySchema.default("stable"),
     tags: z.array(z.string().min(1)).default([]),
     applies_to: SkillAppliesToSchema.default("both"),
+    audience: SkillGuidanceAudienceSchema.default([]),
     rules: z
       .array(SkillRuleSchema)
       .default([])
@@ -335,6 +354,7 @@ export const CreateSkillSchema = z
     maturity: SkillMaturitySchema.optional(),
     tags: z.array(z.string().min(1)).optional(),
     applies_to: SkillAppliesToSchema.optional(),
+    audience: SkillGuidanceAudienceSchema.optional(),
     status: SkillLifecycleSchema.optional(),
     source: SkillSourceSchema.optional(),
   })
@@ -361,6 +381,7 @@ export const UpdateSkillSchema = z
     maturity: SkillMaturitySchema.optional(),
     tags: z.array(z.string().min(1)).optional(),
     applies_to: SkillAppliesToSchema.optional(),
+    audience: SkillGuidanceAudienceSchema.optional(),
     status: SkillLifecycleSchema.optional(),
   })
   .refine(descriptionAcceptanceValid, {
@@ -379,6 +400,7 @@ export type SkillMaturity = z.infer<typeof SkillMaturitySchema>;
 export type SkillActivation = z.infer<typeof SkillActivationSchema>;
 export type SkillAppliesTo = z.infer<typeof SkillAppliesToSchema>;
 export type SkillAudience = "chat" | "authoring";
+export type SkillGuidanceAudience = z.infer<typeof SkillGuidanceAudienceSchema>;
 
 export function skillAudienceForAuthoringMode(mode: string | null | undefined): SkillAudience {
   return mode === "workflow" ? "authoring" : "chat";

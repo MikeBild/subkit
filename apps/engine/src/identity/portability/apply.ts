@@ -344,6 +344,7 @@ export async function applyPackageImport(
         maturity: item.payload.maturity,
         tags: item.payload.tags,
         applies_to: item.payload.applies_to,
+        ...(item.payload.audience ? { audience: item.payload.audience } : {}),
         status: "draft",
         source: "manual",
       });

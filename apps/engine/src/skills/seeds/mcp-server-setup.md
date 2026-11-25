@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, integration]
+audience: [runtime]
 version: 5
 ---
 

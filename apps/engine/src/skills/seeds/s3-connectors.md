@@ -8,6 +8,7 @@ side_effects: write
 idempotency: naturally
 maturity: stable
 tags: [driver, s3, object-store]
+audience: [driver:s3]
 version: 9
 ---
 

@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron]
+audience: [authoring]
 version: 4
 ---
 

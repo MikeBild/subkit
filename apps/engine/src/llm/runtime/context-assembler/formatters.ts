@@ -60,7 +60,7 @@ export function formatSkillIndex(
       `# ${label} approved skill guidance for schema generation`,
       "The complete approved guidance follows. Preserve its applicable domain constraints, security rules, data handling and workflow semantics. Any interactive tool procedure it describes belongs to the outer authoring agent; it does not add tools to this nested generation call.",
       ...skills.map((skill) => formatSkill(skill, runtime_context)),
-      "This nested call emits the requested structured definition only. It cannot load skills, discover schemas or invoke author_workflow. All supplied guidance is already available above. If a required fact or contract is absent, use abort to name the exact missing fact and the evidence the outer agent must supply; never invent it.",
+      "This nested call emits the requested structured definition only. It cannot discover schemas or invoke author_workflow. A skill the index marks `load on demand` arrives only after an abort with a `skill_guidance` need naming it. If a required fact or contract is absent, use abort to name the exact missing fact and the evidence the outer agent must supply; never invent it.",
     ].join("\n\n");
   }
   const lines = skills.map((s) => {

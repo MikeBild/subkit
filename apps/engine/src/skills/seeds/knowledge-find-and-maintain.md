@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [knowledge, learnings, agent-briefing]
+audience: [runtime]
 version: 2
 ---
 

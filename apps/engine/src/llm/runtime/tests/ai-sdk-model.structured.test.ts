@@ -226,7 +226,14 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     expect(abortSchema.properties?.reason).toMatchObject({ type: "string" });
     expectStrictModeCompatible(abortSchema);
     const item = abortSchema.properties?.needs?.items as StrictSchemaNode;
-    expect(item.required).toEqual(["kind", "connector_slug", "method", "path", "question"]);
+    expect(item.required).toEqual([
+      "kind",
+      "connector_slug",
+      "method",
+      "path",
+      "question",
+      "skill_slug",
+    ]);
     expect(item.properties?.path).toMatchObject({ type: ["string", "null"] });
   });
 

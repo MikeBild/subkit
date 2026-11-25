@@ -377,6 +377,7 @@ describe("skill reads follow the contract", () => {
       maturity: "stable",
       tags: ["domain:blog"],
       applies_to: "both",
+      audience: [],
       rules: [],
       domains: [],
       status: "active",

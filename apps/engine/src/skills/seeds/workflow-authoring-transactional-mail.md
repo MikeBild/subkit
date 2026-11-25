@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow, email, webhook]
+audience: [connector:google-gmail]
 version: 2
 ---
 

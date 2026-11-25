@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [sk-platform-reference, cli]
+audience: [runtime]
 version: 4
 ---
 

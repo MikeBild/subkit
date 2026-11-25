@@ -409,6 +409,7 @@ export async function collectTenantPackage(
       maturity: skill.maturity,
       tags: skill.tags,
       applies_to: skill.applies_to,
+      audience: skill.audience,
     };
     add({ kind: "skill", key, payload }, [
       ...(connector ? [{ kind: "connector" as const, key: connector }] : []),

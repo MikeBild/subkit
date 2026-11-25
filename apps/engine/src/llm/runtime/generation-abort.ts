@@ -5,6 +5,7 @@ const GENERATION_NEED_KINDS = [
   "response_shape",
   "connector_choice",
   "user_fact",
+  "skill_guidance",
 ] as const;
 
 const nullableText = z
@@ -21,6 +22,7 @@ export const GenerationNeedSchema = z.object({
   method: nullableText.transform((value) => (value ? value.toUpperCase() : null)),
   path: nullableText,
   question: nullableText,
+  skill_slug: z.string().trim().min(1).max(120).nullish(),
 });
 
 export type GenerationNeed = z.infer<typeof GenerationNeedSchema>;
@@ -52,7 +54,7 @@ export const GENERATION_ABORT_INPUT_SCHEMA = {
             type: "string",
             enum: [...GENERATION_NEED_KINDS],
             description:
-              "endpoint_contract: the exact route, parameters or body of an operation; response_shape: the recorded response fields of an operation; connector_choice: which of several connectors to use; user_fact: a business fact only the user knows.",
+              "endpoint_contract: the exact route, parameters or body of an operation; response_shape: the recorded response fields of an operation; connector_choice: which of several connectors to use; user_fact: a business fact only the user knows; skill_guidance: the complete guidance of a skill the skill index marks load on demand.",
           },
           connector_slug: {
             ...NULLABLE_STRING,
@@ -68,8 +70,12 @@ export const GENERATION_ABORT_INPUT_SCHEMA = {
             description:
               "The question to put to the user for connector_choice or user_fact, or null.",
           },
+          skill_slug: {
+            ...NULLABLE_STRING,
+            description: "Slug of the skill to load for skill_guidance, or null.",
+          },
         },
-        required: ["kind", "connector_slug", "method", "path", "question"],
+        required: ["kind", "connector_slug", "method", "path", "question", "skill_slug"],
         additionalProperties: false,
       },
     },

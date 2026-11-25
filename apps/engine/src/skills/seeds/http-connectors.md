@@ -8,6 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, http, rest]
+audience: [driver:http]
 version: 5
 ---
 
