@@ -6719,7 +6719,7 @@ Manage workflow executions
 
 #### `subkit executions abort`
 
-Abort a running execution
+Request an abort of a queued, waiting or running execution. A finished execution is left unchanged and the command exits 1.
 
 - `<id>` (positional) — Execution id
 
