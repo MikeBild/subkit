@@ -293,7 +293,8 @@ Health, cost, and audit.
   window (catalog or override price per model, unpriced models named).
 - `get_operating_figures` **[product]** — the Übersicht's operations figures
   over a window: runs, success rate, healthy connectors, applied repairs,
-  prompt-cache share per LLM flow.
+  prompt-cache share per LLM flow, confirmations per turn, per task run and
+  per tool.
 - `list_connections` **[product]** — outbound connections: state, whether the
   grant renews itself (`auto_renew`), and the connectors using it.
 - `list_audit` / `get_audit_entry` **[product]** — the audit log (every governed

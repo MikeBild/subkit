@@ -293,6 +293,46 @@ export function promptCacheFlows(envelope: unknown): PromptCacheFlow[] | null {
   });
 }
 
+export interface ConfirmationTool {
+  tool: string;
+  asked: number;
+  covered: number;
+}
+
+export interface ConfirmationSummary {
+  asked: number;
+  covered: number;
+  turns: number;
+  perTurn: number | null;
+  runs: number;
+  medianPerRun: number | null;
+  tools: ConfirmationTool[];
+}
+
+function countsTotal(value: unknown): number {
+  if (!isRecord(value)) return 0;
+  return Object.values(value).reduce<number>((total, entry) => total + (countOf(entry) ?? 0), 0);
+}
+
+export function confirmationSummary(envelope: unknown): ConfirmationSummary | null {
+  if (!isRecord(envelope) || !isRecord(envelope.confirmations)) return null;
+  const { asked, covered, per_turn, per_task_run, tools } = envelope.confirmations;
+  if (!isRecord(per_turn) || !isRecord(per_task_run) || !Array.isArray(tools)) return null;
+  return {
+    asked: countOf(asked) ?? 0,
+    covered: countOf(covered) ?? 0,
+    turns: countOf(per_turn.turns) ?? 0,
+    perTurn: countOf(per_turn.asked_per_turn),
+    runs: countOf(per_task_run.runs) ?? 0,
+    medianPerRun: countOf(per_task_run.median_per_run),
+    tools: tools.flatMap((row): ConfirmationTool[] =>
+      isRecord(row) && typeof row.tool === "string" && row.tool !== ""
+        ? [{ tool: row.tool, asked: countOf(row.asked) ?? 0, covered: countsTotal(row.covered) }]
+        : [],
+    ),
+  };
+}
+
 export function promptCacheShare(flows: readonly PromptCacheFlow[]): number | null {
   let prompt = 0;
   let cacheRead = 0;

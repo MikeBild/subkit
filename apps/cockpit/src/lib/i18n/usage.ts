@@ -232,6 +232,13 @@ export const usageEn = {
   "usage.tech.query": "Query",
   "usage.tech.workflowId": "Workflow identifier",
   "usage.tech.modelId": "Model identifier",
+  "usage.confirm.title": "Confirmations",
+  "usage.confirm.perTurn": "{value} per turn",
+  "usage.confirm.perRun": "median {value} per task run",
+  "usage.confirm.covered": "{count} ran without asking",
+  "usage.confirm.none": "Nobody was asked to confirm in this window.",
+  "usage.confirm.byTool": "Per tool",
+  "usage.confirm.toolRow": "asked {asked} · without asking {covered}",
 } as const;
 
 export const usageDe: Record<keyof typeof usageEn, string> = {
@@ -470,4 +477,11 @@ export const usageDe: Record<keyof typeof usageEn, string> = {
   "usage.tech.query": "Abfrage",
   "usage.tech.workflowId": "Workflow-Kennung",
   "usage.tech.modelId": "Modellkennung",
+  "usage.confirm.title": "Bestätigungen",
+  "usage.confirm.perTurn": "{value} je Gesprächsrunde",
+  "usage.confirm.perRun": "Median {value} je Run einer Aufgabe",
+  "usage.confirm.covered": "{count} ohne Frage gelaufen",
+  "usage.confirm.none": "In diesem Zeitraum musste niemand etwas bestätigen.",
+  "usage.confirm.byTool": "Je Werkzeug",
+  "usage.confirm.toolRow": "gefragt {asked} · ohne Frage {covered}",
 };

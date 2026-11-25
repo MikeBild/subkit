@@ -31,7 +31,10 @@ import {
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { taskKeys } from "@/features/tasks/model";
-import { usePromptCacheFlows } from "@/features/usage/api/operating-figures-query";
+import {
+  useConfirmationSummary,
+  usePromptCacheFlows,
+} from "@/features/usage/api/operating-figures-query";
 import {
   llmStatsEndpoint,
   llmStatsQuery,
@@ -74,6 +77,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { OriginChartSvg, OriginChartTable, OriginLegend } from "./chart";
+import { ConfirmationsSection } from "./confirmations";
 import { PRICE_SETTING, PriceDialog } from "./dialogs";
 import {
   LEGEND_ORDER,
@@ -211,6 +215,7 @@ export function UsageBreakdown({
   const taskNow = useLlmQuery(wantTasks, bounds, "task");
   const taskBefore = useLlmQuery(wantTasks, previous, "task");
   const promptCache = usePromptCacheFlows(bounds, allowed);
+  const confirmations = useConfirmationSummary(bounds, allowed);
   const settings = useQuery({
     queryKey: ["usage-price-setting", session.tenant.id],
     enabled: allowed && canWriteSettings,
@@ -1004,6 +1009,11 @@ export function UsageBreakdown({
               read={promptCache.read}
               pending={promptCache.pending}
               onRetry={promptCache.retry}
+            />
+            <ConfirmationsSection
+              read={confirmations.read}
+              pending={confirmations.pending}
+              onRetry={confirmations.retry}
             />
           </>
         )}
