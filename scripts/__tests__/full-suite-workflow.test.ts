@@ -12,6 +12,58 @@ const report = workflow.slice(workflow.indexOf("      - name: Open or update"));
 const script = report.split("        run: |\n")[1].replace(/^ {10}/gm, "");
 
 for (const scenario of [
+  { name: "discovery failure", output: "", status: 1, succeeds: false },
+  {
+    name: "discovery failure after partial output",
+    output: "scripts/example.test.ts\n",
+    status: 1,
+    succeeds: false,
+  },
+  { name: "empty discovery", output: "", status: 0, succeeds: false },
+  { name: "no matching tests", output: "No tests found\n", status: 0, succeeds: false },
+  {
+    name: "successful discovery",
+    output: "scripts/example.test.ts\n",
+    status: 0,
+    succeeds: true,
+  },
+]) {
+  test(`nightly shard handles ${scenario.name}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "full-suite-shard-"));
+    try {
+      writeFileSync(
+        join(dir, "bun"),
+        '#!/bin/sh\ncase " $* " in\n*" --list "*) printf "%s" "$DISCOVERY_OUTPUT"; exit "$DISCOVERY_STATUS" ;;\nesac\necho "$*" >> "$TEST_LOG"\n',
+        { mode: 0o755 },
+      );
+      const shardScript = workflow
+        .split("        run: |\n")[1]
+        .split("      - name:")[0]
+        .replace(/^ {10}/gm, "");
+      const result = spawnSync("bash", ["-eo", "pipefail", "-c", shardScript], {
+        cwd: dir,
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH}`,
+          SHARD: "1",
+          DISCOVERY_OUTPUT: scenario.output,
+          DISCOVERY_STATUS: String(scenario.status),
+          TEST_LOG: join(dir, "tests.log"),
+        },
+        encoding: "utf8",
+      });
+      expect(result.status === 0).toBe(scenario.succeeds);
+      if (scenario.succeeds) {
+        expect(readFileSync(join(dir, "tests.log"), "utf8")).toContain("scripts/example.test.ts");
+        expect(readFileSync(join(dir, "failed-1.txt"), "utf8")).toBe("");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const scenario of [
   { name: "no shard results", shards: 0, result: "failure", closes: false },
   { name: "missing shard results", shards: 7, result: "success", closes: false },
   { name: "failed shard execution", shards: 8, result: "failure", closes: false },
