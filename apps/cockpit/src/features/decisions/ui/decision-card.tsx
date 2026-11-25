@@ -15,7 +15,12 @@ import {
   type SkillCandidate,
 } from "@/api/decisions";
 import { absolute, runHref } from "@/app/links";
-import { ActionMenu, type ActionMenuItem, DataState } from "@/components/cockpit/patterns";
+import {
+  ActionMenu,
+  type ActionMenuItem,
+  DataState,
+  StatusBadge,
+} from "@/components/cockpit/patterns";
 import { diagnosisCauseKey } from "@/features/grants/model";
 import {
   ChangeReview,
@@ -665,13 +670,15 @@ export function DecisionCard({
             {t(KIND_LABEL[item.kind])}
           </Badge>
           {item.classification && (
-            <Badge variant={item.classification === "safe" ? "secondary" : "destructive"}>
-              {t(
+            <StatusBadge
+              state={item.classification}
+              tone={item.classification === "safe" ? "neutral" : "error"}
+              label={t(
                 item.classification === "safe"
                   ? "overview.classification.safe"
                   : "overview.classification.unsafe",
               )}
-            </Badge>
+            />
           )}
         </div>
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground @sm:justify-end">

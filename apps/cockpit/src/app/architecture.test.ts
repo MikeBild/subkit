@@ -105,8 +105,6 @@ function unclassified(): string[] {
 // Patterns that still reach into app/, and cockpit components that still import the API.
 const DEBT = new Set<string>([
   "components/cockpit/create-refusal.ts -> @/api/client",
-  "components/cockpit/patterns/action-failure.tsx -> @/app/links",
-  "components/cockpit/patterns/action-failure.tsx -> @/app/login-href",
   "components/cockpit/patterns/data-table.tsx -> @/app/links",
   "components/cockpit/patterns/detail-page.tsx -> @/app/side-panel-model",
   "components/cockpit/patterns/page-header.tsx -> @/app/links",
@@ -179,7 +177,7 @@ const INTERNAL_DEBT = new Set<string>([
   "pages/overview.tsx -> @/features/usage/model",
 ]);
 
-const DEBT_CEILING = 10;
+const DEBT_CEILING = 8;
 const INTERNAL_DEBT_CEILING = 59;
 
 // R3.1 ratchet: queries and mutations written inline in .tsx components. Lower it as they move

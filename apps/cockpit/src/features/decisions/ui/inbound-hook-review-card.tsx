@@ -1,7 +1,7 @@
 import { Badge } from "@ui/atoms/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui/molecules/card";
-import { Clock3 } from "lucide-react";
 import type { InboundHookAutomation } from "@/api/decisions";
+import { StatusBadge } from "@/components/cockpit/patterns";
 import { AutomationGrant } from "@/features/grants";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -13,10 +13,7 @@ export function InboundHookReviewCard({ hook }: { hook: InboundHookAutomation })
       <CardHeader>
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">
-              <Clock3 data-icon="inline-start" />
-              {t("hooks.held.status")}
-            </Badge>
+            <StatusBadge state="held" tone="warn" label={t("hooks.held.status")} />
             <Badge variant="outline">{hook.environment.toUpperCase()}</Badge>
           </div>
           <CardTitle>

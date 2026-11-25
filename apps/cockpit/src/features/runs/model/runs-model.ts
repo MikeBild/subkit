@@ -4,7 +4,6 @@ import { formatLimitDuration, type StepLimit, stepLimitOf } from "@shared/step-l
 import type { ReactNode } from "react";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import { auditHref } from "@/app/links";
-import { statusTone } from "@/components/cockpit/patterns/status-badge";
 import { causeClassLabel } from "@/lib/cause-class";
 import { shortIdentifier } from "@/lib/core/identifier";
 import { engineSentence } from "@/lib/engine-sentence";
@@ -17,6 +16,7 @@ import {
   type TranslationKey,
 } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
+import { statusTone } from "@/lib/status-tone";
 import {
   latestFailedRun as coreLatestFailedRun,
   runTraceEvidence as coreRunTraceEvidence,

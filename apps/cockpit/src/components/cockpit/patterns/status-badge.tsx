@@ -2,60 +2,9 @@ import { Badge } from "@ui/atoms/badge";
 import { cn } from "@ui/lib/utils";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import { type BadgeTone, statusTone } from "@/lib/status-tone";
 
-export type BadgeTone = "ok" | "warn" | "error" | "neutral";
-
-const TONES: Partial<Record<string, BadgeTone>> = {
-  ok: "ok",
-  success: "ok",
-  completed: "ok",
-  succeeded: "ok",
-  enabled: "ok",
-  active: "ok",
-  approved: "ok",
-  applied: "ok",
-  ready: "ok",
-  clean: "ok",
-  committed: "ok",
-  valid: "ok",
-  verified: "ok",
-  failing: "error",
-  stopped: "error",
-  repair_required: "warn",
-  waiting_approval: "warn",
-  waiting_connector: "warn",
-  failed: "error",
-  error: "error",
-  expired: "error",
-  needs_reauth: "error",
-  rejected: "error",
-  denied: "error",
-  timed_out: "error",
-  timeout: "error",
-  aborted: "error",
-  infected: "error",
-  critical: "error",
-  unreadable: "error",
-  pending: "warn",
-  running: "warn",
-  queued: "warn",
-  waiting_budget: "warn",
-  uncertain: "warn",
-  processing: "warn",
-  uploading: "warn",
-  scanning: "warn",
-  degraded: "warn",
-  needs_attention: "warn",
-  needs_update: "warn",
-  expiring: "warn",
-  awaiting_input: "warn",
-  proposed: "warn",
-  warn: "warn",
-};
-
-export function statusTone(state: string): BadgeTone {
-  return TONES[state.toLowerCase()] ?? "neutral";
-}
+export { type BadgeTone, statusTone };
 
 const TONE_CLASS: Record<BadgeTone, string> = {
   ok: "border-success/40 bg-success/10 text-success-ink",
@@ -67,16 +16,19 @@ const TONE_CLASS: Record<BadgeTone, string> = {
 export function StatusBadge({
   state,
   label,
+  tone: toneOverride,
   testId,
   wrap = false,
 }: {
   state: string;
   label?: string;
+  /** Overrides the tone the shared status table gives `state`, for a feature's own states. */
+  tone?: BadgeTone;
   testId?: string;
   wrap?: boolean;
 }) {
   const { t } = useI18n();
-  const tone = statusTone(state);
+  const tone = toneOverride ?? statusTone(state);
   const text = label ?? statusLabel(t, state);
   return (
     <Badge

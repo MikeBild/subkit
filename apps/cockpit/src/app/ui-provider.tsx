@@ -2,9 +2,10 @@ import { errorCatalog } from "@shared/error-catalog.ts";
 import { UiProvider } from "@ui/lib/ui-context";
 import { Workflow } from "lucide-react";
 import type { ReactNode } from "react";
-import { ActionFailureHost } from "@/components/cockpit/patterns";
+import { ActionFailureHost, RemedyLinksProvider } from "@/components/cockpit/patterns";
 import { openFeedback } from "@/features/feedback";
 import { useI18n } from "@/lib/i18n-context";
+import { failureRemedyHref } from "./failure-remedy-links";
 
 const DIALOG_NOTICE = <ActionFailureHost className="mt-2" />;
 
@@ -23,7 +24,7 @@ export function CockpitUiProvider({ children }: { children: ReactNode }) {
       dialogNotice={DIALOG_NOTICE}
       errors={errorCatalog(locale === "de" ? "de" : "en")}
     >
-      {children}
+      <RemedyLinksProvider href={failureRemedyHref}>{children}</RemedyLinksProvider>
     </UiProvider>
   );
 }

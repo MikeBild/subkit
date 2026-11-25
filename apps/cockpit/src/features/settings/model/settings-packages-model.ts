@@ -8,10 +8,11 @@ import type {
   PackageRequirement,
 } from "@/api/packages";
 import { connectorsHref, workflowsHref } from "@/app/links";
-import type { ActionMenuItem, BadgeTone } from "@/components/cockpit/patterns";
+import type { ActionMenuItem } from "@/components/cockpit/patterns";
 import type { CatalogKind } from "@/features/catalog";
 import { type CategoryUsage, categoryMatches } from "@/features/catalog";
 import type { PluralKey, TranslationKey } from "@/lib/i18n";
+import type { BadgeTone } from "@/lib/status-tone";
 
 type PackagePermissions = { canExport: boolean; canImport: boolean };
 

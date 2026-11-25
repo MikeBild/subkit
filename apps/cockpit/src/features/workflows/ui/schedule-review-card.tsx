@@ -2,8 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { Badge } from "@ui/atoms/badge";
 import { Button } from "@ui/atoms/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui/molecules/card";
-import { ArrowRight, Clock3 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { HeldSchedule } from "@/api/decisions";
+import { StatusBadge } from "@/components/cockpit/patterns";
 import { ScheduleCostValue } from "@/features/workflows/ui/schedule-cost";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -17,10 +18,7 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
         <div className="flex min-w-0 flex-col items-start gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">
-                <Clock3 data-icon="inline-start" />
-                {t("schedules.held.status")}
-              </Badge>
+              <StatusBadge state="held" tone="warn" label={t("schedules.held.status")} />
               <Badge variant="outline">{schedule.execution_mode.toUpperCase()}</Badge>
             </div>
             <CardTitle>

@@ -94,6 +94,7 @@ export {
   ReadingSkeleton,
 } from "./reading";
 export { RecordSheet, type SheetSize, sheetWidthClass, useSheetDocked } from "./record-sheet";
+export { type RemedyHref, RemedyLinksProvider, useRemedyHref } from "./remedy-links";
 export { SaveBar } from "./save-bar";
 export { SchemaForm } from "./schema-form";
 export {

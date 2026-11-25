@@ -30,6 +30,7 @@ import { type ReactNode, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n-context";
 import { renderAction } from "./action-button";
 import { ActionFailureHost, failureRemedyAction } from "./action-failure";
+import { useRemedyHref } from "./remedy-links";
 import { useErrorNotice } from "./use-error-detail";
 
 export {
@@ -92,6 +93,7 @@ export function FormDialog({
   children: ReactNode;
 }) {
   const { t } = useI18n();
+  const remedyHref = useRemedyHref();
   const pending = Boolean(submit?.pending);
   const opener = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
@@ -183,6 +185,7 @@ export function FormDialog({
                             : {}),
                         },
                         t,
+                        remedyHref,
                       )
                     : undefined,
                 )}

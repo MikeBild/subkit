@@ -3,16 +3,6 @@ import { cn } from "@ui/lib/utils";
 import { ErrorNotice } from "@ui/molecules/error-notice";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  absolute,
-  attentionHref,
-  chatNewHref,
-  connectorHref,
-  connectorsHref,
-  peopleHref,
-  workflowAutomationHref,
-} from "@/app/links";
-import { loginHref } from "@/app/login-href";
-import {
   type ActionFailure,
   clearFailure,
   type FailureHostLevel,
@@ -20,51 +10,19 @@ import {
   registerFailureHost,
   subscribeFailure,
 } from "@/lib/action-failure";
-import {
-  type FailureFacts,
-  type FailureRemedyKind,
-  failureFacts,
-  failureRemedy,
-} from "@/lib/failure-remedy";
+import { failureFacts, failureRemedy } from "@/lib/failure-remedy";
 import type { Translate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { REMEDY_LABEL } from "@/lib/remedy";
 import type { ActionSpec } from "./action-button";
 import { renderAction } from "./action-button";
+import { type RemedyHref, useRemedyHref } from "./remedy-links";
 import { useErrorNotice } from "./use-error-detail";
-
-export function failureRemedyHref(
-  kind: Exclude<FailureRemedyKind, "retry">,
-  facts: FailureFacts,
-  prompt: string,
-): string {
-  switch (kind) {
-    case "sign_in":
-      return loginHref();
-    case "reconnect":
-      return absolute(
-        facts.connectorId
-          ? `${connectorHref(facts.connectorId)}#connector-credentials`
-          : connectorsHref({ health: "not_ok" }),
-      );
-    case "grant":
-      return absolute(
-        facts.workflowId ? workflowAutomationHref(facts.workflowId) : attentionHref(),
-      );
-    case "chat":
-      return absolute(
-        chatNewHref({ prompt, workflowId: facts.workflowId, connectorId: facts.connectorId }),
-      );
-    case "admin":
-      return absolute(peopleHref());
-    case "new_conversation":
-      return absolute(chatNewHref());
-  }
-}
 
 export function failureRemedyAction(
   input: { title: string; error?: unknown; retry?: () => void; testId?: string },
   t: Translate,
+  remedyHref: RemedyHref,
 ): ActionSpec | undefined {
   const facts = failureFacts(input.error);
   const kind = failureRemedy(facts);
@@ -79,18 +37,19 @@ export function failureRemedyAction(
     return input.retry
       ? { ...base, label: t(REMEDY_LABEL.retry), onClick: input.retry }
       : undefined;
-  return {
-    ...base,
-    label: t(REMEDY_LABEL[kind]),
-    href: failureRemedyHref(
-      kind,
-      facts,
-      t("remedy.failurePrompt", { failure: input.title, code: facts.code ?? "–" }),
-    ),
-  };
+  const href = remedyHref(
+    kind,
+    facts,
+    t("remedy.failurePrompt", { failure: input.title, code: facts.code ?? "–" }),
+  );
+  return href === null ? undefined : { ...base, label: t(REMEDY_LABEL[kind]), href };
 }
 
-function hostRemedy(failure: ActionFailure | null, t: Translate): ActionSpec | undefined {
+function hostRemedy(
+  failure: ActionFailure | null,
+  t: Translate,
+  remedyHref: RemedyHref,
+): ActionSpec | undefined {
   if (!failure) return undefined;
   if (failure.action)
     return {
@@ -115,6 +74,7 @@ function hostRemedy(failure: ActionFailure | null, t: Translate): ActionSpec | u
         : {}),
     },
     t,
+    remedyHref,
   );
 }
 
@@ -122,12 +82,16 @@ export function ActionFailureHost({
   className,
   level = "overlay",
   scope,
+  remedyHref,
 }: {
   className?: string;
   level?: FailureHostLevel;
   scope?: string;
+  /** Where remedies lead; defaults to the links the app provides via RemedyLinksProvider. */
+  remedyHref?: RemedyHref;
 }) {
   const { t } = useI18n();
+  const provided = useRemedyHref();
   const [host, setHost] = useState<number | null>(null);
   const snapshot = useSyncExternalStore(subscribeFailure, failureSnapshot, failureSnapshot);
   const node = useRef<HTMLDivElement>(null);
@@ -138,7 +102,7 @@ export function ActionFailureHost({
   }, [level, scope]);
   const failure = host !== null && snapshot.host === host ? snapshot.failure : null;
   const shown = failure?.id ?? null;
-  const remedy = hostRemedy(failure, t);
+  const remedy = hostRemedy(failure, t, remedyHref ?? provided);
   const notice = useErrorNotice({ error: failure?.error, body: failure?.body });
   useEffect(() => {
     if (shown !== null) node.current?.scrollIntoView?.({ block: "nearest" });
