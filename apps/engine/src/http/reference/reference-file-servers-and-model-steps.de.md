@@ -27,7 +27,7 @@ Der Test des Connectors listet den Ordner mit einem Eintrag. Damit sind Adresse,
 
 Der private Schlüssel bleibt im Tresor. Der Connector kennt nur die Namen der Tresor-Einträge, nie den Schlüssel selbst.
 
-1. Speichere den Schlüssel als Workspace-Secret im Tresor, in der Umgebung des Connectors, zum Beispiel mit `subkit vault add sftp-deploy-key --env prod < deploy_key`. Unterstützt werden OpenSSH, RSA-PEM und EC-PEM. Einen PKCS#8-Schlüssel wandelst du vorher mit `ssh-keygen -p -f deploy_key` um.
+1. Speichere den Schlüssel als Workspace-Secret im Tresor, in der Umgebung des Connectors, zum Beispiel mit `subkit vault add sftp-deploy-key --env prod < deploy_key`. Unterstützt werden OpenSSH, RSA-PEM, EC-PEM und PKCS#8, auch verschlüsselt. Einen PKCS#8-Schlüssel wandelt subkit nur im Speicher in ein Format um, das der SSH-Client liest. Als Schlüsseltyp gehen Ed25519, RSA und ECDSA auf P-256, P-384 oder P-521.
 2. Ist der Schlüssel verschlüsselt, speichere seine Passphrase als zweites Secret, zum Beispiel `sftp-deploy-key-passphrase`.
 3. Setze am Connector `auth_type: "none"` und verweise in `config.auth` auf die Einträge:
 
@@ -150,7 +150,7 @@ Eine Datei darf höchstens 25 MB groß sein. Der Step nimmt keine `expression`; 
 | `sftp_path_outside_root` | Der Pfad führt aus dem Connector-Ordner hinaus. |
 | `sftp_key_item_missing` | Im Tresor gibt es in der Umgebung des Connectors kein Workspace-Secret mit diesem Namen. |
 | `sftp_key_not_private_key` | Der Tresor-Eintrag enthält keinen privaten SSH-Key. |
-| `sftp_key_format_unsupported` | Der Schlüssel liegt als PKCS#8 oder in einem anderen Format vor; speichere ihn als OpenSSH-, RSA- oder EC-PEM. |
+| `sftp_key_format_unsupported` | Mit diesem Schlüsseltyp oder Format geht keine Anmeldung, zum Beispiel DSA oder X25519; speichere einen Ed25519-, RSA- oder ECDSA-Schlüssel als OpenSSH, PEM oder PKCS#8. |
 | `sftp_key_passphrase_required` | Der Schlüssel ist verschlüsselt, und `passphrase_item` fehlt. |
 | `sftp_key_passphrase_wrong` | Die Passphrase öffnet den Schlüssel nicht. |
 | `sftp_key_rejected` | Der Server hat den Schlüssel für diesen Benutzernamen abgelehnt. |

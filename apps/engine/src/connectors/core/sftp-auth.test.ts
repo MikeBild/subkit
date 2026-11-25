@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { createPublicKey, generateKeyPairSync } from "node:crypto";
+import { type ParsedKey, utils } from "ssh2";
 import {
   classifyKeyParseFailure,
   normalizePrivateKeyText,
+  pkcs8ToSsh2Key,
   privateKeyFormat,
   privateKeyFormatIssue,
   SftpAuthConfigSchema,
@@ -10,6 +13,7 @@ import {
   sftpAuthOf,
   sftpAuthTypeIssue,
   sftpKeyMessage,
+  ssh2KeyInput,
 } from "./sftp-auth.ts";
 
 const BODY = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlqa2xtbm9wcXJz";
@@ -115,13 +119,138 @@ describe("privateKeyFormat and privateKeyFormatIssue", () => {
     expect(privateKeyFormat("ssh-ed25519 AAAA deploy@example")).toBeNull();
   });
 
-  test("accepts OpenSSH, RSA and EC and refuses the rest", () => {
+  test("accepts OpenSSH, RSA, EC and PKCS#8 and refuses the rest", () => {
     expect(privateKeyFormatIssue(block("OPENSSH PRIVATE KEY"))).toBeNull();
     expect(privateKeyFormatIssue(block("RSA PRIVATE KEY"))).toBeNull();
     expect(privateKeyFormatIssue(block("EC PRIVATE KEY"))).toBeNull();
-    expect(privateKeyFormatIssue(block("PRIVATE KEY"))).toBe("sftp_key_format_unsupported");
+    expect(privateKeyFormatIssue(block("PRIVATE KEY"))).toBeNull();
+    expect(privateKeyFormatIssue(block("ENCRYPTED PRIVATE KEY"))).toBeNull();
     expect(privateKeyFormatIssue(block("DSA PRIVATE KEY"))).toBe("sftp_key_format_unsupported");
     expect(privateKeyFormatIssue("hunter2")).toBe("sftp_key_not_private_key");
+  });
+});
+
+const PASSPHRASE = "synthetic-pkcs8-passphrase";
+const pkcs8 = (type: "rsa" | "ec" | "ed25519" | "x25519", options: Record<string, unknown> = {}) =>
+  // biome-ignore lint/suspicious/noExplicitAny: generateKeyPairSync overloads per key type
+  (generateKeyPairSync as any)(type, {
+    ...options,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  }) as { privateKey: string; publicKey: string };
+
+function parsedPrivate(key: string): ParsedKey {
+  const parsed = utils.parseKey(key);
+  if (parsed instanceof Error) throw parsed;
+  return (Array.isArray(parsed) ? parsed[0] : parsed) as ParsedKey;
+}
+
+describe("pkcs8ToSsh2Key", () => {
+  test.each([
+    ["rsa", { modulusLength: 2048 }, "RSA PRIVATE KEY", "ssh-rsa"],
+    ["ec", { namedCurve: "P-256" }, "EC PRIVATE KEY", "ecdsa-sha2-nistp256"],
+    ["ec", { namedCurve: "P-384" }, "EC PRIVATE KEY", "ecdsa-sha2-nistp384"],
+    ["ec", { namedCurve: "P-521" }, "EC PRIVATE KEY", "ecdsa-sha2-nistp521"],
+    ["ed25519", {}, "OPENSSH PRIVATE KEY", "ssh-ed25519"],
+  ] as const)("turns a %s key into a key ssh2 reads", (type, options, label, sshType) => {
+    const pair = pkcs8(type, options);
+    const converted = pkcs8ToSsh2Key(pair.privateKey, null);
+    if (!converted.ok) throw new Error(converted.reason);
+    expect(converted.key.startsWith(`-----BEGIN ${label}-----\n`)).toBe(true);
+    const key = parsedPrivate(converted.key);
+    expect(key.isPrivateKey()).toBe(true);
+    expect(key.type).toBe(sshType);
+    const signature = key.sign(Buffer.from("challenge"));
+    expect(key.verify(Buffer.from("challenge"), signature)).toBe(true);
+    expect(pkcs8ToSsh2Key(pair.privateKey, null)).toEqual(converted);
+  });
+
+  test("writes the Ed25519 key in lines of 70 characters with the public key of the input", () => {
+    const pair = pkcs8("ed25519");
+    const converted = pkcs8ToSsh2Key(pair.privateKey, null);
+    if (!converted.ok) throw new Error(converted.reason);
+    const lines = converted.key.trim().split("\n");
+    expect(lines.slice(1, -2).every((line) => line.length === 70)).toBe(true);
+    const x = createPublicKey(pair.publicKey).export({ format: "jwk" }).x as string;
+    const publicSsh = parsedPrivate(converted.key).getPublicSSH();
+    expect(publicSsh.subarray(-32).toString("base64url")).toBe(x);
+  });
+
+  test("opens an encrypted key with the passphrase and tells a missing from a wrong one", () => {
+    const { privateKey } = generateKeyPairSync("ed25519", {
+      privateKeyEncoding: {
+        type: "pkcs8",
+        format: "pem",
+        cipher: "aes-256-cbc",
+        passphrase: PASSPHRASE,
+      },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+    expect(privateKeyFormat(privateKey)).toBe("pkcs8_encrypted");
+    const opened = pkcs8ToSsh2Key(privateKey, PASSPHRASE);
+    if (!opened.ok) throw new Error(opened.reason);
+    expect(opened.key).not.toContain("ENCRYPTED");
+    expect(parsedPrivate(opened.key).isPrivateKey()).toBe(true);
+    expect(pkcs8ToSsh2Key(privateKey, null)).toEqual({
+      ok: false,
+      reason: "sftp_key_passphrase_required",
+    });
+    expect(pkcs8ToSsh2Key(privateKey, "not-the-passphrase")).toEqual({
+      ok: false,
+      reason: "sftp_key_passphrase_wrong",
+    });
+  });
+
+  test("refuses key types SSH does not sign in with and a block that holds no key", () => {
+    expect(pkcs8ToSsh2Key(pkcs8("x25519").privateKey, null)).toEqual({
+      ok: false,
+      reason: "sftp_key_format_unsupported",
+    });
+    expect(pkcs8ToSsh2Key(pkcs8("ec", { namedCurve: "P-224" }).privateKey, null)).toEqual({
+      ok: false,
+      reason: "sftp_key_format_unsupported",
+    });
+    expect(pkcs8ToSsh2Key(block("PRIVATE KEY"), null)).toEqual({
+      ok: false,
+      reason: "sftp_key_not_private_key",
+    });
+  });
+});
+
+describe("ssh2KeyInput", () => {
+  test("passes OpenSSH and PEM keys through with their passphrase", () => {
+    expect(ssh2KeyInput(block("OPENSSH PRIVATE KEY"), "pass")).toEqual({
+      ok: true,
+      key: block("OPENSSH PRIVATE KEY"),
+      passphrase: "pass",
+    });
+  });
+
+  test("hands a converted PKCS#8 key on without the passphrase", () => {
+    const { privateKey } = generateKeyPairSync("ec", {
+      namedCurve: "P-256",
+      privateKeyEncoding: {
+        type: "pkcs8",
+        format: "pem",
+        cipher: "aes-256-cbc",
+        passphrase: PASSPHRASE,
+      },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+    const input = ssh2KeyInput(privateKey, PASSPHRASE);
+    expect(input.ok && input.passphrase).toBeNull();
+    expect(input.ok && input.key.startsWith("-----BEGIN EC PRIVATE KEY-----")).toBe(true);
+  });
+
+  test("names the reason a key cannot be used", () => {
+    expect(ssh2KeyInput("hunter2", null)).toEqual({
+      ok: false,
+      reason: "sftp_key_not_private_key",
+    });
+    expect(ssh2KeyInput(block("DSA PRIVATE KEY"), null)).toEqual({
+      ok: false,
+      reason: "sftp_key_format_unsupported",
+    });
   });
 });
 

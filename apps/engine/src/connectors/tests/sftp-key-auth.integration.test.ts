@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { generateKeyPairSync } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { utils } from "ssh2";
 import { auditLog } from "../../db/schema/index.ts";
@@ -25,13 +25,35 @@ const lockedKey = utils.generateKeyPairSync("ed25519", {
   rounds: 4,
 });
 const strangerKey = utils.generateKeyPairSync("ed25519");
-const pkcs8Key = generateKeyPairSync("ed25519", {
+const pkcs8Pair = generateKeyPairSync("ed25519", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
   publicKeyEncoding: { type: "spki", format: "pem" },
-}).privateKey;
+});
+const pkcs8Key = pkcs8Pair.privateKey;
+const pkcs8LockedKey = createPrivateKey(pkcs8Key)
+  .export({ type: "pkcs8", format: "pem", cipher: "aes-256-cbc", passphrase: PASSPHRASE })
+  .toString();
+
+function sshString(value: string | Buffer): Buffer {
+  const bytes = typeof value === "string" ? Buffer.from(value) : value;
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(bytes.length);
+  return Buffer.concat([length, bytes]);
+}
+
+const pkcs8PublicKey = `ssh-ed25519 ${Buffer.concat([
+  sshString("ssh-ed25519"),
+  sshString(
+    Buffer.from(
+      createPublicKey(pkcs8Pair.publicKey).export({ format: "jwk" }).x ?? "",
+      "base64url",
+    ),
+  ),
+]).toString("base64")}`;
 
 let ctx: TestDb;
 let lockedServer: TestSftpServer;
+let pkcs8Server: TestSftpServer;
 let server: TestSftpServer;
 let tenantA: string;
 let tenantB: string;
@@ -101,6 +123,10 @@ beforeAll(async () => {
   lockedServer = await startTestSftpServer(["transfer", "synthetic-password"], {
     authorizedKey: { username: "deploy", publicKey: lockedKey.public },
   });
+  pkcs8Server = await startTestSftpServer(["transfer", "synthetic-password"], {
+    authorizedKey: { username: "deploy", publicKey: pkcs8PublicKey },
+  });
+  pkcs8Server.files.set("/data/c.csv", Buffer.from("id\n3\n"));
   server.files.set("/data/a.csv", Buffer.from("id\n1\n"));
   lockedServer.files.set("/data/b.csv", Buffer.from("id\n2\n"));
   await storeSecret(tenantA, "sftp-deploy-key", deployKey.private);
@@ -109,6 +135,7 @@ beforeAll(async () => {
   await storeSecret(tenantA, "sftp-wrong-pass", "not-the-passphrase");
   await storeSecret(tenantA, "sftp-stranger-key", strangerKey.private);
   await storeSecret(tenantA, "sftp-pkcs8-key", pkcs8Key);
+  await storeSecret(tenantA, "sftp-pkcs8-locked-key", pkcs8LockedKey);
   await storeSecret(tenantA, "sftp-not-a-key", "plain-api-token-1234");
   await storeSecret(
     tenantA,
@@ -132,6 +159,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await server?.close();
   await lockedServer?.close();
+  await pkcs8Server?.close();
   await ctx?.cleanup();
 }, 30_000);
 
@@ -172,6 +200,25 @@ describe("sftp sign-in with an SSH key from the vault", () => {
     expect(await codeOf(connector, tenantA)).toBe("ok");
   });
 
+  test("signs in with an Ed25519 key in PKCS#8 format, plain or encrypted", async () => {
+    const logins = pkcs8Server.publicKeyLogins();
+    const plain = await keyConnector(tenantA, pkcs8Server, { private_key_item: "sftp-pkcs8-key" });
+    const res = await executeSftpRequest({
+      db: ctx.db,
+      tenant_id: tenantA,
+      connector: plain,
+      method: "LIST",
+      path: "/",
+    });
+    expect(res.entries?.map((entry) => entry.name)).toEqual(["c.csv"]);
+    const locked = await keyConnector(tenantA, pkcs8Server, {
+      private_key_item: "sftp-pkcs8-locked-key",
+      passphrase_item: "sftp-locked-pass",
+    });
+    expect(await codeOf(locked, tenantA)).toBe("ok");
+    expect(pkcs8Server.publicKeyLogins()).toBe(logins + 2);
+  });
+
   test("refuses before connecting when the key cannot be used", async () => {
     const cases: Array<[Record<string, unknown>, string]> = [
       [{ private_key_item: "sftp-missing-key" }, "sftp_key_item_missing"],
@@ -182,7 +229,11 @@ describe("sftp sign-in with an SSH key from the vault", () => {
       ],
       [{ private_key_item: "sftp-not-a-key" }, "sftp_key_not_private_key"],
       [{ private_key_item: "sftp-public-key" }, "sftp_key_not_private_key"],
-      [{ private_key_item: "sftp-pkcs8-key" }, "sftp_key_format_unsupported"],
+      [{ private_key_item: "sftp-pkcs8-locked-key" }, "sftp_key_passphrase_required"],
+      [
+        { private_key_item: "sftp-pkcs8-locked-key", passphrase_item: "sftp-wrong-pass" },
+        "sftp_key_passphrase_wrong",
+      ],
       [{ private_key_item: "sftp-locked-key" }, "sftp_key_passphrase_required"],
       [
         { private_key_item: "sftp-locked-key", passphrase_item: "sftp-wrong-pass" },

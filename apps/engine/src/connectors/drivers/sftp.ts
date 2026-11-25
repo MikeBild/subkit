@@ -19,11 +19,11 @@ import {
 import {
   classifyKeyParseFailure,
   normalizePrivateKeyText,
-  privateKeyFormatIssue,
   type SftpAuth,
   type SftpKeyErrorCode,
   sftpAuthOf,
   sftpKeyMessage,
+  ssh2KeyInput,
 } from "../core/sftp-auth.ts";
 import { openSftpSocket } from "../sftp-egress.ts";
 import type { ConnectorView } from "../types.ts";
@@ -131,16 +131,19 @@ function checkedPrivateKey(
   item: string,
   raw: string,
   passphrase: string | null,
-): string {
-  const text = normalizePrivateKeyText(raw);
-  const formatIssue = privateKeyFormatIssue(text);
-  if (formatIssue) throw keyError(formatIssue, connector, item);
-  const parsed = utils.parseKey(text, passphrase ?? undefined);
+): { readonly privateKey: string; readonly passphrase: string | null } {
+  const input = ssh2KeyInput(normalizePrivateKeyText(raw), passphrase);
+  if (!input.ok) throw keyError(input.reason, connector, item);
+  const parsed = utils.parseKey(input.key, input.passphrase ?? undefined);
   if (parsed instanceof Error)
-    throw keyError(classifyKeyParseFailure(parsed.message, passphrase !== null), connector, item);
+    throw keyError(
+      classifyKeyParseFailure(parsed.message, input.passphrase !== null),
+      connector,
+      item,
+    );
   const key = (Array.isArray(parsed) ? parsed[0] : parsed) as ParsedKey | undefined;
   if (!key?.isPrivateKey()) throw keyError("sftp_key_not_private_key", connector, item);
-  return text;
+  return { privateKey: input.key, passphrase: input.passphrase };
 }
 
 async function resolveKeyLogin(
@@ -154,8 +157,7 @@ async function resolveKeyLogin(
     secret: {
       kind: "private_key",
       item: auth.private_key_item,
-      privateKey: checkedPrivateKey(p.connector, auth.private_key_item, raw, passphrase),
-      passphrase,
+      ...checkedPrivateKey(p.connector, auth.private_key_item, raw, passphrase),
     },
     snapshot: {
       connector_id: p.connector.id,

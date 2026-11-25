@@ -27,7 +27,7 @@ Testing the connector lists the folder with one entry. That confirms the address
 
 The private key stays in the vault. The connector holds only the names of the vault items, never the key itself.
 
-1. Store the key as a workspace secret in the vault, in the connector's environment, for example `subkit vault add sftp-deploy-key --env prod < deploy_key`. Supported formats are OpenSSH, RSA PEM and EC PEM. Convert a PKCS#8 key with `ssh-keygen -p -f deploy_key` first.
+1. Store the key as a workspace secret in the vault, in the connector's environment, for example `subkit vault add sftp-deploy-key --env prod < deploy_key`. Supported formats are OpenSSH, RSA PEM, EC PEM and PKCS#8, also encrypted. subkit turns a PKCS#8 key into a format the SSH client reads, in memory only. Supported key types are Ed25519, RSA and ECDSA on P-256, P-384 or P-521.
 2. If the key is encrypted, store its passphrase as a second secret, for example `sftp-deploy-key-passphrase`.
 3. Set `auth_type: "none"` on the connector and reference the items in `config.auth`:
 
@@ -150,7 +150,7 @@ A file may be at most 25 MB. The step does not accept an `expression`; everythin
 | `sftp_path_outside_root` | The path leads outside the connector's folder. |
 | `sftp_key_item_missing` | The vault has no workspace secret with that name in the connector's environment. |
 | `sftp_key_not_private_key` | The vault item doesn't hold an SSH private key. |
-| `sftp_key_format_unsupported` | The key is in PKCS#8 or another format; store it as OpenSSH, RSA or EC PEM. |
+| `sftp_key_format_unsupported` | The key type or format can't sign in, for example DSA or X25519; store an Ed25519, RSA or ECDSA key as OpenSSH, PEM or PKCS#8. |
 | `sftp_key_passphrase_required` | The key is encrypted and `passphrase_item` is missing. |
 | `sftp_key_passphrase_wrong` | The passphrase doesn't open the key. |
 | `sftp_key_rejected` | The server refused the key for that username. |

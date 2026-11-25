@@ -1,3 +1,4 @@
+import { createHash, createPrivateKey, type KeyObject } from "node:crypto";
 import { isVaultItemName } from "@shared/vault-handle.ts";
 import { z } from "zod";
 
@@ -116,8 +117,114 @@ export function privateKeyFormat(text: string): PrivateKeyFormat | null {
 export function privateKeyFormatIssue(text: string): SftpKeyErrorCode | null {
   const format = privateKeyFormat(text);
   if (format === null) return "sftp_key_not_private_key";
-  if (format === "openssh" || format === "rsa" || format === "ec") return null;
-  return "sftp_key_format_unsupported";
+  if (format === "other") return "sftp_key_format_unsupported";
+  return null;
+}
+
+export type Pkcs8KeyFailure = Extract<
+  SftpKeyErrorCode,
+  | "sftp_key_not_private_key"
+  | "sftp_key_format_unsupported"
+  | "sftp_key_passphrase_required"
+  | "sftp_key_passphrase_wrong"
+>;
+
+export type Pkcs8Conversion =
+  | { readonly ok: true; readonly key: string }
+  | { readonly ok: false; readonly reason: Pkcs8KeyFailure };
+
+const SSH_EC_CURVES = new Set(["prime256v1", "secp384r1", "secp521r1"]);
+
+function sshString(value: Buffer | string): Buffer {
+  const bytes = typeof value === "string" ? Buffer.from(value, "utf8") : value;
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(bytes.length);
+  return Buffer.concat([length, bytes]);
+}
+
+function sshUint32(value: number): Buffer {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32BE(value >>> 0);
+  return bytes;
+}
+
+export function ed25519OpenSshKey(seed: Buffer, publicKey: Buffer): string {
+  const publicBlob = Buffer.concat([sshString("ssh-ed25519"), sshString(publicKey)]);
+  const check = sshUint32(createHash("sha256").update(publicBlob).digest().readUInt32BE(0));
+  const body = Buffer.concat([
+    check,
+    check,
+    sshString("ssh-ed25519"),
+    sshString(publicKey),
+    sshString(Buffer.concat([seed, publicKey])),
+    sshString(""),
+  ]);
+  const padding = Buffer.from(
+    Array.from({ length: (8 - (body.length % 8)) % 8 }, (_, index) => index + 1),
+  );
+  const blob = Buffer.concat([
+    Buffer.from("openssh-key-v1\0", "latin1"),
+    sshString("none"),
+    sshString("none"),
+    sshString(""),
+    sshUint32(1),
+    sshString(publicBlob),
+    sshString(Buffer.concat([body, padding])),
+  ]);
+  const lines = blob.toString("base64").match(/.{1,70}/g) ?? [];
+  return [
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    ...lines,
+    "-----END OPENSSH PRIVATE KEY-----",
+    "",
+  ].join("\n");
+}
+
+function openPkcs8(pem: string, passphrase: string | null): KeyObject | Pkcs8KeyFailure {
+  const encrypted = privateKeyFormat(pem) === "pkcs8_encrypted";
+  if (encrypted && passphrase === null) return "sftp_key_passphrase_required";
+  try {
+    return createPrivateKey(encrypted ? { key: pem, passphrase: passphrase ?? "" } : pem);
+  } catch {
+    return encrypted ? "sftp_key_passphrase_wrong" : "sftp_key_not_private_key";
+  }
+}
+
+export function pkcs8ToSsh2Key(pem: string, passphrase: string | null): Pkcs8Conversion {
+  const key = openPkcs8(pem, passphrase);
+  if (typeof key === "string") return { ok: false, reason: key };
+  if (key.asymmetricKeyType === "rsa")
+    return { ok: true, key: key.export({ type: "pkcs1", format: "pem" }).toString() };
+  if (
+    key.asymmetricKeyType === "ec" &&
+    SSH_EC_CURVES.has(key.asymmetricKeyDetails?.namedCurve ?? "")
+  )
+    return { ok: true, key: key.export({ type: "sec1", format: "pem" }).toString() };
+  if (key.asymmetricKeyType === "ed25519") {
+    const jwk = key.export({ format: "jwk" });
+    return {
+      ok: true,
+      key: ed25519OpenSshKey(
+        Buffer.from(jwk.d ?? "", "base64url"),
+        Buffer.from(jwk.x ?? "", "base64url"),
+      ),
+    };
+  }
+  return { ok: false, reason: "sftp_key_format_unsupported" };
+}
+
+export type Ssh2KeyInput =
+  | { readonly ok: true; readonly key: string; readonly passphrase: string | null }
+  | { readonly ok: false; readonly reason: SftpKeyErrorCode };
+
+export function ssh2KeyInput(text: string, passphrase: string | null): Ssh2KeyInput {
+  const issue = privateKeyFormatIssue(text);
+  if (issue) return { ok: false, reason: issue };
+  const format = privateKeyFormat(text);
+  if (format !== "pkcs8" && format !== "pkcs8_encrypted")
+    return { ok: true, key: text, passphrase };
+  const converted = pkcs8ToSsh2Key(text, passphrase);
+  return converted.ok ? { ok: true, key: converted.key, passphrase: null } : converted;
 }
 
 export function classifyKeyParseFailure(
@@ -143,7 +250,7 @@ export function sftpKeyMessage(
     case "sftp_key_not_private_key":
       return `vault item ${facts.item} does not hold an SSH private key`;
     case "sftp_key_format_unsupported":
-      return `vault item ${facts.item} holds a PKCS#8 or unknown key format; store it in OpenSSH, RSA or EC PEM format (ssh-keygen -p -f key)`;
+      return `vault item ${facts.item} holds a key type SFTP sign-in does not support; store an Ed25519, RSA or ECDSA (P-256, P-384, P-521) key in OpenSSH, PEM or PKCS#8 format`;
     case "sftp_key_passphrase_required":
       return `the key in vault item ${facts.item} is encrypted; set config.auth.passphrase_item to the vault secret that holds its passphrase`;
     case "sftp_key_passphrase_wrong":
