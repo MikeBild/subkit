@@ -307,39 +307,34 @@ warnings precisely because they are not.
 
 ### Branches
 
-First case whose `when` evaluates truthy runs. `default` runs if none match.
+`when` is JSONata: truthy runs `then_steps`, falsy runs optional
+`else_steps`. Both list **step ids** of steps that sit flat in the top-level
+`steps`. No `config` wrapper, no `cases` / `default`.
 
 ```json
 {
   "id": "route",
   "kind": "branch",
-  "config": {
-    "cases": [
-      { "when": "$scope.classify.data.tier = 'enterprise'", "steps": [ /* white-glove path */ ] },
-      { "when": "$scope.classify.data.tier = 'pro'",        "steps": [ /* pro path */ ] }
-    ],
-    "default": [ /* self-serve path */ ]
-  }
+  "when": "$scope.classify.data.tier = 'enterprise'",
+  "then_steps": ["white_glove"],
+  "else_steps": ["self_serve"]
 }
 ```
 
+Multi-way routing: chain branches by listing a second `branch` id in
+`else_steps`.
+
 ### Parallel
 
-`join: "all"` waits for every branch. `join: "any"` resolves on the first. Each
-branch has its own isolated scope but can read `$scope.<upstream_id>.data` from
-steps that finished before the `parallel`.
+`branches` holds chains of **step ids** that run concurrently; the steps sit
+flat in the top-level `steps`. No `config` wrapper, no `join` field. Chains
+read `$scope.<upstream_id>.data` from steps finished before the `parallel`.
 
 ```json
 {
   "id": "fanout",
   "kind": "parallel",
-  "config": {
-    "branches": [
-      [ { "id": "write_pg", "kind": "request", "config": { /* postgres INSERT */ } } ],
-      [ { "id": "write_s3", "kind": "request", "config": { /* s3 put */ } } ]
-    ],
-    "join": "all"
-  }
+  "branches": [["write_pg"], ["write_s3"]]
 }
 ```
 
