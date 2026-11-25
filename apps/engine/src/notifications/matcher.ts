@@ -53,7 +53,7 @@ export function severityMeets(
   return e >= f;
 }
 
-function normalizeSeverity(s: string | null | undefined): NotificationSeverity {
+export function normalizeSeverity(s: string | null | undefined): NotificationSeverity {
   if (s === "debug" || s === "info" || s === "warn" || s === "error" || s === "critical") {
     return s;
   }
