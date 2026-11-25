@@ -133,6 +133,3 @@ export function pcmToWav(pcm: Uint8Array, sampleRate = VOICE_SAMPLE_RATE): Uint8
   wav.set(pcm.subarray(0, length), 44);
   return wav;
 }
-
-export const recordedSeconds = (pcmBytes: number, sampleRate = VOICE_SAMPLE_RATE): number =>
-  pcmBytes / (sampleRate * 2);

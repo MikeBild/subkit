@@ -74,6 +74,7 @@ jobs:
       - name: The installer refuses an administrator shell
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
           pwsh -NoProfile -File scripts/install.ps1 *> refusal.txt
           if ($LASTEXITCODE -eq 0) { Write-Error "the installer ran from an administrator shell"; exit 1 }
           if (-not (Select-String -Path refusal.txt -Pattern "administrator shell" -Quiet)) { Get-Content refusal.txt; exit 1 }

@@ -1,5 +1,4 @@
 export const SPEECH_MAX_BYTES = 25 * 1024 * 1024;
-export const SPEECH_MAX_SECONDS = 300;
 export const SPEECH_MAX_TRANSCRIPT_CHARS = 100_000;
 
 export const SPEECH_CONTENT_TYPES = [

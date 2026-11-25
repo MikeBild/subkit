@@ -1,6 +1,7 @@
-import { type ChildProcessByStdio, spawn } from "node:child_process";
+import { type ChildProcessByStdio, spawn, spawnSync } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import {
+  parseDshowAudioDevices,
   pcmToWav,
   type RecorderCommand,
   type RecorderTool,
@@ -23,8 +24,26 @@ export type Spawner = (command: string, args: readonly string[]) => RecorderProc
 const defaultSpawner: Spawner = (command, args) =>
   spawn(command, [...args], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 
-export const detectRecorder = (device = process.env.SUBKIT_MICROPHONE): RecorderCommand | null =>
-  recorderCommand({ platform: process.platform, which: (tool) => Bun.which(tool), device });
+function firstWindowsMicrophone(ffmpeg: string | null): string | undefined {
+  if (process.platform !== "win32" || !ffmpeg) return undefined;
+  const listing = spawnSync(
+    ffmpeg,
+    ["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+    { encoding: "utf8", windowsHide: true, timeout: 5_000 },
+  );
+  return parseDshowAudioDevices(`${listing.stderr ?? ""}`)[0];
+}
+
+export function detectRecorder(
+  device = process.env.SUBKIT_MICROPHONE || undefined,
+): RecorderCommand | null {
+  const which = (tool: RecorderTool) => Bun.which(tool);
+  return recorderCommand({
+    platform: process.platform,
+    which,
+    device: device ?? firstWindowsMicrophone(which("ffmpeg")),
+  });
+}
 
 export function startRecording(
   recorder: RecorderCommand,

@@ -6,8 +6,7 @@ import { getConfig } from "../../config/index.ts";
 import { modelKeyOwner, readLlmSetting } from "./model-init.ts";
 import { fetchWithResponseTimeout } from "./response-timeout.ts";
 
-export const TRANSCRIPTION_PROVIDERS = ["openai", "azure", "gemini"] as const;
-export type TranscriptionProviderId = (typeof TRANSCRIPTION_PROVIDERS)[number];
+export type TranscriptionProviderId = "openai" | "azure" | "gemini";
 
 const DEFAULT_TRANSCRIPTION_MODEL: Record<TranscriptionProviderId, string> = {
   openai: "gpt-4o-mini-transcribe",

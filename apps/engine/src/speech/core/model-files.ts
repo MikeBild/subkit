@@ -45,11 +45,6 @@ export const LOCAL_SPEECH_FILES: readonly ModelFile[] = [
   },
 ];
 
-export const LOCAL_SPEECH_TOTAL_BYTES = LOCAL_SPEECH_FILES.reduce(
-  (sum, file) => sum + file.bytes,
-  0,
-);
-
 export const modelFileUrl = (file: ModelFile): string =>
   `https://huggingface.co/${LOCAL_SPEECH_MODEL}/resolve/${LOCAL_SPEECH_REVISION}/${file.path}`;
 

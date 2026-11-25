@@ -3,7 +3,6 @@ import {
   parseDshowAudioDevices,
   pcmToWav,
   type RecorderTool,
-  recordedSeconds,
   recorderCommand,
   recorderInstallHint,
   spokenLanguageFromEnv,
@@ -103,9 +102,5 @@ describe("pcmToWav", () => {
     expect(view.getUint32(24, true)).toBe(16000);
     expect(view.getUint32(40, true)).toBe(4);
     expect([...wav.subarray(44)]).toEqual([1, 2, 3, 4]);
-  });
-
-  test("recordedSeconds converts PCM bytes to seconds", () => {
-    expect(recordedSeconds(64_000)).toBe(2);
   });
 });

@@ -104,7 +104,7 @@ export function DictationControl({
           data-testid="chat-voice-error"
         >
           {t(`voice.error.${state.error}`)}
-          <Button variant="ghost" size="sm" onClick={dismiss}>
+          <Button variant="ghost" size="sm" onClick={dismiss} data-testid="chat-voice-dismiss">
             {t("voice.dismiss")}
           </Button>
         </span>
