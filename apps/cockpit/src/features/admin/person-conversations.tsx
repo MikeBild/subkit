@@ -39,11 +39,11 @@ export function PersonConversations({ personId, name }: { personId: string; name
         </p>
       ) : (
         <ul className="grid gap-1" data-testid="people-conversations">
-          {rows.map((row) => (
+          {rows.map((row, index) => (
             <li
               key={row.id}
               className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm"
-              data-testid={`people-conversation-${row.id}`}
+              data-testid={`people-conversation-${index}`}
             >
               <span className="grid min-w-0 flex-1">
                 <span className={row.hidden ? "truncate italic" : "truncate"}>{row.title}</span>
@@ -58,7 +58,7 @@ export function PersonConversations({ personId, name }: { personId: string; name
                 size="sm"
                 onClick={() => confirmation.ask(row)}
                 aria-label={t("people.conversations.deleteLabel", { title: row.title })}
-                data-testid={`people-conversation-delete-${row.id}`}
+                data-testid={`people-conversation-delete-${index}`}
               >
                 {t("chat.delete")}
               </Button>
