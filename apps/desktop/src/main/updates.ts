@@ -1,3 +1,4 @@
+import { homedir, tmpdir } from "node:os";
 import { app } from "electron";
 import {
   classifyUpdateError,
@@ -11,6 +12,15 @@ import {
 } from "../shared/updates.ts";
 import { appLog } from "./app-log.ts";
 import { CHANNEL } from "./channel.ts";
+import {
+  type DiagnosticsEnv,
+  type DiagnosticsIo,
+  type DiagnosticsLog,
+  logVolumes,
+  nodeDiagnosticsIo,
+  recordInstallAttempt,
+  reportPreviousUpdate,
+} from "./update-diagnostics.ts";
 
 declare const SUBKIT_DESKTOP_UPDATES: boolean;
 
@@ -19,6 +29,45 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60_000;
 export interface UpdateHooks {
   onState(state: UpdateState): void;
   onError(scope: string, error: unknown): void;
+}
+
+export interface UpdateDiagnostics {
+  previousAttempt(): void;
+  downloaded(version: string): void;
+  beforeInstall(version: string): void;
+}
+
+function diagnosticsEnv(): DiagnosticsEnv {
+  return {
+    execPath: process.execPath,
+    tmpDir: tmpdir(),
+    homeDir: homedir(),
+    userDataDir: app.getPath("userData"),
+    bundleId: CHANNEL.appId,
+    platform: process.platform,
+    version: app.getVersion(),
+  };
+}
+
+export function updateDiagnostics(
+  env: () => DiagnosticsEnv = diagnosticsEnv,
+  io: DiagnosticsIo = nodeDiagnosticsIo,
+  log: DiagnosticsLog = appLog,
+): UpdateDiagnostics {
+  const guarded = (stage: string, run: (current: DiagnosticsEnv) => void) => {
+    try {
+      run(env());
+    } catch (error) {
+      log.warn("update.diagnostics_failed", { stage, error: messageOf(error) });
+    }
+  };
+  return {
+    previousAttempt: () => guarded("launch", (current) => reportPreviousUpdate(current, io, log)),
+    downloaded: (version) =>
+      guarded("downloaded", (current) => logVolumes("downloaded", version, current, io, log)),
+    beforeInstall: (version) =>
+      guarded("before_install", (current) => recordInstallAttempt(version, current, io, log)),
+  };
 }
 
 export function updatesEnabled(): boolean {
@@ -39,15 +88,24 @@ export class UpdateController {
   private install: (() => void) | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastError: unknown = null;
+  private reported = false;
 
-  constructor(private readonly hooks: UpdateHooks) {}
+  constructor(
+    private readonly hooks: UpdateHooks,
+    private readonly diagnostics: UpdateDiagnostics = updateDiagnostics(),
+  ) {}
 
   get current(): UpdateState {
     return this.state;
   }
 
   async start(): Promise<void> {
-    if (this.state.phase === "disabled" || this.timer) return;
+    if (this.timer) return;
+    if (!this.reported) {
+      this.reported = true;
+      this.diagnostics.previousAttempt();
+    }
+    if (this.state.phase === "disabled") return;
     const autoUpdater = await updater();
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
@@ -56,6 +114,15 @@ export class UpdateController {
     autoUpdater.disableWebInstaller = true;
     autoUpdater.forceDevUpdateConfig = false;
     autoUpdater.logger = null;
+    let pendingVersion: string | null = null;
+    const beforeInstall = () => {
+      if (pendingVersion === null) return;
+      this.diagnostics.beforeInstall(pendingVersion);
+      pendingVersion = null;
+    };
+    app.once("quit", (_event, exitCode) => {
+      if (exitCode === 0 && autoUpdater.autoInstallOnAppQuit) beforeInstall();
+    });
     autoUpdater.on("checking-for-update", () => this.dispatch({ type: "checking" }));
     autoUpdater.on("update-not-available", (info) => {
       appLog.info("update.not_available", { latest: info.version });
@@ -69,7 +136,12 @@ export class UpdateController {
       this.dispatch({ type: "progress", percent: progress.percent }),
     );
     autoUpdater.on("update-downloaded", (info) => {
-      this.install = () => autoUpdater.quitAndInstall();
+      this.diagnostics.downloaded(info.version);
+      pendingVersion = info.version;
+      this.install = () => {
+        beforeInstall();
+        autoUpdater.quitAndInstall();
+      };
       this.dispatch({ type: "downloaded", version: info.version });
     });
     autoUpdater.on("error", (error) => this.fail(error));
