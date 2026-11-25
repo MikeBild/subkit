@@ -448,17 +448,26 @@ async function mergedRotationValue(
   row: ItemRow,
   patch: VaultLoginPatch,
 ): Promise<VaultValue> {
-  const merged = mergedLoginValue(revealedFields(row, await openRow(db, tenant_id, row)), patch);
+  const merged = mergedLoginValue(
+    revealedFields(row, await openRow(db, tenant_id, row, true)),
+    patch,
+  );
   if (typeof merged === "string") throw new VaultError("invalid", merged);
   return merged;
 }
 
-async function openRow(db: Executor, tenant_id: string, row: ItemRow): Promise<string> {
-  const [sealedRow] = await db
+async function openRow(
+  db: Executor,
+  tenant_id: string,
+  row: ItemRow,
+  lock = false,
+): Promise<string> {
+  const query = db
     .select({ ciphertext: vaultItems.ciphertext, iv: vaultItems.iv, auth_tag: vaultItems.auth_tag })
     .from(vaultItems)
     .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, row.id)))
     .limit(1);
+  const [sealedRow] = await (lock ? query.for("update") : query);
   if (!sealedRow) throw new VaultError("not_found", "vault item not found");
   try {
     return decryptSecret(

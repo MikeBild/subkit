@@ -260,6 +260,63 @@ describe("vault items", () => {
     expect(rotations.map((entry) => entry.actor_id).sort()).toEqual([owner, colleague].sort());
   });
 
+  test("concurrent partial login rotations preserve both changes", async () => {
+    const created = await createVaultItem(ctx.db, {
+      tenant_id,
+      actor: { kind: "user", id: owner },
+      viewer: admin,
+      kind: "login",
+      name: "concurrent-login",
+      scope: "workspace",
+      environment: "dev",
+      description: null,
+      value: { kind: "login", username: "original-user", password: PASSWORD },
+    });
+    const locked = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const holder = ctx.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM vault_items WHERE id = ${created.id} FOR UPDATE`);
+      locked.resolve();
+      await release.promise;
+    });
+    await locked.promise;
+    const rotating = Promise.all(
+      [{ username: "rotated-user" }, { password: ROTATED }].map((patch) =>
+        updateVaultItem(ctx.db, {
+          tenant_id,
+          id: created.id,
+          actor: { kind: "user", id: owner },
+          viewer: admin,
+          value: { kind: "login_patch", ...patch },
+        }),
+      ),
+    );
+    const completed = Promise.allSettled([holder, rotating]);
+    try {
+      await waitFor(
+        async () => {
+          const result = await ctx.pool.query<{ count: number }>(
+            `SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%"vault_items"%'`,
+          );
+          return Number(result.rows[0]?.count) === 2;
+        },
+        { label: "concurrent partial login rotations", tries: 200 },
+      );
+    } finally {
+      release.resolve();
+      await completed;
+    }
+    await rotating;
+    const revealed = await revealVaultItem(ctx.db, {
+      tenant_id,
+      id: created.id,
+      actor: { kind: "user", id: owner },
+      viewer: admin,
+    });
+    expect(revealed.values).toEqual({ username: "rotated-user", password: ROTATED });
+    expect((await getVaultItem(ctx.db, tenant_id, created.id, admin)).version).toBe(3);
+  });
+
   test("a handle resolves only in its environment", async () => {
     const resolved = await resolveVaultHandle(ctx.db, {
       tenant_id,
