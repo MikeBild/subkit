@@ -32,10 +32,14 @@ image and the binaries. The desktop app follows with its own workflow, see
    bun run gen release-notes --highlights <file>
    ```
 
-   Commit the bump and the generated notes together. The generator keeps every highlight it
-   committed before, takes the highlights of this release from `--highlights` and reads the
-   English highlights of published GitHub releases. `bun run gen release-notes --check` fails
-   when the committed notes differ from a fresh run at their recorded source commit. Historic
+   Commit the bump and the generated notes together. The generated notes keep a map of the
+   reviewed highlights per version; it is the source the image and SubKit Desktop of the tag
+   are built from, so a build never depends on GitHub or on its release still being a draft.
+   `--highlights` files them under the bumped version in `package.json` of the working tree.
+   The generator keeps every committed highlight, fills only missing versions from the English
+   highlights of published GitHub releases and drops any highlight that repeats a commit note
+   of its version. `bun run gen release-notes --check` runs offline and fails when the committed
+   notes differ from a fresh run at their recorded source commit. Historic
    commit subjects that were not written in English get an English text in
    `scripts/lib/release-subjects.ts`, keyed by commit hash.
 5. Produce the mutation evidence for this commit. It runs long and is only needed once per commit:
@@ -51,8 +55,8 @@ image and the binaries. The desktop app follows with its own workflow, see
    ```
 
    `release tag` refuses a dirty tree, a commit that differs from `origin/main`, a version that
-   was used before and a version without English highlights, taken from `--highlights` or an
-   existing draft release. It then checks the mutation evidence
+   was used before and a version whose highlights are not in the committed release notes, or
+   differ from a given `--highlights` file. It then checks the mutation evidence
    (`bun run quality release --check`), runs the paid live model gate (`bun run verify llm-live`)
    and the release gate (`bun run verify release`), and only then writes the English highlights
    into the draft release and pushes the tag.

@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   bareVersion,
@@ -30,6 +30,7 @@ export type ReleaseHistory = {
   source: string;
   releases: ReleaseNotes[];
   unpublished: PendingNotes;
+  highlights: Record<string, string[]>;
 };
 
 function userFacingSubject(subject: string): string | null {
@@ -50,27 +51,59 @@ export function releaseHistoryFromRanges(input: {
   unpublished: { version: string | null; subjects: string[] };
   highlights: Record<string, string[]>;
 }): ReleaseHistory {
-  const highlightsOf = (version: string | null) => {
-    const found = version === null ? undefined : input.highlights[bareVersion(version)];
-    return found?.length ? found : null;
+  const highlights = sortedHighlights(input.highlights);
+  const group = (version: string | null, subjects: string[]) => {
+    const notes = releaseNotesFromSubjects(subjects);
+    if (version === null) return { notes, highlights: null };
+    const key = bareVersion(version);
+    const found = (highlights[key] ?? []).filter((line) => !notes.includes(line));
+    if (found.length > 0) highlights[key] = found;
+    else delete highlights[key];
+    return { notes, highlights: found.length > 0 ? found : null };
   };
   return {
     source: input.source,
     releases: input.releases.map(({ version, subjects }) => ({
       version,
-      notes: releaseNotesFromSubjects(subjects),
-      highlights: highlightsOf(version),
+      ...group(version, subjects),
     })),
     unpublished: {
       version: input.unpublished.version,
-      notes: releaseNotesFromSubjects(input.unpublished.subjects),
-      highlights: highlightsOf(input.unpublished.version),
+      ...group(input.unpublished.version, input.unpublished.subjects),
     },
+    highlights,
   };
 }
 
-export function knownHighlights(history: ReleaseHistory): Record<string, string[]> {
-  const known: Record<string, string[]> = {};
+export function compareVersions(left: string, right: string): number {
+  const parts = (version: string) =>
+    bareVersion(version)
+      .split(/[.-]/)
+      .map((part) => Number(part) || 0);
+  const a = parts(left);
+  const b = parts(right);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const diff = (a[index] ?? 0) - (b[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function sortedHighlights(highlights: Record<string, string[]>): Record<string, string[]> {
+  const byVersion: Record<string, string[]> = {};
+  for (const [version, lines] of Object.entries(highlights))
+    if (lines.length > 0) byVersion[bareVersion(version)] = lines;
+  return Object.fromEntries(
+    Object.keys(byVersion)
+      .sort(compareVersions)
+      .map((version) => [version, byVersion[version] as string[]]),
+  );
+}
+
+export function knownHighlights(
+  history: Omit<ReleaseHistory, "highlights"> & { highlights?: Record<string, string[]> },
+): Record<string, string[]> {
+  const known: Record<string, string[]> = { ...history.highlights };
   for (const release of history.releases)
     if (release.highlights) known[bareVersion(release.version)] = release.highlights;
   const pending = history.unpublished;
@@ -119,7 +152,7 @@ export function renderReleaseHistory(history: ReleaseHistory): string {
     "",
     "export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };",
     "",
-    `export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = ${JSON.stringify(history, null, 2)};`,
+    `export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = ${JSON.stringify(history, null, 2)};`,
     "",
   ].join("\n");
 }
@@ -188,6 +221,11 @@ async function committedHistory(output: string): Promise<ReleaseHistory | null> 
   return ((await import(output)) as { RELEASE_HISTORY: ReleaseHistory }).RELEASE_HISTORY;
 }
 
+function workingTreeVersion(repo: string): string {
+  return (JSON.parse(readFileSync(join(repo, "package.json"), "utf8")) as { version: string })
+    .version;
+}
+
 if (import.meta.main) {
   const flags = splitHighlightsFlag(process.argv.slice(2));
   if (flags.error) throw new Error(flags.error);
@@ -201,7 +239,7 @@ if (import.meta.main) {
     value("--output") ?? `${repo}/apps/cockpit/src/app/release-notes.generated.ts`,
   );
   const check = argv.includes("--check");
-  const offline = argv.includes("--offline");
+  const offline = check || argv.includes("--offline");
   const release = value("--release");
   const committed = await committedHistory(output);
   const target = check && release === undefined ? committed?.source : (release ?? "HEAD");
@@ -214,13 +252,13 @@ if (import.meta.main) {
   const given = file === null ? [] : highlightsFromBody(file);
   if (flags.path && given.length === 0)
     throw new Error(`${flags.path} needs ## Highlights (en) with bullets`);
-  const version = bareVersion(packageVersionOf(repo, target));
+  const version = bareVersion(workingTreeVersion(repo));
   const history = generateReleaseHistory(
     repo,
     target,
     mergeHighlights(
-      committed ? knownHighlights(committed) : null,
       published ? highlightsFromReleases(published) : null,
+      committed ? knownHighlights(committed) : null,
       given.length > 0 ? { [version]: given } : null,
     ),
   );

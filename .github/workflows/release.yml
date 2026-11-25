@@ -121,6 +121,8 @@ jobs:
           echo "QUALITY_ASSETS_DIR=$quality_assets" >> "$GITHUB_ENV"
 
       - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run gen release-notes --release "$TAG"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   bareVersion,
+  committedHighlightsProblems,
   highlightsFromBody,
   highlightsFromReleases,
+  notesSection,
   otherHighlightsHeading,
   parseHighlights,
   releaseBody,
@@ -73,6 +75,27 @@ describe("release highlights", () => {
         { tag_name: "v11.0.0", body: null, draft: false },
       ]),
     ).toEqual({ "12.1.0": ["New", "Second"], "12.0.0": ["Only English"] });
+  });
+
+  test("commit notes in a release body never read back as highlights", () => {
+    const built = releaseBody(
+      ["Fresh"],
+      notesSection("- a commit note\nMutation evidence: passed.\n"),
+    );
+    expect(built).toBe(
+      "## Highlights (en)\n\n- Fresh\n\n## Notes\n\n- a commit note\nMutation evidence: passed.\n",
+    );
+    expect(highlightsFromBody(built)).toEqual(["Fresh"]);
+    expect(notesSection("  \n")).toBe("");
+  });
+
+  test("a tag needs its highlights committed, matching a given file", () => {
+    expect(committedHighlightsProblems("v13.0.2", [], ["New"])[0]).toContain(
+      "committed release notes have no highlights for 13.0.2",
+    );
+    expect(committedHighlightsProblems("13.0.2", ["New"], ["Other"])[0]).toContain("differ");
+    expect(committedHighlightsProblems("13.0.2", ["New"], ["New"])).toEqual([]);
+    expect(committedHighlightsProblems("13.0.2", ["New"], [])).toEqual([]);
   });
 
   test("splits the highlights file off the other arguments", () => {

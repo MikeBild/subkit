@@ -13,9 +13,10 @@ import {
   releaseGateDescription,
 } from "./lib/mutation-deferral.ts";
 import {
-  HIGHLIGHTS_FLAG,
+  committedHighlightsProblems,
   highlightsFromBody,
   otherHighlightsHeading,
+  RELEASE_NOTES_PATH,
   releaseBody,
   splitHighlightsFlag,
 } from "./lib/release-highlights.ts";
@@ -79,12 +80,13 @@ require_(
   foreignHighlights === null,
   `highlights are English only — remove "${foreignHighlights}" from the highlights`,
 );
-const highlights = highlightsFromBody(highlightSource);
-require_(
-  highlights.length > 0,
-  `no reviewed English highlights for ${version} — pass ` +
-    `${HIGHLIGHTS_FLAG} <file> with "## Highlights (en)", or put them into the draft release`,
-);
+const { RELEASE_HISTORY } = (await import(join(REPO, RELEASE_NOTES_PATH))) as {
+  RELEASE_HISTORY: { highlights?: Record<string, string[]> };
+};
+const highlights = RELEASE_HISTORY.highlights?.[version] ?? [];
+const givenHighlights = highlightsFlag.path ? highlightsFromBody(highlightSource) : [];
+for (const problem of committedHighlightsProblems(version, highlights, givenHighlights))
+  problems.push(problem);
 require_(dirty === "", `working tree is dirty:\n${dirty}`);
 require_(
   head === originMain,

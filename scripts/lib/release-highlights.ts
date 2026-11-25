@@ -4,8 +4,33 @@ const HEADING = /^##\s+Highlights\s+\(en\)\s*$/i;
 const ANY_HEADING = /^##\s+Highlights\b/i;
 const SECTION_END = /^#{1,2}\s/;
 
+export const RELEASE_NOTES_PATH = "apps/cockpit/src/app/release-notes.generated.ts";
+
 export function bareVersion(version: string): string {
   return version.replace(/^v/, "");
+}
+
+export function committedHighlightsProblems(
+  version: string,
+  committed: readonly string[],
+  given: readonly string[],
+): string[] {
+  if (committed.length === 0)
+    return [
+      `the committed release notes have no highlights for ${bareVersion(version)} — run ` +
+        `bun run gen release-notes ${HIGHLIGHTS_FLAG} <file> and commit ${RELEASE_NOTES_PATH}`,
+    ];
+  if (given.length > 0 && given.join("\n") !== committed.join("\n"))
+    return [
+      `the highlights given for ${bareVersion(version)} differ from the committed release notes — ` +
+        `regenerate with bun run gen release-notes ${HIGHLIGHTS_FLAG} <file> and commit`,
+    ];
+  return [];
+}
+
+export function notesSection(notes: string): string {
+  const trimmed = notes.trim();
+  return trimmed ? `## Notes\n\n${trimmed}\n` : "";
 }
 
 export function parseHighlights(markdown: string): string[] {

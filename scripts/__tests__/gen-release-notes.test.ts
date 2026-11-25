@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  compareVersions,
   generateReleaseHistory,
   knownHighlights,
   mergeHighlights,
@@ -65,6 +66,7 @@ describe("release notes generator", () => {
         { version: "v1.2.2", notes: [], highlights: null },
       ],
       unpublished: { version: null, notes: ["make costs clearer"], highlights: null },
+      highlights: {},
     });
   });
 
@@ -96,6 +98,14 @@ describe("release notes generator", () => {
       unpublished: { version: "1.3.0", notes: [], highlights: ["Next"] },
     });
     expect(known).toEqual({ "1.2.2": ["New"], "1.3.0": ["Next"] });
+    expect(
+      knownHighlights({
+        source: "abc123",
+        releases: [],
+        unpublished: { version: null, notes: [], highlights: null },
+        highlights: { "1.4.0": ["Kept"] },
+      }),
+    ).toEqual({ "1.4.0": ["Kept"] });
     expect(mergeHighlights(known, { "1.2.2": ["New, edited"] }, { "1.3.0": ["Fresh"] })).toEqual({
       "1.2.2": ["New, edited"],
       "1.3.0": ["Fresh"],
@@ -108,6 +118,7 @@ describe("release notes generator", () => {
       source: "abc123",
       releases: [],
       unpublished: { version: null, notes: [], highlights: null },
+      highlights: {},
     });
     expect(rendered).toContain("highlights: string[] | null");
     expect(rendered).not.toContain("de:");
@@ -119,6 +130,73 @@ describe("release notes generator", () => {
     expect(englishSubject("0".repeat(40), "fix(user): keep")).toBe("fix(user): keep");
     for (const subject of Object.values(ENGLISH_SUBJECTS))
       expect(subject).toMatch(/^(feat|fix)\(user\): [\x20-\x7e]+$/);
+  });
+
+  test("a highlight never repeats a commit note of its own version", () => {
+    const history = releaseHistoryFromRanges({
+      source: "abc123",
+      releases: [
+        { version: "v1.2.3", subjects: ["fix(user): keep drafts"] },
+        { version: "v1.2.4", subjects: ["fix(user): only a note"] },
+      ],
+      unpublished: { version: null, subjects: [] },
+      highlights: { "1.2.3": ["Drafts survive a reload", "keep drafts"], "1.2.4": ["only a note"] },
+    });
+    expect(history.releases.map((release) => release.highlights)).toEqual([
+      ["Drafts survive a reload"],
+      null,
+    ]);
+    expect(history.highlights).toEqual({ "1.2.3": ["Drafts survive a reload"] });
+  });
+
+  test("keeps the reviewed highlights in version order", () => {
+    expect(
+      releaseHistoryFromRanges({
+        source: "abc123",
+        releases: [],
+        unpublished: { version: null, subjects: [] },
+        highlights: { "1.10.0": ["Ten"], "v1.9.0": ["Nine"], "1.2.0": [] },
+      }).highlights,
+    ).toEqual({ "1.9.0": ["Nine"], "1.10.0": ["Ten"] });
+    expect(["1.10.0", "1.9.0"].sort(compareVersions)).toEqual(["1.9.0", "1.10.0"]);
+  });
+
+  test("the build of a tag carries its own highlights without GitHub", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "subkit-release-notes-"));
+    const output = join(repo, "release-notes.generated.ts");
+    const highlightsFile = join(repo, "highlights.md");
+    const generate = (...args: string[]) =>
+      execFileSync(
+        "bun",
+        ["scripts/gen-release-notes.ts", "--repo", repo, "--output", output, "--offline", ...args],
+        { cwd: join(import.meta.dir, "../.."), encoding: "utf8" },
+      );
+    try {
+      git(repo, "init");
+      writeFileSync(join(repo, "package.json"), '{"version":"1.0.0"}\n');
+      git(repo, "add", "package.json");
+      commit(repo, "chore: establish history");
+      git(repo, "tag", "v1.0.0");
+      commit(repo, "fix: technical change");
+      writeFileSync(join(repo, "package.json"), '{"version":"1.0.1"}\n');
+      writeFileSync(highlightsFile, "## Highlights (en)\n\n- Uploads stay for a day\n");
+      generate("--highlights", highlightsFile);
+      git(repo, "add", "package.json", "release-notes.generated.ts");
+      commit(repo, "chore(release): 1.0.1");
+      git(repo, "tag", "v1.0.1");
+      generate("--check");
+      generate("--release", "v1.0.1");
+      const { RELEASE_HISTORY } = (await import(output)) as {
+        RELEASE_HISTORY: ReturnType<typeof releaseHistoryFromRanges>;
+      };
+      expect(RELEASE_HISTORY.releases.at(-1)).toEqual({
+        version: "v1.0.1",
+        notes: [],
+        highlights: ["Uploads stay for a day"],
+      });
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   test("the package version is pending only while its tag does not exist", () => {
@@ -147,6 +225,7 @@ describe("release notes generator", () => {
           notes: ["keep local changes"],
           highlights: ["New"],
         },
+        highlights: { "1.1.0": ["New"] },
       });
       writeFileSync(output, renderReleaseHistory(history));
       commit(repo, "chore: generated release notes");
