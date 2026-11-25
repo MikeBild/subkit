@@ -112,6 +112,24 @@ describe("conversations/same-approval", () => {
     expect(asksForSameApproval(oauthCard("a"), oauthCard("b"))).toBe(false);
   });
 
+  test("external MCP confirmations stay bound to the advertised approval handle", () => {
+    const card = (approvalId: string) => ({
+      tool_name: "ask_user_confirm",
+      input: {
+        kind: "external_write",
+        target: { tool: "mcp_publish", connector_slug: "publisher", remote_tool: "publish" },
+        pending_output: { input_keys: ["body"] },
+        commit_intent: {
+          kind: "grant_relayed_tool_call",
+          payload: { tool: "mcp_publish", approval_id: approvalId },
+        },
+      },
+    });
+    expect(asksForSameApproval(card("original"), card("new-arguments"))).toBe(false);
+    expect(asksForSameApproval(card("original"), card("same-arguments-new-handle"))).toBe(false);
+    expect(asksForSameApproval(card("original"), card("original"))).toBe(true);
+  });
+
   test("held workflow writes keep approval bound to their preview", () => {
     const heldCard = (approvalId: string, workflowSlug = "publish", value = "first") => ({
       tool_name: "ask_user_confirm",

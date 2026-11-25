@@ -50,7 +50,8 @@ export function approvalAction(input: unknown): ApprovalAction | null {
           intent: {
             kind: intent.kind,
             payload:
-              intent.kind === "commit_held_workflow_writes"
+              intent.kind === "commit_held_workflow_writes" ||
+              intent.kind === "grant_relayed_tool_call"
                 ? (record(intent.payload) ?? {})
                 : withoutHandle(intent.payload),
           },
