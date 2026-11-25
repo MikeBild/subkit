@@ -26,6 +26,8 @@ const LLM_PROVIDERS = [
 
 const LlmProvider = z.enum(LLM_PROVIDERS);
 
+const ReasoningEffort = z.enum(["default", "none", "low", "medium", "high"]);
+
 const tenant = (m: Omit<FieldMeta, "scope"> = {}): FieldMeta => ({ ...m, scope: "tenant" });
 const global = (m: Omit<FieldMeta, "scope"> = {}): FieldMeta => ({ ...m, scope: "global" });
 
@@ -381,9 +383,7 @@ const LlmSection = z
         "Use the judge model to block task-run questions that ask for the run's result in other words (one extra call per question; failed calls let questions through)",
       )
       .meta(tenant()),
-    reasoning_effort: z
-      .enum(["default", "none", "low", "medium", "high"])
-      .default("default")
+    reasoning_effort: ReasoningEffort.default("default")
       .describe(
         "Reasoning effort in authoring turns. default: thinking only in late stages on supported Claude models. none, low, medium or high: every stage on OpenAI reasoning and supported Claude models.",
       )
@@ -1618,6 +1618,7 @@ const TenantOverlaySchema = z
         context_1m: z.boolean().optional(),
         web_search: z.boolean().optional(),
         result_question_check: z.boolean().optional(),
+        reasoning_effort: ReasoningEffort.optional(),
         providers: z
           .object({
             anthropic: z
@@ -1648,7 +1649,6 @@ const TenantOverlaySchema = z
           .optional(),
       })
       .optional(),
-    queue: z.object({ concurrency: z.number().int().positive().max(64).optional() }).optional(),
     tokens: z
       .object({
         currency: z.string().optional(),
