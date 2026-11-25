@@ -18204,8 +18204,10 @@
         "estimated_setup_minutes": 1,
         "prerequisites": [],
         "sample_input": {
-          "url": "https://example.com"
+          "url": "https://example.com",
+          "allowed_hosts": ["example.com"]
         },
+        "install_inputs": ["allowed_hosts"],
         "expected_output_preview": null,
         "required_connectors": [],
         "version": "1.0.0",
@@ -18221,6 +18223,11 @@
             "properties": {
               "url": {
                 "type": "string"
+              },
+              "allowed_hosts": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Install-time list of host names the url may point to, such as docs.example.com. Pinned into the reviewed boundary when the recipe is installed."
               }
             }
           },
@@ -18230,7 +18237,13 @@
               "id": "fetch",
               "method": "GET",
               "url": "${input.url}",
-              "expected_statuses": [200]
+              "expected_statuses": [200],
+              "boundary": {
+                "variables": {},
+                "max_body_bytes": 0,
+                "max_calls": 1,
+                "allowed_hosts": "${input.allowed_hosts}"
+              }
             },
             {
               "kind": "transform",
@@ -18260,8 +18273,10 @@
         "estimated_setup_minutes": 1,
         "prerequisites": [],
         "sample_input": {
-          "url": "https://example.com/post"
+          "url": "https://example.com/post",
+          "allowed_hosts": ["example.com"]
         },
+        "install_inputs": ["allowed_hosts"],
         "expected_output_preview": null,
         "required_connectors": [],
         "version": "1.0.0",
@@ -18277,6 +18292,11 @@
             "properties": {
               "url": {
                 "type": "string"
+              },
+              "allowed_hosts": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Install-time list of host names the url may point to, such as docs.example.com. Pinned into the reviewed boundary when the recipe is installed."
               }
             }
           },
@@ -18286,7 +18306,13 @@
               "id": "fetch",
               "method": "GET",
               "url": "${input.url}",
-              "expected_statuses": [200]
+              "expected_statuses": [200],
+              "boundary": {
+                "variables": {},
+                "max_body_bytes": 0,
+                "max_calls": 1,
+                "allowed_hosts": "${input.allowed_hosts}"
+              }
             },
             {
               "kind": "transform",
@@ -18337,8 +18363,10 @@
           "Respect for robots.txt is on by default — set connectors.web_scraper.runtime.respect_robots = false to bypass (NOT recommended)"
         ],
         "sample_input": {
-          "sitemap_url": "https://example.com/sitemap.xml"
+          "sitemap_url": "https://example.com/sitemap.xml",
+          "allowed_hosts": ["example.com"]
         },
+        "install_inputs": ["allowed_hosts"],
         "expected_output_preview": null,
         "required_connectors": [],
         "version": "1.0.0",
@@ -18354,6 +18382,11 @@
             "properties": {
               "sitemap_url": {
                 "type": "string"
+              },
+              "allowed_hosts": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Install-time list of host names the url may point to, such as docs.example.com. Pinned into the reviewed boundary when the recipe is installed."
               }
             }
           },
@@ -18364,7 +18397,13 @@
               "id": "fetch_sitemap",
               "method": "GET",
               "url": "${input.sitemap_url}",
-              "expected_statuses": [200]
+              "expected_statuses": [200],
+              "boundary": {
+                "variables": {},
+                "max_body_bytes": 0,
+                "max_calls": 1,
+                "allowed_hosts": "${input.allowed_hosts}"
+              }
             },
             {
               "kind": "transform",
@@ -18378,7 +18417,13 @@
               "for_each": "(sourceData) => sourceData.urls.data",
               "method": "GET",
               "url": "${item.page_url}",
-              "expected_statuses": [200]
+              "expected_statuses": [200],
+              "boundary": {
+                "variables": {},
+                "max_body_bytes": 0,
+                "max_calls": 1000,
+                "allowed_hosts": "${input.allowed_hosts}"
+              }
             },
             {
               "kind": "transform",

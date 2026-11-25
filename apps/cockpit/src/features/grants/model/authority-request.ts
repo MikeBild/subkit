@@ -2,8 +2,9 @@ import { pluralKey, type TranslationKey } from "@/lib/i18n";
 
 export interface RequestBoundaryView {
   method: string;
-  origin: string;
-  segments: Array<string | { var: string }>;
+  origin?: string;
+  segments?: Array<string | { var: string }>;
+  destination?: { var: string; hosts: string[] };
   variables: Record<string, { enum: string[] } | { class: string } | { caller_bound: true }>;
   query: { fixed: Record<string, string>; variable: Array<{ key: string; var: string }> };
   connector_query?: { fixed: Record<string, string>; credential: string[] };
@@ -60,6 +61,14 @@ export function presentRequestBoundary(
     ...connectorKeys.map((key) => `${key}=…`),
   ].join("&");
   let unknownRule = false;
+  const destination = boundary.destination
+    ? [
+        {
+          key: "authority.boundary.allowedHosts" as const,
+          values: { name: boundary.destination.var, hosts: boundary.destination.hosts.join(", ") },
+        },
+      ]
+    : [];
   const variables = Object.entries(boundary.variables).map(
     ([name, entry]): RequestBoundaryPresentation["variables"][number] => {
       if ("enum" in entry) {
@@ -85,9 +94,13 @@ export function presentRequestBoundary(
       };
     },
   );
-  const target = `${boundary.origin}${boundary.segments
-    .map((part) => (typeof part === "string" ? part : `{${part.var}}`))
-    .join("/")}${query ? `?${query}` : ""}`;
+  const target = boundary.destination
+    ? `{${boundary.destination.var}} → ${boundary.destination.hosts
+        .map((host) => `https://${host}`)
+        .join(", ")}`
+    : `${boundary.origin ?? ""}${(boundary.segments ?? [])
+        .map((part) => (typeof part === "string" ? part : `{${part.var}}`))
+        .join("/")}${query ? `?${query}` : ""}`;
   const body: RequestBoundaryPresentation["body"] =
     boundary.max_body_bytes === 0
       ? { key: "authority.boundary.noBody", values: {} }
@@ -118,7 +131,7 @@ export function presentRequestBoundary(
       : null;
   const shared = {
     target,
-    variables,
+    variables: [...destination, ...variables],
     paging,
     connectorQuery,
     classNotice: Object.values(boundary.variables).some((entry) => "class" in entry),
@@ -130,11 +143,19 @@ export function presentRequestBoundary(
   switch (boundary.method) {
     case "GET":
     case "HEAD":
-      return { ...shared, title: "authority.boundary.read", destructive: declared };
+      return {
+        ...shared,
+        title: boundary.destination ? "authority.boundary.readHosts" : "authority.boundary.read",
+        destructive: declared,
+      };
     case "POST":
     case "PUT":
     case "PATCH":
-      return { ...shared, title: "authority.boundary.send", destructive: declared };
+      return {
+        ...shared,
+        title: boundary.destination ? "authority.boundary.sendHosts" : "authority.boundary.send",
+        destructive: declared,
+      };
     case "DELETE":
       return { ...shared, title: "authority.boundary.delete", destructive: true };
     default:

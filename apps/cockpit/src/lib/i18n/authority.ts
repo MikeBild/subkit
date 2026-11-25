@@ -207,6 +207,10 @@ export const authorityEn = {
   "authority.boundary.send": "Send to a fixed address",
   "authority.boundary.delete": "Delete at a fixed address",
   "authority.boundary.unknown": "Unrecognised request type",
+  "authority.boundary.readHosts": "Read from an address on listed hosts",
+  "authority.boundary.sendHosts": "Send to an address on listed hosts",
+  "authority.boundary.allowedHosts":
+    "{name} comes from the run and may be any https address, without port or credentials, on exactly these hosts: {hosts}",
   "authority.boundary.target": "{method} {target}",
   "authority.boundary.variable": "{name} may only be: {values}",
   "authority.boundary.variableEncoded":
@@ -649,6 +653,10 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.boundary.send": "An eine feste Adresse senden",
   "authority.boundary.delete": "An einer festen Adresse löschen",
   "authority.boundary.unknown": "Unbekannte Anfrageart",
+  "authority.boundary.readHosts": "Von einer Adresse auf erlaubten Hosts lesen",
+  "authority.boundary.sendHosts": "An eine Adresse auf erlaubten Hosts senden",
+  "authority.boundary.allowedHosts":
+    "{name} kommt aus dem Lauf und darf jede https-Adresse ohne Port und Zugangsdaten auf genau diesen Hosts sein: {hosts}",
   "authority.boundary.target": "{method} {target}",
   "authority.boundary.variable": "{name} darf nur sein: {values}",
   "authority.boundary.variableEncoded":

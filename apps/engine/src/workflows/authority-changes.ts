@@ -53,7 +53,7 @@ const lastStatic = (parts: Array<string | null | { var: string }>) =>
 
 function effectSubject(effect: Effect): string | null {
   if (effect.driver === "graphql" || GRAPHQL_OPERATIONS.has(effect.operation)) return null;
-  if (effect.boundary) return lastStatic(effect.boundary.segments);
+  if (effect.boundary) return lastStatic(effect.boundary.segments ?? []);
   if (effect.read_path) return lastStatic(effect.read_path.segments);
   if (effect.storage) return lastStatic(effect.storage.key_prefix.split("/"));
   if (!effect.target) return null;

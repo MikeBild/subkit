@@ -118,7 +118,7 @@ function hostOf(value: string | null | undefined): string | null {
 
 function staticParts(effect: Effect): string[] {
   const parts: Array<string | null | { var: string }> = effect.boundary
-    ? effect.boundary.segments
+    ? (effect.boundary.segments ?? [])
     : effect.read_path
       ? effect.read_path.segments
       : effect.target
@@ -157,7 +157,7 @@ function localSubject(effect: Effect): string | null {
   )
     return null;
   const parts: Array<string | null | { var: string }> = effect.boundary
-    ? effect.boundary.segments
+    ? (effect.boundary.segments ?? [])
     : effect.read_path
       ? effect.read_path.segments
       : effect.storage

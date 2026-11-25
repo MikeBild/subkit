@@ -75,6 +75,7 @@ type ProposedRequestView = Pick<
   RequestBoundary,
   | "method"
   | "origin"
+  | "destination"
   | "segments"
   | "variables"
   | "query"
@@ -499,15 +500,16 @@ async function settle(
       unproposable: { step_id: step.id, reason: "still_refused", refusal: compiled.refusal },
     };
   if (!compiled.boundary) return { unproposable: { step_id: step.id, reason: "not_supported" } };
-  const { method, origin, segments, variables, query, max_body_bytes, max_calls } =
+  const { method, origin, destination, segments, variables, query, max_body_bytes, max_calls } =
     compiled.boundary;
   return {
     proposal: {
       ...derived.proposal,
       request: {
         method,
-        origin,
-        segments,
+        ...(origin !== undefined ? { origin } : {}),
+        ...(destination ? { destination } : {}),
+        ...(segments ? { segments } : {}),
         variables,
         query,
         max_body_bytes,

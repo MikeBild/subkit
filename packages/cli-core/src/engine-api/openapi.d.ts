@@ -31255,13 +31255,17 @@ export interface components {
                     /** @enum {string} */
                     method: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
                     /** Format: uri */
-                    origin: string;
+                    origin?: string;
+                    destination?: {
+                        var: string;
+                        hosts: string[];
+                    };
                     /** @enum {string} */
                     body_encoding?: "multipart";
                     idempotency_key?: {
                         var: string;
                     };
-                    segments: (string | {
+                    segments?: (string | {
                         var: string;
                     })[];
                     variables: {
@@ -32017,6 +32021,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -32166,6 +32172,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -32484,6 +32492,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -32654,6 +32664,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -32824,6 +32836,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -32989,6 +33003,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -33154,6 +33170,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -33324,6 +33342,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -33494,6 +33514,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -33645,6 +33667,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -33796,6 +33820,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */
@@ -33979,6 +34005,8 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
+                allowed_hosts?: string[] | string;
                 max_body_bytes: number;
                 max_calls: number;
                 /** @enum {boolean} */

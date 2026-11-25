@@ -33,10 +33,35 @@ test("absolute URLs and connector URLs must start at the beginning of the addres
       {
         path: "steps.fetch.url",
         message:
-          "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path",
+          "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path. A url taken whole from the run (`${input.url}`, `${item.page_url}`) is allowed only with `boundary.allowed_hosts`, the hosts it may reach over https",
       },
     ]);
   }
+});
+
+test("a url taken whole from the run validates only with an allowed host list", () => {
+  const boundary = { variables: {}, max_body_bytes: 0, max_calls: 1 };
+  const hosts = { ...boundary, allowed_hosts: ["docs.example.com"] };
+  const pinLater = { ...boundary, allowed_hosts: "${input.allowed_hosts}" };
+  for (const step of [
+    { ...request, url: "${input.url}", boundary: hosts },
+    {
+      ...request,
+      url: "${item.page_url}",
+      boundary: pinLater,
+      for_each: "(sourceData) => sourceData.list.data",
+    },
+  ])
+    expect(validateWorkflowDef(define([step])).errors).toEqual([]);
+  for (const step of [
+    { ...request, url: "${input.url}" },
+    { ...request, url: "${input.url}", boundary },
+    { ...request, url: "${input.url}/page", boundary: hosts },
+    { ...request, url: "${scope.fetch.data.url}", boundary: hosts },
+  ])
+    expect(validateWorkflowDef(define([step])).errors.map((error) => error.path)).toContain(
+      "steps.fetch.url",
+    );
 });
 
 test("only leading legacy references reject a for_each selector, with surrounding whitespace ignored", () => {

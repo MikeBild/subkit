@@ -285,7 +285,9 @@ function httpBeforeDispatch(x: HttpExchange) {
         : {}),
     });
     x.last_request = request;
-    return d.own_credentials.length > 0 ? { redirect: "manual" as const } : policy;
+    return d.own_credentials.length > 0 || d.p.step.boundary?.allowed_hosts !== undefined
+      ? { redirect: "manual" as const }
+      : policy;
   };
 }
 
@@ -450,6 +452,25 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
   const declared = p.step.boundary
     ? requestBoundary(p.step, d.state.activeConnector?.base_url ?? null, target.connector_query)
     : null;
+  const runtimeDestination = p.step.boundary?.allowed_hosts !== undefined;
+  if (runtimeDestination && !declared?.destination) {
+    logger.warn({
+      module: "execution",
+      action: "request.destination_unbounded",
+      msg: "runtime url step has no compilable allowed host list; nothing was sent",
+      execution_id: p.ctx.execution_id,
+      step_id: p.step.id,
+    });
+    return {
+      result: failedStep(d, {
+        code: "request_destination_unbounded",
+        message:
+          "This step takes its url from the run, but its `boundary.allowed_hosts` is not a pinned list of host names " +
+          "for a url that is one whole `${input.*}` or `${item.*}` placeholder. Nothing was sent. Install the recipe " +
+          "with its allowed hosts, or set `boundary.allowed_hosts` to the hosts this step may reach.",
+      }),
+    };
+  }
   if (p.step.boundary) {
     const violation = declared
       ? requestBoundaryViolation(declared, {
@@ -461,6 +482,25 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
           ...(p.resolved_body_file ? { unsupported_body: true } : {}),
         })
       : null;
+    if (violation?.kind === "destination") {
+      logger.warn({
+        module: "execution",
+        action: "request.host_not_allowed",
+        msg: "runtime url outside the allowed hosts; nothing was sent",
+        execution_id: p.ctx.execution_id,
+        step_id: p.step.id,
+        issue: violation.issue,
+        actual: violation.actual,
+      });
+      return {
+        result: failedStep(d, {
+          code: "request_host_not_allowed",
+          message:
+            `This request is outside the hosts its step allows: ${describeRequestBoundaryViolation(violation)}. ` +
+            "Nothing was sent. Pass a url on one of these hosts, or add the host to `boundary.allowed_hosts` and have the change approved.",
+        }),
+      };
+    }
     if (violation) {
       return {
         result: failedStep(d, {

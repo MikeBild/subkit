@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { pinInstallInputs } from "../workflows/recipe-install-inputs.ts";
 import {
   validateStepReferences,
   validateUnsupportedPlaceholders,
@@ -495,17 +496,28 @@ describe("square write recipes (#564)", () => {
   });
 });
 
-describe("web-scraper recipes (#522)", () => {
-  const literalUrls = (workflow: unknown): unknown => {
-    const copy = JSON.parse(JSON.stringify(workflow)) as { steps: Array<{ url?: string }> };
-    for (const step of copy.steps) if (step.url) step.url = "https://example.test/page";
-    return copy;
+describe("web-scraper recipes (#522, #859)", () => {
+  const recipes = () => getBuiltinTemplate("web-scraper")!.recipes;
+  const installed = (workflow: unknown) => {
+    const pinned = pinInstallInputs(workflow, ["allowed_hosts"], {
+      allowed_hosts: ["docs.example.com", "example.com"],
+    });
+    if (!pinned.ok) throw new Error(pinned.message);
+    return pinned.definition;
   };
+  const fetchRefusals = (workflow: unknown) =>
+    WorkflowDefSchema.parse(workflow)
+      .steps.filter((step): step is RequestStep => step.kind === "request")
+      .map((step) => compileRequestBoundary(step, null).refusal ?? null);
 
-  test("every recipe validates once its fetch urls are literal", () => {
-    const outcomes = getBuiltinTemplate("web-scraper")!.recipes.map((recipe) => ({
+  test("every recipe validates with its runtime urls, before and after install", () => {
+    const outcomes = recipes().map((recipe) => ({
       slug: recipe.slug,
-      errors: validateWorkflowDef(literalUrls(recipe.workflow)).errors,
+      install_inputs: recipe.install_inputs,
+      errors: [
+        ...validateWorkflowDef(recipe.workflow).errors,
+        ...validateWorkflowDef(installed(recipe.workflow)).errors,
+      ],
     }));
     expect(outcomes.map((outcome) => outcome.slug).sort()).toEqual([
       "crawl-sitemap-to-markdown",
@@ -513,6 +525,20 @@ describe("web-scraper recipes (#522)", () => {
       "fetch-url-as-markdown",
     ]);
     expect(outcomes.filter((outcome) => outcome.errors.length > 0)).toEqual([]);
+    expect(outcomes.every((outcome) => outcome.install_inputs.includes("allowed_hosts"))).toBe(
+      true,
+    );
+  });
+
+  test("every fetch is bounded once the allowed hosts are pinned, and refused before", () => {
+    for (const recipe of recipes()) {
+      const before = fetchRefusals(recipe.workflow);
+      expect(before.length).toBeGreaterThan(0);
+      expect(before.every((refusal) => refusal === "allowed_hosts_unpinned")).toBe(true);
+      expect(fetchRefusals(installed(recipe.workflow)).every((refusal) => refusal === null)).toBe(
+        true,
+      );
+    }
   });
 
   test("every html transform names its input with input_from", () => {

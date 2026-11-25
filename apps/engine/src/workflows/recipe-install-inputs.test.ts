@@ -176,3 +176,66 @@ describe("install-time inputs pinned into recipe request paths (#519)", () => {
     });
   });
 });
+
+describe("install-time allowed hosts pinned into web-scraper boundaries (#859)", () => {
+  const scraper = (slug: string) => {
+    const recipe = getBuiltinTemplate("web-scraper")?.recipes.find((entry) => entry.slug === slug);
+    if (!recipe) throw new Error(`${slug} missing`);
+    return recipe;
+  };
+  const gate = (definition: unknown) =>
+    Promise.all(
+      ((definition as WorkflowDef).steps as RequestStep[])
+        .filter((step) => step.kind === "request")
+        .map((step) =>
+          gateRequestBoundary({
+            step,
+            system: null,
+            credentials: undefined,
+            stricter_profile: null,
+            read_path: false,
+          }),
+        ),
+    );
+
+  test("a pinned host list is approved as a boundary that names every host", async () => {
+    const recipe = scraper("crawl-sitemap-to-markdown");
+    const pinned = pinInstallInputs(recipe.workflow, recipe.install_inputs, {
+      allowed_hosts: ["Example.com", "docs.example.com", "example.com"],
+      sitemap_url: "https://example.com/sitemap.xml",
+    });
+    if (!pinned.ok) throw new Error(pinned.message);
+    const outcomes = await gate(pinned.definition);
+    expect(outcomes.map((outcome) => outcome.refusal)).toEqual([null, null]);
+    expect(outcomes.map((outcome) => outcome.boundary?.destination)).toEqual([
+      { var: "input.sitemap_url", hosts: ["docs.example.com", "example.com"] },
+      { var: "item.page_url", hosts: ["docs.example.com", "example.com"] },
+    ]);
+    expect(outcomes.map((outcome) => outcome.boundary?.max_calls)).toEqual([1, 1000]);
+  });
+
+  test("without the install input the gate refuses the unpinned host list", async () => {
+    const recipe = scraper("fetch-url-as-markdown");
+    const unpinned = pinInstallInputs(recipe.workflow, recipe.install_inputs, {});
+    if (!unpinned.ok) throw new Error(unpinned.message);
+    expect((await gate(unpinned.definition)).map((outcome) => outcome.refusal)).toEqual([
+      "allowed_hosts_unpinned",
+    ]);
+  });
+
+  test("a host list with a wildcard, port, scheme or address is refused, never pinned", () => {
+    const recipe = scraper("fetch-url-as-markdown");
+    for (const allowed_hosts of [
+      ["*.example.com"],
+      ["example.com:443"],
+      ["https://example.com"],
+      ["127.0.0.1"],
+      [],
+      ["example.com", 7],
+      "example.com",
+    ])
+      expect(
+        pinInstallInputs(recipe.workflow, recipe.install_inputs, { allowed_hosts }),
+      ).toMatchObject({ ok: false, key: "allowed_hosts" });
+  });
+});
