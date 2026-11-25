@@ -12,6 +12,21 @@ describe("connectorCheckPlan", () => {
 });
 
 describe("connectorCheckFailure", () => {
+  test("omits unavailable probe details", () => {
+    for (const warnings of [undefined, null, "invalid", {}, []]) {
+      expect(
+        connectorCheckFailure({ created: false }, "probe", "probe returned not-ok", {
+          probe: { ok: false, warnings },
+        }),
+      ).toEqual({
+        created: false,
+        stage: "probe",
+        probe: { ok: false },
+        error: { code: "CONNECTOR_PROBE_FAILED", message: "probe returned not-ok" },
+      });
+    }
+  });
+
   const issues = [{ path: "base_url", message: "required" }];
   const cases: Array<[string, Parameters<typeof connectorCheckFailure>, unknown]> = [
     [
