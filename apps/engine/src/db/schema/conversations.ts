@@ -65,11 +65,13 @@ export const conversations = pgTable(
     origin_client: text("origin_client"),
     surface: text("surface"),
     title_locked: boolean("title_locked").notNull().default(false),
+    visibility: text("visibility").$type<"private" | "team">().notNull().default("private"),
     ...timestamps,
   },
   (t) => [
     index("conversations_tenant_status_idx").on(t.tenant_id, t.status),
     index("conversations_owner_idx").on(t.tenant_id, t.owner_id, t.updated_at),
+    index("conversations_visibility_idx").on(t.tenant_id, t.visibility, t.updated_at),
   ],
 );
 

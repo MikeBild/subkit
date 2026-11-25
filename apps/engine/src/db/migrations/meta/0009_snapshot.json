@@ -1,6 +1,6 @@
 {
-  "id": "d6a89da0-b8de-4a49-91d0-1dd251054e00",
-  "prevId": "0737711c-0f20-463f-b567-706d4ffaf2d6",
+  "id": "b7c10f4e-a04c-493a-908d-a536f325d509",
+  "prevId": "d6a89da0-b8de-4a49-91d0-1dd251054e00",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5757,6 +5757,13 @@
           "notNull": true,
           "default": false
         },
+        "visibility": {
+          "name": "visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'private'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5805,6 +5812,33 @@
             },
             {
               "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "conversations_visibility_idx": {
+          "name": "conversations_visibility_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "visibility",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
