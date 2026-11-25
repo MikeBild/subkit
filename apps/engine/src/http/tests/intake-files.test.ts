@@ -136,6 +136,28 @@ describe("POST /v1/intake/items/file", () => {
     expect(detail.original_snapshot.body).toBe(" \t\n \n");
   });
 
+  test("a plain-text file over two million characters keeps its whole text", async () => {
+    const text = `${"a".repeat(2_030_000)}END`;
+    const res = await request(
+      "/v1/intake/items/file",
+      "POST",
+      fileBody("20000000-0000-4000-8000-000000000008", {
+        filename: "large.txt",
+        content_type: "text/plain",
+        content_base64: Buffer.from(text).toString("base64"),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const item = (await res.json()) as Item;
+    expect(item.body.length).toBe(text.length);
+    expect(item.body.endsWith("END")).toBe(true);
+    const detail = (await (await request(`/v1/intake/items/${item.id}`, "GET")).json()) as Item & {
+      original_snapshot: { body?: string };
+    };
+    expect(detail.body).toBe(text);
+    expect(detail.original_snapshot.body).toBe(text);
+  });
+
   test("a type outside the list, or bytes that lie about their type, are refused", async () => {
     const html = await request(
       "/v1/intake/items/file",

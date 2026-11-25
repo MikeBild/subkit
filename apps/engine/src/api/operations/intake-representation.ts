@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { INTAKE_FILE_BODY_MAX_CHARS } from "../../knowledge/index.ts";
 import { CategorySchema } from "../catalog-metadata.ts";
 import {
   CapturedAtInputSchema,
@@ -158,7 +159,7 @@ export const PatchItemSchema = z
     expected_version: z.number().int().positive(),
     category: CategorySchema.optional(),
     title: z.string().trim().min(1).max(1_000).optional(),
-    body: z.string().min(1).max(2_000_000).optional(),
+    body: z.string().min(1).max(INTAKE_FILE_BODY_MAX_CHARS).optional(),
     note: z.string().max(20_000).optional(),
     state: z.enum(["collected", "reviewing", "discarded"]).optional(),
   })

@@ -14,7 +14,7 @@ export * from "./errors.ts";
 export * from "./intake.ts";
 export { type IntakeEmbedder, intakeItemByRequestId } from "./intake-dedupe.ts";
 export * from "./intake-errors.ts";
-export { checkIntakeFile, intakeFileBody } from "./intake-file.ts";
+export { checkIntakeFile, INTAKE_FILE_BODY_MAX_CHARS, intakeFileBody } from "./intake-file.ts";
 export { collectorAuditActor, INTAKE_ITEM_ORIGIN_FILTERS } from "./intake-rows.ts";
 export * from "./intake-session.ts";
 export * from "./intake-summary.ts";
