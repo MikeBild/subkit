@@ -6,12 +6,13 @@ import { isCronDue } from "./reconciler.ts";
 const created = new Date("2026-01-01T00:00:00.000Z");
 
 describe("nextScheduleFire", () => {
-  test.each<{ input: Parameters<typeof calendarGateSkipReason>[2]; expected: string }>([
-    { input: { business_days_only: true }, expected: "2026-03-16T18:00:00.000Z" },
-    { input: { skip_dates: ["2026-03-14"] }, expected: "2026-03-15T18:00:00.000Z" },
-  ])("a missed Friday run does not fire on a blocked Saturday: $input", ({ input, expected }) => {
+  test.each<{ input: Parameters<typeof calendarGateSkipReason>[2] }>([
+    { input: { business_days_only: true } },
+    { input: { skip_dates: ["2026-03-14"] } },
+  ])("a missed open Friday run still catches up on a blocked Saturday: $input", ({ input }) => {
     const now = new Date("2026-03-14T09:00:00.000Z");
     const last = new Date("2026-03-12T18:00:00.000Z");
+    const fridayDue = new Date("2026-03-13T18:00:00.000Z");
     const next = nextScheduleFire(
       {
         cron: "0 19 * * *",
@@ -22,10 +23,25 @@ describe("nextScheduleFire", () => {
       },
       now,
     );
-    expect(next).toBe(expected);
-    const at = new Date(next ?? "");
-    expect(calendarGateSkipReason(at, "Europe/Berlin", input)).toBeNull();
-    expect(isCronDue("0 19 * * *", last, at, "Europe/Berlin")).toBe(true);
+    expect(next).toBe(now.toISOString());
+    expect(calendarGateSkipReason(fridayDue, "Europe/Berlin", input)).toBeNull();
+    expect(isCronDue("0 19 * * *", last, now, "Europe/Berlin")).toBe(true);
+  });
+
+  test("a missed excluded Friday run waits for the next open occurrence", () => {
+    const input = { business_days_only: true, skip_dates: ["2026-03-13"] };
+    const next = nextScheduleFire(
+      {
+        cron: "0 19 * * *",
+        timezone: "Europe/Berlin",
+        input,
+        last_enqueued_at: new Date("2026-03-12T18:00:00.000Z"),
+        created_at: created,
+      },
+      new Date("2026-03-14T09:00:00.000Z"),
+    );
+    expect(next).toBe("2026-03-16T18:00:00.000Z");
+    expect(calendarGateSkipReason(new Date(next ?? ""), "Europe/Berlin", input)).toBeNull();
   });
 
   test("a cron schedule fires when the reconciler's due check first turns true", () => {

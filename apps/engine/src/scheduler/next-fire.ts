@@ -27,12 +27,7 @@ function firstOpenOccurrence(
     occurrence && occurrence.getTime() <= limit && step < MAX_OCCURRENCE_STEPS;
     step++
   ) {
-    const fire = occurrence.getTime() > now.getTime() ? occurrence : now;
-    if (
-      calendarGateSkipReason(occurrence, tz, gates) === null &&
-      calendarGateSkipReason(fire, tz, gates) === null
-    )
-      return occurrence;
+    if (calendarGateSkipReason(occurrence, tz, gates) === null) return occurrence;
     occurrence = nextCronOccurrence(cron, occurrence, tz);
   }
   return null;
