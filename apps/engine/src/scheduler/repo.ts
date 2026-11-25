@@ -12,7 +12,7 @@ import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
 import { chooseEnvironment } from "../identity/core/default-environment.ts";
 import { personalDefaultEnvironment } from "../identity/setup-preferences.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
-import { isRecord } from "../utils/type-guards.ts";
+import { isRecord } from "../utils/index.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
 import { isIanaTimeZone, WorkflowDefSchema } from "../workflows/types.ts";
