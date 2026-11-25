@@ -39,6 +39,7 @@ describe("selectors", () => {
     expect(page2.done).toBe(false);
     expect(new URL(page2.url).searchParams.get("starting_after")).toBe("txn_2");
     expect(strategy.next({ data: [], has_more: false }, 2).done).toBe(true);
+    expect(strategy.next({ data: [{ id: "txn_3" }], has_more: false }, 2).done).toBe(true);
   });
 
   test("every connector template pagination selector compiles", () => {
