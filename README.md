@@ -8,12 +8,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-mac-dark.webp" /><img src=".github/readme/button-mac.webp" alt="Download for Mac" width="260" /></picture></a>
-  <a href="https://subkit-cloud.mikebild.dev"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-cloud-dark.webp" /><img src=".github/readme/button-cloud.webp" alt="Sign up for SubKit Cloud" width="260" /></picture></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-selfhost-dark.webp" /><img src=".github/readme/button-selfhost.webp" alt="Self-host with Docker" width="260" /></picture></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-mac-dark.webp" /><img src=".github/readme/button-mac.webp" alt="Download for Mac" width="200" /></picture></a>
+  <a href="https://subkit-cloud.mikebild.dev"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-cloud-dark.webp" /><img src=".github/readme/button-cloud.webp" alt="Sign up for SubKit Cloud" width="200" /></picture></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-selfhost-dark.webp" /><img src=".github/readme/button-selfhost.webp" alt="Self-host with Docker" width="200" /></picture></a>
+  <a href="https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-chrome-dark.webp" /><img src=".github/readme/button-chrome.webp" alt="Add to Chrome" width="200" /></picture></a>
 </p>
 
-<p align="center"><sub>macOS 13+ on Apple Silicon · Windows coming soon</sub></p>
+<p align="center"><sub>macOS 13+ on Apple Silicon · Chrome and Chromium browsers · Windows coming soon</sub></p>
 
 <p align="center">
   <a href="https://subkit.mikebild.dev/en/documentation/"><strong>Documentation</strong></a> ·
@@ -36,7 +37,7 @@
 <table>
   <tr>
     <td width="50%" valign="top"><a href="#hands-the-recurring-work-over"><strong>Hands the recurring work over.</strong></a><br />Workflows and tasks for the jobs that keep coming back.</td>
-    <td width="50%" valign="top"><a href="#your-teams-second-brain"><strong>Your team’s second brain.</strong></a><br />What your team knows, collected and reviewed in one place.</td>
+    <td width="50%" valign="top"><a href="#your-teams-second-brain"><strong>Your team’s second brain.</strong></a><br />What your team knows, collected and reviewed in one place, with pages from the <a href="https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma">Web Clipper</a>.</td>
   </tr>
   <tr>
     <td valign="top"><a href="#works-on-your-computer"><strong>Works on your computer.</strong></a><br />Files, browser and apps, only where you allow it.</td>
@@ -367,7 +368,7 @@ curl -fsSL https://github.com/MikeBild/subkit/releases/latest/download/install.s
 
 [Connect Claude Code, Codex and other AI clients](https://subkit.mikebild.dev/en/documentation/mcp-clients/) over MCP.
 
-**Collect pages from Chrome** with the Web Clipper: [add it from the Chrome Web Store](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma), where it updates itself. For offline setups, [download the ZIP file](https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip) and follow the [install guide](https://subkit.mikebild.dev/en/documentation/web-clipper/).
+**Collect pages from Chrome** and other Chromium browsers with the Web Clipper: [add it to Chrome from the Chrome Web Store](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma), where it updates itself. For offline setups, [download the ZIP file](https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip) and follow the [install guide](https://subkit.mikebild.dev/en/documentation/web-clipper/).
 
 <details>
 <summary><strong>Develop from source</strong></summary>
@@ -400,6 +401,12 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 
 | What your team gets done | Since |
 | --- | --- |
+| Private conversations, shared with your team only when you choose | 13.1.0 |
+| Workspace isolation enforced in the database, in SubKit Cloud too | 13.1.0 |
+| A personal and a team second brain, with private notes only you can see | 13.0.0 |
+| Model steps: your workspace AI model inside a workflow, with structured output | 13.0.0 |
+| Read CSV, Excel, PDF, Word and ZIP files in a workflow | 13.0.0 |
+| SFTP with a password or an SSH key from the vault | 13.0.0 |
 | Work on your computer: computer use, browser use and local files, with a live view | 12.1.0 |
 | A fully local workspace | 12.1.0 |
 | One vault for workspace, personal and device secrets | 12.1.0 |
