@@ -69,11 +69,17 @@ export function registerAiGenerateRoute(app: OpenAPIHono<AppEnv>): void {
     try {
       raw = await c.req.json();
     } catch {
-      return c.json({ code: "bad_request", message: "invalid json" }, 400);
+      return c.json(
+        { code: "bad_request", message: "invalid json", trace_id: c.get("trace_id") },
+        400,
+      );
     }
     const parsed = GenerateBody.safeParse(raw);
     if (!parsed.success) {
-      return c.json({ code: "bad_request", message: "invalid body" }, 400);
+      return c.json(
+        { code: "bad_request", message: "invalid body", trace_id: c.get("trace_id") },
+        400,
+      );
     }
     return streamSSE(c, async (stream) => {
       const result = await runGenerateFlow(

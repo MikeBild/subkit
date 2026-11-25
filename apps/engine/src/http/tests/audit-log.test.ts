@@ -247,6 +247,21 @@ describe("/v1/audit-log", () => {
     }
   });
 
+  test("export.ndjson rejects an invalid filter with the traced envelope", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/audit-log/export.ndjson?actor_id=not-a-uuid`, {
+      headers: { authorization: `Bearer ${srv.apiKey}` },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      code: string;
+      trace_id?: string;
+      details?: { fieldErrors?: Record<string, string[]> };
+    };
+    expect(body.code).toBe("bad_request");
+    expect(body.trace_id).toBe(res.headers.get("x-trace-id") ?? "");
+    expect(body.details?.fieldErrors?.actor_id?.length).toBeGreaterThan(0);
+  });
+
   test("permission gate: member API key gets 403", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/audit-log`, {
       headers: { authorization: `Bearer ${memberKey}` },

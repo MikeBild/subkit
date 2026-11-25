@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
@@ -25,18 +26,22 @@ export type AppEnv = {
   };
 };
 
+export const validationFailedResponse = (context: Context<AppEnv>, details?: unknown) =>
+  context.json(
+    {
+      code: "bad_request",
+      message: "request validation failed",
+      trace_id: context.get("trace_id"),
+      ...(details ? { details } : {}),
+    },
+    400,
+  );
+
 export function createOpenApiApp(): OpenAPIHono<AppEnv> {
   const app = new OpenAPIHono<AppEnv>({
     defaultHook: (result, c) => {
       if (!result.success) {
-        return c.json(
-          {
-            code: "bad_request",
-            message: "request validation failed",
-            details: result.error.flatten(),
-          },
-          400,
-        );
+        return validationFailedResponse(c, result.error.flatten());
       }
       return undefined;
     },

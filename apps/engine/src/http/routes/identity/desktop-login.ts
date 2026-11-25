@@ -245,7 +245,14 @@ export function registerDesktopLoginRoutes(app: OpenAPIHono<AppEnv>): void {
         403,
       );
     if (!(c.req.header("content-type") ?? "").toLowerCase().startsWith("application/json"))
-      return c.json({ code: "bad_request", message: "the body must be application/json" }, 400);
+      return c.json(
+        {
+          code: "bad_request",
+          message: "the body must be application/json",
+          trace_id: c.get("trace_id"),
+        },
+        400,
+      );
     return await next();
   });
 
