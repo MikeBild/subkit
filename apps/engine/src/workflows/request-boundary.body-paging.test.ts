@@ -121,6 +121,14 @@ test("every unbounded variant of body paging is refused", () => {
   );
 });
 
+test("form requests cannot page through the body", () => {
+  for (const form of [{ filter: "open" }, {}]) {
+    const compiled = compileRequestBoundary(search({ body: undefined, form }), BASE);
+    expect(compiled.refusal).toBe("pagination_body_unsupported");
+    expect(compiled.boundary).toBeUndefined();
+  }
+});
+
 test("the manifest digest follows the paging fields, the ceiling and the location", () => {
   const reviewed = workflowJsonDigest(compiled());
   expect(workflowJsonDigest(compiled({ pagination: cursor({ max_pages: 5 }) }))).not.toBe(reviewed);

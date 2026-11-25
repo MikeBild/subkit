@@ -358,6 +358,7 @@ function bodyPagingRefusal(
 ): RequestBoundaryRefusal | null {
   const method = (step.method ?? "GET").toUpperCase();
   if (method === "GET" || method === "HEAD") return "pagination_body_unsupported";
+  if (step.form !== undefined) return "pagination_body_unsupported";
   if (step.body === undefined || step.body === null) return null;
   if (!isPlainRecord(step.body)) return "pagination_body_unsupported";
   const keys = Object.keys(step.body);
