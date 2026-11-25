@@ -81,6 +81,8 @@ jobs:
           sort -u graph.txt scans.txt > affected.txt
           awk -v shard="$SHARD" 'NR % 4 == shard - 1' affected.txt > shard.txt
           echo "$(wc -l < affected.txt) affected test files, $(wc -l < shard.txt) in shard $SHARD"
+      - name: Install PTY test dependency
+        run: sudo apt-get update && sudo apt-get install -y expect
       - name: Run the shard and compare failures with the base commit
         run: |
           : > failed.txt
