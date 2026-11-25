@@ -84,8 +84,9 @@ export function pinInstallInputs(
   definition: unknown,
   keys: readonly string[],
   inputs: Readonly<Record<string, unknown>>,
+  inputDefinition: unknown = definition,
 ): InstallInputPin {
-  const mailboxKeys = new Set(mailboxInstallInputs(definition, keys));
+  const mailboxKeys = new Set(mailboxInstallInputs(inputDefinition, keys));
   const paths = new Map<string, string>();
   const senders = new Map<string, string>();
   for (const key of keys) {

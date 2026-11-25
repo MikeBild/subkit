@@ -15,6 +15,13 @@ const paidCheckout = () => {
 const paidOrigin = { vertical: "solutions", slug: "payment-grants-access" };
 
 describe("install-time sender of the paid checkout solution (#590)", () => {
+  test("the engine accepts a sender already pinned by the CLI", () => {
+    const inputs = { sender: "team@example.com" };
+    const cli = pinInstallInputs(paidCheckout().workflow, paidCheckout().install_inputs, inputs);
+    if (!cli.ok) throw new Error(cli.message);
+    expect(pinnedRecipeDefinition({ ...paidOrigin, inputs }, cli.definition)).toEqual(cli);
+  });
+
   test("the solution declares its sender as an install input of the mailbox class", () => {
     expect(paidCheckout().install_inputs).toEqual(["sender"]);
     expect(mailboxInstallInputs(paidCheckout().workflow, ["sender"])).toEqual(["sender"]);

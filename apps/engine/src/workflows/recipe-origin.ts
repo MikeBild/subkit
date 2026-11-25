@@ -33,7 +33,12 @@ export function pinnedRecipeDefinition(
 ): PinnedRecipeDefinition {
   const recipe = originRecipe(origin);
   if (!recipe) return { ok: true, definition };
-  const pinned = pinInstallInputs(definition, recipe.install_inputs, origin.inputs ?? {});
+  const pinned = pinInstallInputs(
+    definition,
+    recipe.install_inputs,
+    origin.inputs ?? {},
+    recipe.workflow,
+  );
   if (pinned.ok) return pinned;
   const name = `install input ${pinned.key} of recipe ${origin.vertical}/${origin.slug}`;
   return pinned.missing
