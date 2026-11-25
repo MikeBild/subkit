@@ -10,6 +10,7 @@ import {
   intakeProposalRevisions,
   intakeProposals,
 } from "../db/schema/intake.ts";
+import { recordAdmittedKnowledgeBaseline } from "../identity/index.ts";
 import { redactSecretShapes } from "../logging/scrub-secrets.ts";
 import { absorbedRequestKey, intakeGroupKey } from "./core/intake-dedupe.ts";
 import {
@@ -69,7 +70,6 @@ function itemRequestDigest(p: CreateIntakeItemParams, intakeCategory: string): s
     original_snapshot: snapshot(p),
   });
 }
-
 export async function listIntakeCategories(
   p: { tenant_id: string; actor: Actor },
   exec: Executor,
@@ -912,6 +912,8 @@ export async function confirmIntakeProposal(
       revision.items.map((item) => item.id),
       "intake_item_admitted",
     );
+    if (target.kind === "knowledge")
+      await recordAdmittedKnowledgeBaseline(tx, p.tenant_id, p.id, target.id);
     await recordIntakeAudit(
       tx,
       p.tenant_id,

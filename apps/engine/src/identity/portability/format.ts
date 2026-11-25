@@ -259,6 +259,10 @@ export function payloadBytes(payload: unknown): Uint8Array {
   return new TextEncoder().encode(`${canonicalJson(payload)}\n`);
 }
 
+export function payloadHash(payload: unknown): string {
+  return sha256Hex(payloadBytes(payload));
+}
+
 export function itemPath(kind: PackageItemKind, key: string): string {
   return `${PACKAGE_KIND_DIRECTORY[kind]}/${key}.json`;
 }

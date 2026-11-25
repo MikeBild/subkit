@@ -16,6 +16,13 @@ import {
   workflowsSchedules,
   workflowVersions,
 } from "../../../db/schema/index.ts";
+import {
+  confirmIntakeProposal,
+  getIntakeProposal,
+  getKnowledgeSource,
+  getKnowledgeSourceContent,
+  updateKnowledgeSourceContent,
+} from "../../../knowledge/index.ts";
 import { updateSkill } from "../../../skills/index.ts";
 import {
   type MemoryOffloadStorage,
@@ -89,6 +96,10 @@ beforeAll(async () => {
   storage = await useMemoryOffloadStorage();
   const source = await seedTenant(ctx, "pkg-import-a");
   fixture = await seedSourceTenant(ctx.db, source.tenant_id, source.user_id);
+  await ctx.db
+    .update(knowledgeSources)
+    .set({ name: "Reviewed widget handbook" })
+    .where(eq(knowledgeSources.id, fixture.knowledge_id));
   archive = buildPackageArchive(
     await collectTenantPackage(ctx.db, source.tenant_id, { include_bytes: true }),
     SOURCE,
@@ -318,5 +329,72 @@ describe("tenant package import", () => {
       plan.items.find((item) => item.kind === "skill" && item.key === "widget-guide")?.reason,
     ).toBe("local_changes");
     expect(actionOf(plan, "workflow", "fetch-widgets")).toBe("unchanged");
+  });
+
+  test("local edits of an admitted knowledge source with a different slug surface as conflicts", async () => {
+    const knowledge = applied.items.find((item) => item.kind === "knowledge");
+    if (!knowledge?.review) throw new Error("knowledge review handoff missing");
+    const proposal = await getIntakeProposal(target_id, knowledge.review.proposal_id, ctx.db);
+    if (!proposal) throw new Error("imported proposal missing");
+    const confirmed = await confirmIntakeProposal(
+      {
+        tenant_id: target_id,
+        actor: who.actor,
+        id: proposal.id,
+        expected_revision: proposal.current_revision,
+        digest: proposal.revision.digest,
+        authorize: async () => {},
+      },
+      ctx.db,
+    );
+    const source_id = confirmed?.confirmed_target_id;
+    if (!source_id) throw new Error("admitted knowledge source missing");
+    const [row] = await ctx.db
+      .select()
+      .from(packageInstallItems)
+      .where(
+        and(
+          eq(packageInstallItems.tenant_id, target_id),
+          eq(packageInstallItems.kind, "knowledge"),
+        ),
+      );
+    expect(row?.state).toBe("admitted");
+    expect(row?.local_id).toBe(source_id);
+    expect(row?.local_hash).toMatch(/^[0-9a-f]{64}$/);
+    const key = row?.item_key ?? "";
+    const knowledgeOf = (plan: PackagePlan) =>
+      plan.items.find((item) => item.kind === "knowledge" && item.key === key);
+    expect(knowledgeOf(await previewPackageImport(ctx.db, target_id, archive))?.action).toBe(
+      "unchanged",
+    );
+    const source = await getKnowledgeSource(target_id, source_id, ctx.db);
+    const content = await getKnowledgeSourceContent(target_id, source_id, ctx.db);
+    const document = content?.documents[0];
+    if (!source || !document) throw new Error("admitted knowledge content missing");
+    expect(source.slug).not.toBe(key);
+    const edited = "# Runbook\n\nLocally edited on engine B.";
+    await updateKnowledgeSourceContent(
+      {
+        tenant_id: target_id,
+        knowledge_source_id: source_id,
+        expected_version: source.version,
+        path: document.path,
+        content: edited,
+        actor: who.actor,
+      },
+      ctx.db,
+    );
+    const plan = await previewPackageImport(ctx.db, target_id, archive);
+    expect(knowledgeOf(plan)).toMatchObject({ action: "conflict", reason: "local_changes" });
+    const again = await applyPackageImport(ctx.db, {
+      tenant_id: target_id,
+      archive,
+      archive_file_id: null,
+      expected_plan_digest: plan.plan_digest,
+      who,
+    });
+    expect(again.items.find((item) => item.kind === "knowledge")?.action).toBe("conflict");
+    const after = await getKnowledgeSourceContent(target_id, source_id, ctx.db);
+    expect(after?.documents.find((doc) => doc.path === document.path)?.content).toBe(edited);
   });
 });

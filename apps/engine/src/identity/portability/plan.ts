@@ -9,9 +9,11 @@ import {
   type PackageManifest,
   type PackagePayload,
   type PackageRequirement,
-  payloadBytes,
+  payloadHash,
   sha256Hex,
 } from "./format.ts";
+
+export { payloadHash };
 
 export type PackagePlanAction = "create" | "update" | "unchanged" | "conflict";
 
@@ -55,10 +57,6 @@ const UPDATABLE: ReadonlySet<PackageItemKind> = new Set(["workflow", "skill"]);
 
 export function itemId(kind: PackageItemKind, key: string): string {
   return `${kind}:${key}`;
-}
-
-export function payloadHash(payload: unknown): string {
-  return sha256Hex(payloadBytes(payload));
 }
 
 function indexFor(index: PackageIndex, kind: PackageItemKind): Map<string, string> {
@@ -122,6 +120,19 @@ export async function targetState(
   return { index: target.index, hashes };
 }
 
+function localChanged(
+  localId: string | null,
+  targetHash: string | undefined,
+  registry: RegistryRow,
+): boolean {
+  return (
+    localId !== null &&
+    targetHash !== undefined &&
+    registry.local_hash !== null &&
+    targetHash !== registry.local_hash
+  );
+}
+
 function decide(
   item: PackagePayload,
   archiveHash: string,
@@ -131,6 +142,8 @@ function decide(
 ): Pick<PackagePlanItem, "action" | "reason"> {
   if (item.kind === "knowledge") {
     if (registry) {
+      if (localChanged(localId, targetHash, registry))
+        return { action: "conflict", reason: "local_changes" };
       return registry.imported_hash === archiveHash
         ? { action: "unchanged" }
         : { action: "conflict", reason: "knowledge_changed" };
@@ -141,9 +154,8 @@ function decide(
   if (item.kind === "file") return { action: "unchanged" };
   if (!registry) return { action: "conflict", reason: "exists_unmanaged" };
   if (targetHash === undefined) return { action: "conflict", reason: "reserved" };
-  if (registry.local_hash !== null && targetHash !== registry.local_hash) {
+  if (localChanged(localId, targetHash, registry))
     return { action: "conflict", reason: "local_changes" };
-  }
   if (registry.imported_hash === archiveHash) return { action: "unchanged" };
   return UPDATABLE.has(item.kind)
     ? { action: "update" }
@@ -159,16 +171,20 @@ export async function planPackageImport(
   const registry = await loadRegistry(exec, tenant_id);
   const inArchive = new Set(pkg.payloads.map((item) => itemId(item.kind, item.key)));
   const items: PackagePlanItem[] = [];
+  const targetHashes = new Map(hashes);
   for (const item of pkg.payloads) {
     const archiveHash = payloadHash(item.payload);
-    const localId = indexFor(index, item.kind).get(item.key) ?? null;
-    const decision = decide(
-      item,
-      archiveHash,
-      localId,
-      hashes.get(itemId(item.kind, item.key)),
-      registry.get(itemId(item.kind, item.key)),
-    );
+    const registered = registry.get(itemId(item.kind, item.key));
+    const localKey =
+      item.kind === "knowledge" && registered?.local_id
+        ? [...index.knowledge].find(([, id]) => id === registered.local_id)?.[0]
+        : item.key;
+    const localId =
+      (localKey === undefined ? undefined : indexFor(index, item.kind).get(localKey)) ?? null;
+    const targetHash = localKey === undefined ? undefined : hashes.get(itemId(item.kind, localKey));
+    if (targetHash === undefined) targetHashes.delete(itemId(item.kind, item.key));
+    else targetHashes.set(itemId(item.kind, item.key), targetHash);
+    const decision = decide(item, archiveHash, localId, targetHash, registered);
     const missing = dependencies(item)
       .filter(
         (dep) =>
@@ -200,7 +216,7 @@ export async function planPackageImport(
       content_digest: pkg.manifest.content_digest,
       items: items.map((item) => ({
         ...item,
-        target_hash: hashes.get(itemId(item.kind, item.key)) ?? null,
+        target_hash: targetHashes.get(itemId(item.kind, item.key)) ?? null,
         registry: registry.get(itemId(item.kind, item.key))?.local_hash ?? null,
       })),
     }),
@@ -215,7 +231,7 @@ export async function planPackageImport(
       requires: pkg.manifest.requires,
       summary,
     },
-    target_hashes: hashes,
+    target_hashes: targetHashes,
     index,
     registry,
   };
