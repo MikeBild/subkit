@@ -13,6 +13,7 @@ interface Schedule {
   cron: string;
   timezone: string;
   paused: boolean;
+  input?: Record<string, unknown> | null;
 }
 
 const DAILY = { cron: "0 8 * * *", timezone: "Europe/Berlin", paused: false };
@@ -46,7 +47,7 @@ function entry(schedule: Schedule) {
     execution_mode: "prod",
     paused: schedule.paused,
     auto_pause: null,
-    input: null,
+    input: schedule.input ?? null,
     created_at: NOW,
     updated_at: NOW,
     cost_projection: costProjection(schedule.cron),
@@ -134,6 +135,7 @@ function scenario(initial: Schedule | null = null, inputSchema: unknown = null) 
         ...schedule,
         ...(typeof body.cron === "string" ? { cron: body.cron } : {}),
         ...(typeof body.paused === "boolean" ? { paused: body.paused } : {}),
+        ...(body.input === undefined ? {} : { input: body.input as Record<string, unknown> }),
       };
       return { ...entry(schedule), upsert_status: "updated" };
     },
@@ -295,3 +297,25 @@ isolated("Schedules › editing only the input keeps an interval cadence", async
   });
   expect(flow.current()?.cron).toBe("every:900");
 });
+
+for (const cron of ["0 8 * * *", "every:900", "0 9 * * 1-5"]) {
+  isolated(`Schedules › editing input keeps calendar exceptions and cadence ${cron}`, async () => {
+    const gates = { skip_dates: ["2026-11-24"], business_days_only: true };
+    const flow = scenario(
+      { cron, timezone: "UTC", paused: false, input: { batch: 17, ...gates } },
+      BATCH_SCHEMA,
+    );
+    const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
+      permissions: ALL_PERMISSIONS,
+      routes: flow.routes,
+    });
+    await app.click("workflow-invocation-tab-schedule");
+    await app.press("schedule-menu");
+    await app.press("schedule-edit");
+    await app.fill("schedule-inputs-batch-input", "23");
+    await app.click("schedule-dialog-submit");
+    expect(app.seen).toContain(`PUT /v1/schedules/${SCHEDULE}`);
+    expect(flow.bodies[0]).toMatchObject({ cron, timezone: "UTC", input: { batch: 23, ...gates } });
+    expect(flow.current()?.cron).toBe(cron);
+  });
+}
