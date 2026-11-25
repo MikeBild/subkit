@@ -379,6 +379,18 @@ export function modelPriceApplied(
   return price?.inputPerMtok === inputPerMtok && price.outputPerMtok === outputPerMtok;
 }
 
+export function mergeModelPrice(
+  current: unknown,
+  model: string,
+  inputPerMtok: number,
+  outputPerMtok: number,
+): unknown[] {
+  const others = (Array.isArray(current) ? current : []).filter(
+    (entry) => !(isRecord(entry) && entry.model === model),
+  );
+  return [...others, { model, input_per_mtok: inputPerMtok, output_per_mtok: outputPerMtok }];
+}
+
 export const FAILED_RESULTS = [
   "error",
   "context_too_large",

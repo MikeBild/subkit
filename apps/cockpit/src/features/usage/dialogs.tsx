@@ -11,7 +11,7 @@ import {
   type StatsWindow,
   type WindowBounds,
 } from "@/features/usage/model/operations-figures";
-import { modelPriceApplied, usageCsv } from "@/features/usage/model/usage-model";
+import { mergeModelPrice, modelPriceApplied, usageCsv } from "@/features/usage/model/usage-model";
 import { useI18n } from "@/lib/i18n-context";
 import { ORIGIN_LABEL, WINDOW_OPTION } from "./format";
 
@@ -78,7 +78,6 @@ export function PriceDialog({
   onOpenChange,
   model,
   modelName,
-  currentPrices,
   canWriteGlobal,
   tenantId,
   pricedBounds,
@@ -90,7 +89,6 @@ export function PriceDialog({
   pricedBounds: WindowBounds;
   model: string;
   modelName: string;
-  currentPrices: readonly unknown[];
 }) {
   const { t, locale } = useI18n();
   const client = useQueryClient();
@@ -101,16 +99,12 @@ export function PriceDialog({
   const { scope, setScope, target } = useSettingScope(tenantId);
   const save = useMutation({
     mutationFn: async () => {
-      const general = target === null ? (await readSetting(PRICE_SETTING, null)).value : null;
-      const current = target === null ? (Array.isArray(general) ? general : []) : currentPrices;
-      const others = current.filter(
-        (entry) =>
-          !(entry && typeof entry === "object" && (entry as { model?: unknown }).model === model),
+      const stored = await readSetting(PRICE_SETTING, target);
+      return saveSetting(
+        PRICE_SETTING,
+        target,
+        mergeModelPrice(stored.value, model, inputValue ?? 0, outputValue ?? 0),
       );
-      return saveSetting(PRICE_SETTING, target, [
-        ...others,
-        { model, input_per_mtok: inputValue ?? 0, output_per_mtok: outputValue ?? 0 },
-      ]);
     },
     onSuccess: async () => {
       await settle(async () => {
