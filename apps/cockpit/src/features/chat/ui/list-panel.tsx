@@ -3,6 +3,7 @@ import { Button, TopPageTitle } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { conversationExcerpt } from "@/lib/presentation";
 import { actionLabel } from "../model/labels";
+import { isContentHidden } from "../model/visibility";
 import { ConversationList } from "./conversation-list";
 
 export function ChatListPanel({
@@ -58,7 +59,9 @@ export function ChatListPanel({
         <ConversationList
           {...list}
           labelsFor={(conversation) => ({
-            untitled: t("chat.untitled"),
+            untitled: t(
+              isContentHidden(conversation) ? "chat.visibility.hiddenTitle" : "chat.untitled",
+            ),
             excerpt:
               conversationExcerpt(
                 conversation.last_message_excerpt,

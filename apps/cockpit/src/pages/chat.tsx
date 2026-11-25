@@ -29,6 +29,7 @@ import {
   chatHeaderTitle,
   conversationFailureKind,
   conversationRefreshInterval,
+  conversationVisibility,
   optimisticVisible,
   originLine,
   type PendingAttachment,
@@ -368,6 +369,19 @@ export function ChatPage() {
               dialogs.setRenameTitle(current.title || t("chat.untitled"));
             },
           },
+          ...(current.owner_id === session.principal.id && !run?.taskRunId
+            ? [
+                {
+                  label: t(
+                    conversationVisibility(current) === "team"
+                      ? "chat.unshare.menu"
+                      : "chat.share.menu",
+                  ),
+                  testId: "chat-visibility-toggle",
+                  onSelect: () => dialogs.askVisibility(current),
+                },
+              ]
+            : []),
           {
             label: t("chat.delete"),
             testId: "chat-delete",
@@ -462,6 +476,7 @@ export function ChatPage() {
               setContextOpen={chatWorkspace.setOpen}
               hasConversation={Boolean(current)}
               menuItems={menuItems}
+              visibility={current && !run?.taskRunId ? conversationVisibility(current) : null}
             />
           </ReadingColumn>
           {run?.taskRunId && activeId && !conversationFailed ? (

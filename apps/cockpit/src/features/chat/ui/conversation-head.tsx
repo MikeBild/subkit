@@ -6,7 +6,9 @@ import { ActionMenu, Button, StatusBadge, StatusStrip } from "@/components/cockp
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatTurn } from "../hooks/turn";
 import { chatContextControlsTarget } from "../hooks/workspace";
+import type { ConversationVisibility } from "../model/visibility";
 import { ReadingColumn } from "./parts";
+import { VisibilityBadge } from "./visibility-badge";
 
 export function ConversationHead({
   headerText,
@@ -19,6 +21,7 @@ export function ConversationHead({
   setContextOpen,
   hasConversation,
   menuItems,
+  visibility = null,
 }: {
   headerText: string;
   badge: { label: string; state: string } | null;
@@ -30,6 +33,7 @@ export function ConversationHead({
   setContextOpen: (open: boolean) => void;
   hasConversation: boolean;
   menuItems: Parameters<typeof ActionMenu>[0]["items"];
+  visibility?: ConversationVisibility | null;
 }) {
   const { t } = useI18n();
   return (
@@ -45,6 +49,11 @@ export function ConversationHead({
         {hasConversation && badge ? (
           <span className="hidden sm:inline-flex">
             <StatusBadge state={badge.state} label={badge.label} testId="chat-status" />
+          </span>
+        ) : null}
+        {hasConversation && visibility ? (
+          <span className="hidden sm:inline-flex">
+            <VisibilityBadge visibility={visibility} />
           </span>
         ) : null}
         <Button

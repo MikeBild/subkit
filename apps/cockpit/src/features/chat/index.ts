@@ -57,6 +57,10 @@ export {
   type TrayProblem,
   trayChips,
 } from "./model/tray-model";
+export {
+  type ConversationVisibility,
+  conversationVisibility,
+} from "./model/visibility";
 export { ChatComposer } from "./ui/composer";
 export { ChatComposerArea } from "./ui/composer-area";
 export { ChatContextContent } from "./ui/context-content";
@@ -73,3 +77,4 @@ export { ChatStart } from "./ui/start";
 export { TaskRunLine, useRunOfConversation } from "./ui/task-run-line";
 export { ChatTranscript } from "./ui/transcript";
 export { ComposerTrayChips, ComposerTrayNotice } from "./ui/tray-view";
+export { VisibilityBadge } from "./ui/visibility-badge";
