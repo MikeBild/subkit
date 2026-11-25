@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, type SQL, sql } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { AuditAction, type AuditActorType, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -25,6 +26,7 @@ import {
 import type { PreviewClassification } from "./core/classify.ts";
 import type { RefusedConnector } from "./core/outcome.ts";
 import {
+  EXECUTION_STATUSES,
   type ExecutionOutcome,
   NON_TERMINAL_EXECUTION_STATUSES,
   type OutcomeTransition,
@@ -189,6 +191,42 @@ export async function createExecution(
   return id;
 }
 
+interface ExecutionTransition {
+  tenant_id: string;
+  execution_id: string;
+  from: readonly ExecutionStatus[];
+  to: ExecutionStatus;
+  set?: Omit<PgUpdateSetSource<typeof executions>, "status" | "id" | "tenant_id">;
+  where?: readonly SQL[];
+}
+
+export async function transitionExecution(
+  db: Executor,
+  transition: ExecutionTransition,
+): Promise<TransitionedExecutionRow | null> {
+  const sources = transitionSources(transition.to, transition.from);
+  if (sources.length === 0) return null;
+  const [row] = await db
+    .update(executions)
+    .set({ ...transition.set, status: transition.to })
+    .where(
+      and(
+        eq(executions.tenant_id, transition.tenant_id),
+        eq(executions.id, transition.execution_id),
+        inArray(executions.status, sources),
+        ...(transition.where ?? []),
+      ),
+    )
+    .returning({
+      id: executions.id,
+      workflow_id: executions.workflow_id,
+      request_source: executions.request_source,
+      started_at: executions.started_at,
+      finished_at: executions.finished_at,
+    });
+  return row ?? null;
+}
+
 export async function markExecutionRunning(
   db: Db,
   tenant_id: string,
@@ -197,19 +235,15 @@ export async function markExecutionRunning(
 ): Promise<boolean> {
   let applied = false;
   await db.transaction(async (tx) => {
-    const rows = await tx
-      .update(executions)
-      .set({ status: "running", started_at, heartbeat_at: new Date() })
-      .where(
-        and(
-          eq(executions.tenant_id, tenant_id),
-          eq(executions.id, execution_id),
-          eq(executions.status, "queued"),
-          isNull(executions.abort_requested_at),
-        ),
-      )
-      .returning({ id: executions.id });
-    if (!rows[0]) return;
+    const row = await transitionExecution(tx, {
+      tenant_id,
+      execution_id,
+      from: ["queued"],
+      to: "running",
+      set: { started_at, heartbeat_at: new Date() },
+      where: [isNull(executions.abort_requested_at)],
+    });
+    if (!row) return;
     applied = true;
     await writeEvent(tx, {
       tenant_id,
@@ -309,18 +343,14 @@ export async function markExecutionUncertain(
   db: Executor,
   params: { tenant_id: string; execution_id: string; failure: ExecutionFailureDetail },
 ): Promise<boolean> {
-  const rows = await db
-    .update(executions)
-    .set({ status: "uncertain", failure: params.failure })
-    .where(
-      and(
-        eq(executions.tenant_id, params.tenant_id),
-        eq(executions.id, params.execution_id),
-        inArray(executions.status, transitionSources("uncertain")),
-      ),
-    )
-    .returning({ id: executions.id });
-  return rows.length > 0;
+  const row = await transitionExecution(db, {
+    tenant_id: params.tenant_id,
+    execution_id: params.execution_id,
+    from: EXECUTION_STATUSES,
+    to: "uncertain",
+    set: { failure: params.failure },
+  });
+  return row !== null;
 }
 
 export async function requeueUncertainExecution(
@@ -328,19 +358,15 @@ export async function requeueUncertainExecution(
   tenant_id: string,
   execution_id: string,
 ): Promise<boolean> {
-  const rows = await db
-    .update(executions)
-    .set({ status: "queued", failure: null })
-    .where(
-      and(
-        eq(executions.tenant_id, tenant_id),
-        eq(executions.id, execution_id),
-        eq(executions.status, "uncertain"),
-        isNull(executions.abort_requested_at),
-      ),
-    )
-    .returning({ id: executions.id });
-  return rows.length > 0;
+  const row = await transitionExecution(db, {
+    tenant_id,
+    execution_id,
+    from: ["uncertain"],
+    to: "queued",
+    set: { failure: null },
+    where: [isNull(executions.abort_requested_at)],
+  });
+  return row !== null;
 }
 
 interface RequestExecutionAbortParams {
@@ -435,7 +461,7 @@ interface TerminalizeExecutionParams {
   result_markdown?: ResultMarkdown | null;
 }
 
-interface TerminalizedExecutionRow {
+interface TransitionedExecutionRow {
   id: string;
   workflow_id: string | null;
   request_source: string | null;
@@ -446,16 +472,13 @@ interface TerminalizedExecutionRow {
 export async function terminalizeExecutionRow(
   db: Executor,
   params: TerminalizeExecutionParams,
-): Promise<TerminalizedExecutionRow | null> {
-  const sources = transitionSources(
-    params.status,
-    params.expected_statuses ?? NON_TERMINAL_STATUSES,
-  );
-  if (sources.length === 0) return null;
-  const [row] = await db
-    .update(executions)
-    .set({
-      status: params.status,
+): Promise<TransitionedExecutionRow | null> {
+  return transitionExecution(db, {
+    tenant_id: params.tenant_id,
+    execution_id: params.execution_id,
+    from: params.expected_statuses ?? NON_TERMINAL_STATUSES,
+    to: params.status,
+    set: {
       finished_at: params.finished_at,
       failure: params.failure,
       ...(params.output_contract !== undefined ? { output_contract: params.output_contract } : {}),
@@ -472,23 +495,9 @@ export async function terminalizeExecutionRow(
             result_markdown_truncated: params.result_markdown.truncated,
           }
         : {}),
-    })
-    .where(
-      and(
-        eq(executions.tenant_id, params.tenant_id),
-        eq(executions.id, params.execution_id),
-        inArray(executions.status, sources),
-        ...(params.attempt !== undefined ? [eq(executions.attempt, params.attempt)] : []),
-      ),
-    )
-    .returning({
-      id: executions.id,
-      workflow_id: executions.workflow_id,
-      request_source: executions.request_source,
-      started_at: executions.started_at,
-      finished_at: executions.finished_at,
-    });
-  return row ?? null;
+    },
+    where: params.attempt !== undefined ? [eq(executions.attempt, params.attempt)] : [],
+  });
 }
 
 interface FinalizeExecutionDetails {

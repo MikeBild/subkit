@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { z } from "zod";
 import type { Db, Executor } from "../db/client.ts";
@@ -10,7 +10,7 @@ import {
   workflowExecutionAuthorities,
   workflowVersions,
 } from "../db/schema/index.ts";
-import { finalizeExecution } from "../execution/state.ts";
+import { finalizeExecution, transitionExecution } from "../execution/state.ts";
 import { errorFields, logger } from "../logging/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import type { EventEnvelope } from "../pubsub/types.ts";
@@ -166,17 +166,12 @@ async function enterWait(
   verdict: { cap_at_ms: number; attention_at_ms: number },
 ): Promise<boolean> {
   const entered = await db.transaction(async (tx) => {
-    const [moved] = await tx
-      .update(executions)
-      .set({ status: "waiting_for_device" })
-      .where(
-        and(
-          eq(executions.tenant_id, plan.tenant_id),
-          eq(executions.id, plan.execution_id),
-          inArray(executions.status, ["queued", "waiting_for_device"]),
-        ),
-      )
-      .returning({ id: executions.id });
+    const moved = await transitionExecution(tx, {
+      tenant_id: plan.tenant_id,
+      execution_id: plan.execution_id,
+      from: ["queued", "waiting_for_device"],
+      to: "waiting_for_device",
+    });
     if (!moved) return false;
     const [inserted] = await tx
       .insert(deviceWaits)
@@ -227,10 +222,12 @@ async function leaveWait(db: Db, plan: DeviceRunPlan, mode: AdmissionMode): Prom
     await clearDeviceWait(tx, plan.tenant_id, plan.execution_id);
     if (row.status === "queued") return mode !== "resume";
     if (row.status !== "waiting_for_device") return false;
-    await tx
-      .update(executions)
-      .set({ status: "queued" })
-      .where(and(eq(executions.tenant_id, plan.tenant_id), eq(executions.id, plan.execution_id)));
+    await transitionExecution(tx, {
+      tenant_id: plan.tenant_id,
+      execution_id: plan.execution_id,
+      from: ["waiting_for_device"],
+      to: "queued",
+    });
     return true;
   });
 }

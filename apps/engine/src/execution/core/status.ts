@@ -44,11 +44,20 @@ export const BEFORE_START_EXECUTION_STATUSES = [
   "waiting_for_device",
 ] as const satisfies readonly NonTerminalExecutionStatus[];
 
+export const EXECUTION_TRANSITIONS: Readonly<Record<ExecutionStatus, readonly ExecutionStatus[]>> =
+  {
+    queued: ["waiting_for_device", "running", ...TERMINAL_EXECUTION_STATUSES],
+    waiting_for_device: ["waiting_for_device", "queued", "failed", "aborted"],
+    running: ["queued", "uncertain", ...TERMINAL_EXECUTION_STATUSES],
+    uncertain: ["queued", "failed", "aborted"],
+    succeeded: [],
+    failed: [],
+    aborted: [],
+    timed_out: [],
+  };
+
 export function canTransition(from: ExecutionStatus, to: ExecutionStatus): boolean {
-  if (from === "queued") return to !== "queued" && to !== "uncertain";
-  if (from === "waiting_for_device") return to === "queued" || to === "failed" || to === "aborted";
-  if (from === "uncertain") return to === "queued" || to === "failed" || to === "aborted";
-  return from === "running" && (to === "uncertain" || isTerminalExecutionStatus(to));
+  return EXECUTION_TRANSITIONS[from].includes(to);
 }
 
 export function transitionSources(

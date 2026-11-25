@@ -12,6 +12,7 @@ import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { unregisterAbort } from "./abort.ts";
 import { type BudgetPark, parkedScope } from "./core/budget-pause.ts";
 import type { RunEnv, RunState } from "./run/env.ts";
+import { transitionExecution } from "./state.ts";
 import type { RunResult } from "./types.ts";
 
 export const BUDGET_WAIT_MESSAGE =
@@ -102,16 +103,13 @@ export async function parkRun(env: RunEnv, state: RunState): Promise<RunResult> 
     .update(executionSteps)
     .set({ status: "skipped" })
     .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.id, park.step_row_id)));
-  await db
-    .update(executions)
-    .set({ status: "queued", budget_park: stored })
-    .where(
-      and(
-        eq(executions.tenant_id, tenant_id),
-        eq(executions.id, execution_id),
-        eq(executions.status, "running"),
-      ),
-    );
+  await transitionExecution(db, {
+    tenant_id,
+    execution_id,
+    from: ["running"],
+    to: "queued",
+    set: { budget_park: stored },
+  });
   await auditAwait(
     {
       tenant_id,

@@ -4,6 +4,7 @@ import {
   canTransition,
   crashRecoveryOutcome,
   EXECUTION_STATUSES,
+  EXECUTION_TRANSITIONS,
   type ExecutionOutcome,
   type ExecutionStatus,
   failureStatusOf,
@@ -50,10 +51,12 @@ describe("canTransition", () => {
     expect(canTransition("queued", "queued")).toBe(false);
   });
 
-  test("running moves only to terminal statuses", () => {
+  test("running moves to uncertain, a terminal status, or back to queued for a budget park", () => {
     expect(canTransition("running", "succeeded")).toBe(true);
-    expect(canTransition("running", "queued")).toBe(false);
+    expect(canTransition("running", "uncertain")).toBe(true);
+    expect(canTransition("running", "queued")).toBe(true);
     expect(canTransition("running", "running")).toBe(false);
+    expect(canTransition("running", "waiting_for_device")).toBe(false);
   });
 
   test("terminal statuses never transition", () => {
@@ -72,8 +75,10 @@ describe("canTransition", () => {
       "queued>aborted",
       "queued>timed_out",
       "waiting_for_device>queued",
+      "waiting_for_device>waiting_for_device",
       "waiting_for_device>failed",
       "waiting_for_device>aborted",
+      "running>queued",
       "running>uncertain",
       "running>succeeded",
       "running>failed",
@@ -94,7 +99,17 @@ describe("canTransition", () => {
     );
   });
 
-  test("property: every transition makes progress; only a waiting run returns to queued", () => {
+  test("a waiting run may re-enter the device wait", () => {
+    expect(canTransition("waiting_for_device", "waiting_for_device")).toBe(true);
+    expect(canTransition("queued", "queued")).toBe(false);
+    expect(canTransition("uncertain", "uncertain")).toBe(false);
+  });
+
+  test("every status has a row in the transition table", () => {
+    expect(Object.keys(EXECUTION_TRANSITIONS).sort()).toEqual([...EXECUTION_STATUSES].sort());
+  });
+
+  test("property: every transition makes progress except a requeue or a device wait re-entry", () => {
     const rank: Record<ExecutionStatus, number> = {
       queued: 0,
       waiting_for_device: 1,
@@ -108,8 +123,10 @@ describe("canTransition", () => {
     fc.assert(
       fc.property(statusArb, statusArb, (from, to) => {
         const returnsToQueue =
-          (from === "waiting_for_device" || from === "uncertain") && to === "queued";
-        if (canTransition(from, to) && !returnsToQueue) {
+          (from === "waiting_for_device" || from === "uncertain" || from === "running") &&
+          to === "queued";
+        const reentersWait = from === "waiting_for_device" && to === "waiting_for_device";
+        if (canTransition(from, to) && !returnsToQueue && !reentersWait) {
           expect(rank[to]).toBeGreaterThan(rank[from]);
           expect(to).not.toBe("queued");
         }
@@ -129,8 +146,8 @@ describe("transitionSources", () => {
     ]);
     expect(transitionSources("uncertain")).toEqual(["running"]);
     expect(transitionSources("running")).toEqual(["queued"]);
-    expect(transitionSources("queued")).toEqual(["waiting_for_device", "uncertain"]);
-    expect(transitionSources("waiting_for_device")).toEqual(["queued"]);
+    expect(transitionSources("queued")).toEqual(["waiting_for_device", "running", "uncertain"]);
+    expect(transitionSources("waiting_for_device")).toEqual(["queued", "waiting_for_device"]);
   });
 
   test("narrows an allowed list to legal sources", () => {
