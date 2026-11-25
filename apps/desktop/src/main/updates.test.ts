@@ -1,10 +1,12 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { EventEmitter } from "node:events";
 import type { UpdateState } from "../shared/updates.ts";
 
 type Listener = (value: { version?: string; percent?: number }) => void;
 
 class FakeUpdater {
   private readonly listeners = new Map<string, Listener>();
+  autoInstallOnAppQuit = false;
   checks = 0;
   installs = 0;
   trail: string[] = [];
@@ -26,12 +28,18 @@ class FakeUpdater {
 }
 
 const updater = new FakeUpdater();
+const app = Object.assign(new EventEmitter(), {
+  isPackaged: true,
+  getVersion: () => "0.1.0",
+});
+
+beforeEach(() => app.removeAllListeners());
 const prompts: { parent: unknown }[] = [];
 
 Object.assign(globalThis, { SUBKIT_DESKTOP_UPDATES: true });
 
 mock.module("electron", () => ({
-  app: { isPackaged: true, getVersion: () => "0.1.0" },
+  app,
   dialog: {
     showMessageBox: async (...args: unknown[]) => {
       prompts.push({ parent: args.length > 1 ? args[0] : null });
@@ -178,8 +186,49 @@ describe("the update controller records diagnostics around the install", () => {
     updater.emit("update-downloaded", { version: "0.5.0" });
     const installs = updater.installs;
     expect(controller.restart()).toBe(true);
+    app.emit("quit", {}, 0);
     expect(trail).toEqual(["previous", "downloaded:0.5.0", `before:0.5.0:${installs}`]);
     expect(updater.installs).toBe(installs + 1);
+  });
+
+  test("marks a deferred update only when the app quits normally", async () => {
+    const attempts: string[] = [];
+    const controller = new UpdateController(
+      { onState: () => {}, onError: () => {} },
+      {
+        previousAttempt: () => {},
+        downloaded: () => {},
+        beforeInstall: (version) => attempts.push(version),
+      },
+    );
+    await controller.start();
+    updater.emit("update-downloaded", { version: "0.6.0" });
+    expect(attempts).toEqual([]);
+    const installs = updater.installs;
+    app.emit("quit", {}, 0);
+    expect(attempts).toEqual(["0.6.0"]);
+    expect(updater.installs).toBe(installs);
+  });
+
+  test.each([
+    { downloaded: false, autoInstall: true, exitCode: 0 },
+    { downloaded: true, autoInstall: false, exitCode: 0 },
+    { downloaded: true, autoInstall: true, exitCode: 1 },
+  ])("does not mark a quit without an automatic install: %j", async (scenario) => {
+    const attempts: string[] = [];
+    const controller = new UpdateController(
+      { onState: () => {}, onError: () => {} },
+      {
+        previousAttempt: () => {},
+        downloaded: () => {},
+        beforeInstall: (version) => attempts.push(version),
+      },
+    );
+    await controller.start();
+    if (scenario.downloaded) updater.emit("update-downloaded", { version: "0.6.0" });
+    updater.autoInstallOnAppQuit = scenario.autoInstall;
+    app.emit("quit", {}, scenario.exitCode);
+    expect(attempts).toEqual([]);
   });
 
   test("keeps the update running when a diagnostics step throws", () => {

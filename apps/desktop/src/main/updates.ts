@@ -114,6 +114,15 @@ export class UpdateController {
     autoUpdater.disableWebInstaller = true;
     autoUpdater.forceDevUpdateConfig = false;
     autoUpdater.logger = null;
+    let pendingVersion: string | null = null;
+    const beforeInstall = () => {
+      if (pendingVersion === null) return;
+      this.diagnostics.beforeInstall(pendingVersion);
+      pendingVersion = null;
+    };
+    app.once("quit", (_event, exitCode) => {
+      if (exitCode === 0 && autoUpdater.autoInstallOnAppQuit) beforeInstall();
+    });
     autoUpdater.on("checking-for-update", () => this.dispatch({ type: "checking" }));
     autoUpdater.on("update-not-available", (info) => {
       appLog.info("update.not_available", { latest: info.version });
@@ -128,8 +137,9 @@ export class UpdateController {
     );
     autoUpdater.on("update-downloaded", (info) => {
       this.diagnostics.downloaded(info.version);
+      pendingVersion = info.version;
       this.install = () => {
-        this.diagnostics.beforeInstall(info.version);
+        beforeInstall();
         autoUpdater.quitAndInstall();
       };
       this.dispatch({ type: "downloaded", version: info.version });
