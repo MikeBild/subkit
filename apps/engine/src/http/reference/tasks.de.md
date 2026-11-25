@@ -164,6 +164,7 @@ Ein Run wartet in diesen Fällen auf dich:
 - Er stellt eine Rückfrage oder braucht deine Freigabe für einen Schreibzugriff.
 - Zwei Runden hintereinander brachten keinen echten Fortschritt. Als Fortschritt zählt, dass ein Schritt fertig wird, ein neuer Beleg oder ein neues Ergebnis dazukommt, ein gebundener Workflow oder Connector läuft, du schreibst oder antwortest oder der Run seine nächste Prüfung plant. Nur Notizen im Plan umzuschreiben zählt nicht.
 - Du hast am Eingabefeld **Stoppen** gewählt, während eine Runde lief.
+- Eine Runde wurde abgebrochen, zum Beispiel weil die Engine neu gestartet hat, während sie arbeitete. Der Run schlägt nicht fehl: Er behält seine Unterhaltung und arbeitet weiter, wenn du ihm schreibst.
 - Das monatliche KI-Budget ist erreicht, oder der Arbeitsbereich hat gerade keinen KI-Anbieter. In diesen beiden Fällen musst du im Run nichts tun: Er arbeitet von selbst weiter, sobald das Budget es wieder erlaubt oder ein Anbieter eingerichtet ist.
 
 Ein Run schläft, wenn er sich selbst eine nächste Prüfung gesetzt hat, wenn der KI-Anbieter SubKit bremst oder solange die Aufgabe pausiert ist. Eine nächste Prüfung liegt höchstens 31 Tage voraus und nie hinter der Frist des Runs.
@@ -260,7 +261,7 @@ Der `subkit`-Eingang eines neuen Arbeitsbereichs erhält zusätzlich `task_run.w
 | **Starten** meldet, dass schon ein Run läuft | Öffne den Run. Beantworte ihn, warte auf ihn oder wähle **Abbrechen**, dann starte erneut. |
 | Der geplante Start blieb aus | Lies die Zeile zum nächsten Start. **fällig, wartet auf Erlaubnis**: Wähle **Erlauben**. **wartet auf den laufenden Run**: Beantworte den offenen Run oder brich ihn ab. Sonst prüfe, ob die Aufgabe pausiert ist. |
 | Der Run wartet und nennt das Budget | Das monatliche KI-Budget ist erreicht. Ein Administrator erhöht es unter **Einstellungen** › **Budget** oder macht diesen Monat weiter; sonst wartet der Run auf den nächsten Monat. Er arbeitet dann von selbst weiter. |
-| Der Run wartet ohne Rückfrage | Er kam nicht voran, oder eine Runde wurde angehalten: Sag ihm, was fehlt. |
+| Der Run wartet ohne Rückfrage | Er kam nicht voran, oder eine Runde wurde unterbrochen: Sag ihm, was fehlt. |
 | Der Run endete am Rundenlimit oder an der Frist | Er lässt sich nicht fortsetzen. Wähle **Neu starten**. Reichen die Runden für die Aufgabe nicht, erhöhe sie beim Bearbeiten der Aufgabe. |
 | „This workflow is not part of the task.“ | Binde den Workflow an die Aufgabe. Das beendet die Dauererlaubnis. Erlaube sie danach erneut. |
 | Ein Zeitplan wird als zu häufig abgelehnt | Wähle Startzeiten, die mindestens 15 Minuten auseinanderliegen. |

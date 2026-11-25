@@ -179,7 +179,7 @@ const CASES: ActionCase[] = [
     resource_type: "task_run",
     safe: {
       previous_state: "running",
-      failure_code: "turn_interrupted",
+      failure_code: "turn_limit_reached",
       turns_used: 2,
       duration_ms: 4_000,
     },

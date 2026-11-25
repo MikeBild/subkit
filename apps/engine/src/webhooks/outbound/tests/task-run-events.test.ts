@@ -208,7 +208,7 @@ describe("task run events", () => {
       task_run_id: RUN,
       task_id: TASK,
       trigger: "once",
-      failure_code: "turn_interrupted",
+      failure_code: "turn_limit_reached",
     });
     const row = await latestEvent();
     const stats = await fanoutEventRow(ctx.db, ctx.boss, row.id);
@@ -223,7 +223,7 @@ describe("task run events", () => {
       task_run_id: RUN,
       task_id: TASK,
       trigger: "once",
-      failure_code: "turn_interrupted",
+      failure_code: "turn_limit_reached",
     });
     if (job) await ctx.boss.complete(WEBHOOK_DELIVER_QUEUE, job.id);
   });

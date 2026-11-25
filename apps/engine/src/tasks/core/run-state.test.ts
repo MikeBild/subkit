@@ -160,7 +160,7 @@ describe("decideTaskRunState", () => {
     expect(outcome(decide({ turn_seq: 3, turn_interrupted: true }))).toEqual(
       settled("running", { enqueue: true }),
     );
-    expect(decide({ turn_seq: 4, turn_interrupted: true }).failure_code).toBe("turn_interrupted");
+    expect(decide({ turn_seq: 4, turn_interrupted: true }).waiting_reason).toBe("turn_stopped");
   });
 
   test("a rejected result is worked on again and is not offered again until the plan changed", () => {
@@ -326,10 +326,11 @@ describe("decideTaskRunState", () => {
     ).toEqual(settled("failed", { failure_code: "turn_failed" }));
   });
 
-  test("an interrupted turn fails the run", () => {
-    expect(outcome(decide({ turn_interrupted: true, requested_check_at: at(1) }, stuck))).toEqual(
-      settled("failed", { failure_code: "turn_interrupted" }),
-    );
+  test("an interrupted turn waits for the person instead of failing the run", () => {
+    const held = settled("waiting", { waiting_reason: "turn_stopped" });
+    const late = decide({ turn_interrupted: true, requested_check_at: at(1) }, stuck);
+    expect(outcome(late)).toEqual(held);
+    expect(outcome(decide({ turn_id: null, turn_interrupted: true }))).toEqual(held);
   });
 
   test("the turn limit and the deadline end a run that would otherwise sleep, each under its own code", () => {

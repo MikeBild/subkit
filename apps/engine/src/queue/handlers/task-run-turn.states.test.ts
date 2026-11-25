@@ -11,7 +11,13 @@ import {
 } from "../../db/schema/index.ts";
 import { createUser, deactivateUser } from "../../identity/provisioning.ts";
 import { LlmProviderError, LlmSpendLimitReached } from "../../llm/errors.ts";
-import { abortTaskRun, loadTaskOwner, pauseTask, resumeTask } from "../../tasks/index.ts";
+import {
+  abortTaskRun,
+  loadTaskOwner,
+  pauseTask,
+  resumeTask,
+  resumeTaskRun,
+} from "../../tasks/index.ts";
 import {
   advanceTaskRun,
   observeTaskRun,
@@ -202,7 +208,7 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
     });
   }, 180_000);
 
-  test("an orphaned turn fails the run, and an older turn delivered again is not counted", async () => {
+  test("an orphaned turn waits for the person, and an older turn delivered again is not counted", async () => {
     const { w, run } = await freshRun();
     script(run.conversation_id, [{ text: "Working." }]);
     await workQueuedTurn();
@@ -243,8 +249,10 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
       await advanceTaskRun(db, { tenant_id: w.tenant_id, task_run_id: run.id, now: FIXED_NOW }),
     ).toBe("observed");
     expect(await runRow(w, run.id)).toMatchObject({
-      state: "failed",
-      failure_code: "turn_interrupted",
+      state: "waiting",
+      waiting_reason: "turn_stopped",
+      failure_code: null,
+      ended_at: null,
       last_seen_turn_id: orphan?.id,
       last_seen_turn_seq: 2,
     });
@@ -254,7 +262,11 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
       turn: { id: seen.last_seen_turn_id, driver: "task", failure: null, interrupted: false },
       source: "queue",
     });
-    expect(stale?.run).toMatchObject({ state: "failed", turns_used: 2 });
+    expect(stale?.run).toMatchObject({
+      state: "waiting",
+      waiting_reason: "turn_stopped",
+      turns_used: 2,
+    });
   }, 180_000);
 
   test("a running run without a turn or a job is repaired, also from the dead-letter queue", async () => {
@@ -302,10 +314,17 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
     expect((await runRow(w, run.id)).turn_job_failures).toBe(3);
     expect(await advanceTaskRun(db, scope)).toBe("observed");
     expect(await runRow(w, run.id)).toMatchObject({
-      state: "failed",
-      failure_code: "turn_interrupted",
+      state: "waiting",
+      waiting_reason: "turn_stopped",
+      failure_code: null,
+      turn_job_failures: 0,
     });
     expect(await queuedJobs(run.id)).toHaveLength(0);
+    expect(await resumeTaskRun({ tenant_id: w.tenant_id, task_run_id: run.id }, db)).toMatchObject({
+      resumed: true,
+      run: { state: "running" },
+    });
+    expect(await advanceTaskRun(db, scope)).toBe("enqueued");
   }, 180_000);
 
   test("a turn that worked resets the count of failed jobs", async () => {

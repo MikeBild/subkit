@@ -483,7 +483,7 @@ export const EVENT_CATALOG = {
       task_run_id: "00000000-0000-4000-8000-000000000009",
       task_id: "00000000-0000-4000-8000-00000000000a",
       trigger: "cron",
-      failure_code: "turn_interrupted",
+      failure_code: "turn_limit_reached",
     },
     actionable: ACTIONABLE,
     resource: pointsAt("task_run", "task_run_id"),

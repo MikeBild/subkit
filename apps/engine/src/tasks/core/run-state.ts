@@ -154,7 +154,7 @@ export function decideTaskRunState(
   if (failure && !failure.retry_at)
     return settle("failed", { failure_code: normalizeFailureCode(failure.code) });
   if (observation.turn_interrupted && !stale)
-    return settle("failed", { failure_code: "turn_interrupted" });
+    return settle("waiting", { waiting_reason: "turn_stopped" });
   const limit = taskRunLimitCode({ turns_used, deadline_at: run.deadline_at }, limits, now);
   if (limit) return settle("failed", { failure_code: limit });
   if (failure?.retry_at) return sleep(failure.retry_at, "provider_throttled");
