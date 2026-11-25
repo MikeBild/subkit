@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -893,4 +893,43 @@ async function classifyClaimMiss(
     };
   }
   return unknownConfirmation(approval_id);
+}
+
+export async function openApprovalCoversRequest(
+  db: Executor,
+  tenant_id: string,
+  open_approval_id: string,
+  requested_approval_id: string,
+): Promise<boolean> {
+  if (!isUuid(open_approval_id) || !isUuid(requested_approval_id)) return false;
+  if (open_approval_id === requested_approval_id) return false;
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({
+        id: toolApprovals.id,
+        principal_id: toolApprovals.principal_id,
+        tool: toolApprovals.tool,
+        surface: toolApprovals.surface,
+        execution_mode: toolApprovals.execution_mode,
+        args_hash: toolApprovals.args_hash,
+        open: sql<boolean>`${toolApprovals.granted_at} IS NULL AND ${toolApprovals.declined_at} IS NULL AND ${toolApprovals.consumed_at} IS NULL AND ${toolApprovals.expires_at} > now()`,
+      })
+      .from(toolApprovals)
+      .where(
+        and(
+          eq(toolApprovals.tenant_id, tenant_id),
+          inArray(toolApprovals.id, [open_approval_id, requested_approval_id]),
+        ),
+      ),
+  );
+  const openRow = rows.find((row) => row.id === open_approval_id);
+  const requestedRow = rows.find((row) => row.id === requested_approval_id);
+  if (!openRow || !requestedRow || !openRow.open || !requestedRow.open) return false;
+  return (
+    openRow.principal_id === requestedRow.principal_id &&
+    openRow.tool === requestedRow.tool &&
+    openRow.surface === requestedRow.surface &&
+    openRow.execution_mode === requestedRow.execution_mode &&
+    openRow.args_hash === requestedRow.args_hash
+  );
 }

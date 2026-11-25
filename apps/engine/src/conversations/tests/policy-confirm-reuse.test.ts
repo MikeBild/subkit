@@ -1,127 +1,266 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { setConfigKey } from "../../config/loader.ts";
-import {
-  conversationElicitations,
-  conversations,
-  conversationToolCalls,
-} from "../../db/schema/index.ts";
-import { EngineClient } from "../../engine-client/index.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { conversationElicitations, conversations, toolApprovals } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { getElicitation } from "../elicitations.ts";
-import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
-import type { ToolContext } from "../tools/index.ts";
-import { wrapTools } from "../tools/sdk-wrap.ts";
-import type { TurnEvent } from "../types.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { requestApproval } from "../../tools/approval.ts";
+import { createElicitation } from "../elicitations.ts";
+import { saveVerificationEvidence } from "../handoff-summary.ts";
+import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
-import { freshSignals } from "./turn-signals.ts";
 
 let ctx: ConversationTestCtx;
+let principal: ResolvedPrincipal;
+const nextUuid = createDeterministicUuidFactory(635);
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("policy-confirm-reuse");
-  await setConfigKey("server.public_base_url", "https://engine.example.test", { force: true });
+  principal = {
+    provider: "test",
+    kind: "user",
+    id: ctx.user_id,
+    tenant_id: ctx.tenant_id,
+    roles: ["admin"],
+  } as ResolvedPrincipal;
 });
 
 afterAll(async () => {
   await ctx.cleanup();
 });
 
-const policyConfirmInvoker = async () => {
+const SAVE_ARGS = { force_commit: false, confirmed: false };
+
+const seedConversation = async () => {
   const [conversation] = await ctx.testDb.db
     .insert(conversations)
     .values({ tenant_id: ctx.tenant_id, owner_id: ctx.user_id, status: "active" })
     .returning();
   if (!conversation) throw new Error("failed to seed conversation");
-  const toolCtx: ToolContext = {
-    db: ctx.testDb.db,
-    tenant_id: ctx.tenant_id,
-    conversation_id: conversation.id,
-    actor_id: ctx.user_id,
-    principal: {
-      provider: "test",
-      kind: "user",
-      id: ctx.user_id,
-      tenant_id: ctx.tenant_id,
-      roles: ["admin"],
-    },
-    connector_id: null,
-    workflow_id: null,
-    engineClient: new EngineClient({
-      tenant_id: ctx.tenant_id,
-      actor_id: ctx.user_id,
-      actor_type: "user",
-      db: ctx.testDb.db,
-    }),
-    getDraft: () => ({ workflow: { name: "", steps: [] } }),
-    setDraft: async () => {},
-  };
-  let invocation = 0;
-  const invoke = async () => {
-    invocation += 1;
-    const signals = freshSignals();
-    const events: TurnEvent[] = [];
-    const wrapped = await wrapTools(
-      toolCtx,
-      signals,
-      events,
-      ctx.testDb.db,
-      ["workflow-authoring"],
-      { run_workflow: "confirm_before_execution" },
-    );
-    const execute = wrapped.run_workflow?.execute;
-    if (!execute) throw new Error("missing run_workflow");
-    const result = await execute(
-      { workflow: "reuse-test", environment: "prod", execute_writes: true },
-      { toolCallId: `00000000-0000-4000-8000-00000000000${invocation}`, messages: [], context: {} },
-    );
-    return { result, signals, events };
-  };
-  return { conversation, invoke };
+  return conversation.id;
 };
 
-test("reused policy confirmation publishes the persisted approval metadata", async () => {
-  const { conversation, invoke } = await policyConfirmInvoker();
-  const first = await invoke();
-  const firstId = first.signals.pendingElicitation?.elicitation_id;
-  expect(firstId).toBeDefined();
-  const persisted = await getElicitation(ctx.tenant_id, firstId!, ctx.testDb.db);
-  const input = elicitationInputForClient(persisted?.input) as Record<string, unknown>;
-  expect(input.approval_url).toMatch(/^https:\/\/engine\.example\.test\//);
-  const second = await invoke();
-  expect(second.signals.pendingElicitation?.elicitation_id).toBe(firstId);
-  expect(second.result).toMatchObject({
-    data: { approval_url: input.approval_url },
-    pause: { input, summary: persisted?.summary },
+const mintApproval = async (tool: string, args: Record<string, unknown>) => {
+  const approvalId = nextUuid();
+  await requestApproval({
+    db: ctx.testDb.db,
+    principal,
+    approval_id: approvalId,
+    tool,
+    surface: "chat",
+    via: "chat",
+    reason: "category_default",
+    execution_mode: null,
+    args,
   });
-  expect(second.signals.pendingElicitation?.input).toEqual(input);
-  expect(second.events.find((event) => event.type === "elicit_request")).toMatchObject({ input });
-  const calls = await ctx.testDb.db
-    .select()
-    .from(conversationToolCalls)
-    .where(eq(conversationToolCalls.conversation_id, conversation.id));
-  expect(calls).toHaveLength(2);
-  for (const call of calls) expect(call.output).toMatchObject({ approval_url: input.approval_url });
+  return approvalId;
+};
+
+const draftEvidence = (name: string) =>
+  saveVerificationEvidence({ workflow: { name } } as DraftDocument, true);
+
+const saveGateInput = (
+  approvalId: string | null,
+  draftName = "orders",
+  args: Record<string, unknown> = SAVE_ARGS,
+) => ({
+  kind: "save_workflow_draft",
+  question: "Policy requires confirmation before running save_workflow_draft. Proceed?",
+  target: { tool: "save_workflow_draft", args },
+  verification: draftEvidence(draftName),
+  pending_output: { kind: "save_workflow_draft" },
+  commit_intent: {
+    kind: "save_workflow_draft",
+    payload: {
+      ...(args.force_commit === true ? { force_commit: true } : {}),
+      ...(approvalId ? { approval_id: approvalId } : {}),
+    },
+    description: "Save the current workflow draft.",
+  },
+  ...(approvalId ? { approval_url: `https://engine.example.test/approve/${approvalId}` } : {}),
 });
 
-test("an expired but still pending approval for the same action is not reused", async () => {
-  const { conversation, invoke } = await policyConfirmInvoker();
-  const first = await invoke();
-  const firstId = first.signals.pendingElicitation?.elicitation_id;
-  if (!firstId) throw new Error("missing first elicitation");
-  await ctx.testDb.db
-    .update(conversationElicitations)
-    .set({ expires_at: new Date(getTestNow() - 60_000) })
-    .where(eq(conversationElicitations.id, firstId));
-  const second = await invoke();
-  const secondId = second.signals.pendingElicitation?.elicitation_id;
-  if (!secondId) throw new Error("missing second elicitation");
-  expect(secondId).not.toBe(firstId);
+const ask = (
+  conversationId: string,
+  summary: string,
+  input: Record<string, unknown>,
+  reuse = true,
+  toolCallId: string | null = null,
+) =>
+  createElicitation(
+    {
+      tenant_id: ctx.tenant_id,
+      conversation_id: conversationId,
+      tool_call_id: toolCallId,
+      tool_name: "ask_user_confirm",
+      summary,
+      input,
+      actor_id: ctx.user_id,
+      ...(reuse ? { reuse_open_approval: true } : {}),
+    },
+    ctx.testDb.db,
+  );
+
+const pendingIds = async (conversationId: string) => {
   const rows = await ctx.testDb.db
     .select()
     .from(conversationElicitations)
-    .where(eq(conversationElicitations.conversation_id, conversation.id));
-  expect(rows.filter((row) => row.status === "pending").map((row) => row.id)).toEqual([secondId]);
-  const fresh = rows.find((row) => row.id === secondId);
-  expect(fresh?.expires_at.getTime()).toBeGreaterThan(getTestNow());
+    .where(eq(conversationElicitations.conversation_id, conversationId));
+  return rows.filter((row) => row.status === "pending").map((row) => row.id);
+};
+
+const askTwiceForSave = async (
+  firstInput: (handle: string) => Record<string, unknown>,
+  secondInput: (handle: string) => Record<string, unknown>,
+  firstArgs: Record<string, unknown> = SAVE_ARGS,
+  secondArgs: Record<string, unknown> = SAVE_ARGS,
+) => {
+  const conversationId = await seedConversation();
+  const firstHandle = await mintApproval("save_workflow_draft", firstArgs);
+  const first = await ask(conversationId, "Save inactive draft", firstInput(firstHandle));
+  const secondHandle = await mintApproval("save_workflow_draft", secondArgs);
+  const second = await ask(conversationId, "Save inactive draft", secondInput(secondHandle));
+  return { conversationId, first, second, firstHandle, secondHandle };
+};
+
+test("a repeated save gate for the same draft keeps the open card and its handle", async () => {
+  const { conversationId, first, second, firstHandle } = await askTwiceForSave(
+    (handle) => saveGateInput(handle),
+    (handle) => saveGateInput(handle),
+  );
+  expect(second.id).toBe(first.id);
+  expect(second.input).toEqual(first.input);
+  expect((second.input as { approval_url?: string }).approval_url).toContain(firstHandle);
+  expect(await pendingIds(conversationId)).toEqual([first.id]);
+});
+
+test("a reused card keeps its persisted summary and input instead of the new request's", async () => {
+  const conversationId = await seedConversation();
+  const agentCard = {
+    kind: "save_workflow_draft",
+    question: "Commit this 2-step workflow?",
+    verification: draftEvidence("orders"),
+    commit_intent: { kind: "save_workflow_draft", payload: {}, description: "commit" },
+  };
+  const first = await ask(conversationId, "commit 2-step workflow", agentCard, false);
+  const handle = await mintApproval("save_workflow_draft", SAVE_ARGS);
+  const second = await ask(conversationId, "Save inactive draft", saveGateInput(handle));
+  expect(second.id).toBe(first.id);
+  expect(second.summary).toBe("commit 2-step workflow");
+  expect(second.input).toEqual(first.input);
+  expect(JSON.stringify(second.input)).not.toContain(handle);
+  expect(await pendingIds(conversationId)).toEqual([first.id]);
+});
+
+test("an expired but still pending save card is superseded by a fresh card", async () => {
+  const conversationId = await seedConversation();
+  const first = await ask(
+    conversationId,
+    "Save inactive draft",
+    saveGateInput(await mintApproval("save_workflow_draft", SAVE_ARGS)),
+  );
+  await ctx.testDb.db
+    .update(conversationElicitations)
+    .set({ expires_at: new Date(getTestNow() - 60_000) })
+    .where(eq(conversationElicitations.id, first.id));
+  const second = await ask(
+    conversationId,
+    "Save inactive draft",
+    saveGateInput(await mintApproval("save_workflow_draft", SAVE_ARGS)),
+  );
+  expect(second.id).not.toBe(first.id);
+  expect(await pendingIds(conversationId)).toEqual([second.id]);
+});
+
+test("a changed draft or changed save arguments get a fresh card", async () => {
+  const changedDraft = await askTwiceForSave(
+    (handle) => saveGateInput(handle, "orders"),
+    (handle) => saveGateInput(handle, "invoices"),
+  );
+  expect(changedDraft.second.id).not.toBe(changedDraft.first.id);
+  expect(await pendingIds(changedDraft.conversationId)).toEqual([changedDraft.second.id]);
+  const forced = { force_commit: true, confirmed: false };
+  const changedArgs = await askTwiceForSave(
+    (handle) => saveGateInput(handle),
+    (handle) => saveGateInput(handle, "orders", forced),
+    SAVE_ARGS,
+    forced,
+  );
+  expect(changedArgs.second.id).not.toBe(changedArgs.first.id);
+  expect(await pendingIds(changedArgs.conversationId)).toEqual([changedArgs.second.id]);
+});
+
+test("a card whose handle no longer covers the request is superseded", async () => {
+  const conversationId = await seedConversation();
+  const firstHandle = await mintApproval("save_workflow_draft", SAVE_ARGS);
+  const first = await ask(conversationId, "Save inactive draft", saveGateInput(firstHandle));
+  await ctx.testDb.db
+    .update(toolApprovals)
+    .set({ declined_at: new Date(getTestNow()) })
+    .where(eq(toolApprovals.id, firstHandle));
+  const second = await ask(
+    conversationId,
+    "Save inactive draft",
+    saveGateInput(await mintApproval("save_workflow_draft", SAVE_ARGS)),
+  );
+  expect(second.id).not.toBe(first.id);
+  expect(await pendingIds(conversationId)).toEqual([second.id]);
+  const otherArgs = await askTwiceForSave(
+    (handle) => saveGateInput(handle),
+    (handle) => saveGateInput(handle),
+    SAVE_ARGS,
+    { ...SAVE_ARGS, target_workflow_id: "wf-other" },
+  );
+  expect(otherArgs.second.id).not.toBe(otherArgs.first.id);
+});
+
+test("repeated external MCP calls never reuse a card, even with identical arguments", async () => {
+  const mcpInput = (handle: string, args: Record<string, unknown>) => ({
+    kind: "external_write",
+    question: "Run mcp__crm__update_contact?",
+    target: { tool: "mcp__crm__update_contact", args },
+    commit_intent: {
+      kind: "execute_confirmed_tool_call",
+      payload: { tool: "mcp__crm__update_contact", approval_id: handle },
+    },
+  });
+  for (const [firstArgs, secondArgs] of [
+    [{ id: "1" }, { id: "2" }],
+    [{ id: "1" }, { id: "1" }],
+  ] as const) {
+    for (const reuse of [true, false]) {
+      const conversationId = await seedConversation();
+      const firstHandle = await mintApproval("mcp__crm__update_contact", firstArgs);
+      const first = await ask(
+        conversationId,
+        "Update contact",
+        mcpInput(firstHandle, firstArgs),
+        reuse,
+      );
+      const secondHandle = await mintApproval("mcp__crm__update_contact", secondArgs);
+      const second = await ask(
+        conversationId,
+        "Update contact",
+        mcpInput(secondHandle, secondArgs),
+        reuse,
+      );
+      expect(second.id).not.toBe(first.id);
+      expect(JSON.stringify(second.input)).toContain(secondHandle);
+      expect(await pendingIds(conversationId)).toEqual([second.id]);
+    }
+  }
+});
+
+test("an ask-user save card never reuses the open card", async () => {
+  const conversationId = await seedConversation();
+  const card = {
+    kind: "save_workflow_draft",
+    question: "Commit this workflow?",
+    verification: draftEvidence("orders"),
+    commit_intent: { kind: "save_workflow_draft", payload: {} },
+  };
+  const first = await ask(conversationId, "commit workflow", card, false);
+  const second = await ask(conversationId, "commit workflow", card, false);
+  expect(second.id).not.toBe(first.id);
+  expect(await pendingIds(conversationId)).toEqual([second.id]);
 });

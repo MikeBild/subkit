@@ -17,14 +17,14 @@ import {
 import { LocalConfirmationForbiddenError } from "../devices/confirmation-errors.ts";
 import { grantsConfirmation, NOTHING_CHANGED } from "../devices/core/local-confirmation.ts";
 import { logger } from "../logging/index.ts";
-import { APPROVAL_TTL_MS } from "../tools/approval.ts";
+import { APPROVAL_TTL_MS, openApprovalCoversRequest } from "../tools/approval.ts";
 import { type CONVERSATION_ABANDONED, canOpenElicitation } from "./core/conversation-status.ts";
 import { type ElicitationStatus, elicitationSources } from "./core/elicitation-status.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
 import { transitionConversation } from "./persistence/conversation-status.ts";
 import { applyPlaybookDecision } from "./playbook.ts";
 import { humanConfirmationContextFingerprint } from "./playbook-evidence.ts";
-import { asksForSameApproval } from "./same-approval.ts";
+import { approvalHandleOf, asksForSameApproval } from "./same-approval.ts";
 import {
   approvalHandleFromElicitationInput,
   isWorkflowInputForm,
@@ -190,6 +190,7 @@ interface CreateElicitationParams {
   actor_id: string | null;
   actor_type?: import("../audit/types.ts").AuditActorType;
   expires_at?: Date;
+  reuse_open_approval?: boolean;
 }
 
 export const ELICITATION_HUMAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -296,6 +297,29 @@ const markAwaitingInput = (exec: Executor, p: CreateElicitationParams) =>
     set: { updated_at: new Date() },
   });
 
+async function findReusableApproval(
+  exec: Executor,
+  p: CreateElicitationParams,
+  pending: readonly Row[],
+  protocolNative: boolean,
+): Promise<Row | undefined> {
+  if (protocolNative) return undefined;
+  const lookupAt = new Date();
+  const request = { tool_name: p.tool_name, input: p.input };
+  const requestedHandle = approvalHandleOf(p.input);
+  for (const row of pending) {
+    if (!asksForSameApproval(row, request, lookupAt)) continue;
+    const openHandle = approvalHandleOf(row.input);
+    if (openHandle === null) return row;
+    if (
+      requestedHandle !== null &&
+      (await openApprovalCoversRequest(exec, p.tenant_id, openHandle, requestedHandle))
+    )
+      return row;
+  }
+  return undefined;
+}
+
 async function insertElicitation(
   p: CreateElicitationParams,
   protocolNative: boolean,
@@ -328,22 +352,20 @@ async function insertElicitation(
         eq(conversationElicitations.status, "pending"),
       ),
     );
-  const lookupAt = new Date();
-  const openApproval = stale.find(
-    (row) =>
-      row.expires_at.getTime() > lookupAt.getTime() &&
-      asksForSameApproval(row, { tool_name: p.tool_name, input: p.input }),
-  );
+  const openApproval = p.reuse_open_approval
+    ? await findReusableApproval(exec, p, stale, protocolNative)
+    : undefined;
   if (openApproval) {
     await markAwaitingInput(exec, p);
     logger.info({
       module: "conversation",
       action: "elicitation.reused_open_approval",
-      msg: "open approval for the same action kept; no new elicitation created",
+      msg: "open approval for the same draft save kept; no new elicitation created",
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       elicitation_id: openApproval.id,
       tool_name: p.tool_name,
+      kept_approval_handle: approvalHandleOf(openApproval.input) !== null,
       ...(p.tool_call_id ? { tool_call_id: p.tool_call_id } : {}),
     });
     return rowToRecord(openApproval);

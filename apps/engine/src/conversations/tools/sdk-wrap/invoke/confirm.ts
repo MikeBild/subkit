@@ -5,6 +5,7 @@ import { createElicitation } from "../../../elicitations.ts";
 import { saveEvidenceLabel } from "../../../handoff-summary.ts";
 import { resolveSaveVerification } from "../../../persistence/commit-workflow.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
+import { REUSABLE_APPROVAL_TOOLS } from "../../../same-approval.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../../ask-user/commit-intent.ts";
 import type { GateSubject } from "../gate-subjects.ts";
 import {
@@ -140,6 +141,7 @@ export async function pauseForConfirmation(
       summary: policyGateSummary,
       input: elicitationInput,
       ...elicitationActor(ctx),
+      ...(REUSABLE_APPROVAL_TOOLS.has(inner.name) ? { reuse_open_approval: true } : {}),
     },
     db,
   );
