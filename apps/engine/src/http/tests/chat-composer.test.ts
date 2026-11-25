@@ -1,7 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { apiKeys, auditLog, conversations, fileLinks, users } from "../../db/schema/index.ts";
+import { MAX_INLINE_BYTES, parseFileIdOrThrow } from "../../api/files-schemas.ts";
+import {
+  apiKeys,
+  auditLog,
+  conversations,
+  fileLinks,
+  files,
+  users,
+} from "../../db/schema/index.ts";
 import { findRetainedFileReferences } from "../../files/reference-protection.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
@@ -62,6 +70,17 @@ function upload(name: string, text: string) {
     content_type: "text/plain",
     content_base64: Buffer.from(text, "utf8").toString("base64"),
   };
+}
+
+async function storedFileOfSize(name: string, size_bytes: number) {
+  const res = await api("POST", "/v1/files/inline", upload(name, `stored elsewhere as ${name}`));
+  expect(res.status).toBe(201);
+  const { id } = (await res.json()) as { id: string };
+  await srv.db
+    .update(files)
+    .set({ size_bytes })
+    .where(and(eq(files.tenant_id, srv.tenantId), eq(files.id, parseFileIdOrThrow(id))));
+  return id;
 }
 
 type Staged = { id: string; file: { id: string; slug: string }; expires_at: string };
@@ -239,6 +258,25 @@ describe("chat composer tray", () => {
         expect(after.items).toEqual([]);
       }
     });
+  test("a stored file above the inline cap is refused and nothing is staged", async () => {
+    const id = await storedFileOfSize("huge.txt", MAX_INLINE_BYTES + 1);
+    const res = await api("POST", "/v1/chat/composer/attachments", { $file: id });
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as { code: string }).code).toBe("too_large");
+    const tray = (await (await api("GET", "/v1/chat/composer/attachments")).json()) as {
+      items: Staged[];
+    };
+    expect(tray.items).toEqual([]);
+    expect((await api("GET", `/v1/files/${id}`)).status).toBe(200);
+  });
+
+  test("a stored file exactly at the inline cap is staged", async () => {
+    const id = await storedFileOfSize("edge.txt", MAX_INLINE_BYTES);
+    const res = await api("POST", "/v1/chat/composer/attachments", { $file: id });
+    expect(res.status).toBe(201);
+    const staged = (await res.json()) as Staged;
+    expect((await api("DELETE", `/v1/chat/composer/attachments/${staged.id}`)).status).toBe(204);
+  });
 
   test("the tray holds at most ten files", async () => {
     for (let i = 0; i < 10; i++)

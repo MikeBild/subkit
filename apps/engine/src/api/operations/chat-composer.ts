@@ -18,6 +18,7 @@ import { claimSelection } from "../../files/composer-tray-model.ts";
 import { conversationExists } from "../../files/service/index.ts";
 import { logger } from "../../logging/index.ts";
 import { now } from "../../utils/clock.ts";
+import { MAX_INLINE_BYTES } from "../files-schemas.ts";
 import {
   AttachmentSchema,
   type AttachmentWire,
@@ -145,9 +146,26 @@ async function auditComposer(
   );
 }
 
+const exceedsComposerCap = (size_bytes: number): boolean => size_bytes > MAX_INLINE_BYTES;
+
+async function storedComposerFile(who: Person, fileRef: string): Promise<StoredUpload | Rejection> {
+  const stored = await resolveStoredFile(who.link, fileRef);
+  if (isRejection(stored) || !exceedsComposerCap(stored.row.size_bytes)) return stored;
+  logger.info({
+    module: "chat_composer",
+    action: "stage.too_large",
+    msg: "stored file exceeds the composer size cap; not staged",
+    tenant_id: who.owner.tenant_id,
+    file_id: stored.row.id,
+    size_bytes: stored.row.size_bytes,
+    max_bytes: MAX_INLINE_BYTES,
+  });
+  return plainRejection(413, "too_large", `attachment exceeds ${MAX_INLINE_BYTES} bytes cap`);
+}
+
 async function stagedFile(who: Person, body: Upload): Promise<StoredUpload | Rejection> {
   return "$file" in body
-    ? resolveStoredFile(who.link, body.$file)
+    ? storedComposerFile(who, body.$file)
     : storeUpload(who.link, body, "chat_composer");
 }
 
