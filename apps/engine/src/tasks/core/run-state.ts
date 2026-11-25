@@ -149,14 +149,12 @@ export function decideTaskRunState(
     return settle("waiting", { waiting_reason: "budget" });
   if (failure?.code === "ai_access_missing")
     return settle("waiting", { waiting_reason: "ai_access" });
-  if (failure?.code === TASK_TURN_STOPPED)
-    return settle("waiting", { waiting_reason: "turn_stopped" });
-  if (failure && !failure.retry_at)
+  if (failure && failure.code !== TASK_TURN_STOPPED && !failure.retry_at)
     return settle("failed", { failure_code: normalizeFailureCode(failure.code) });
-  if (observation.turn_interrupted && !stale)
-    return settle("waiting", { waiting_reason: "turn_stopped" });
   const limit = taskRunLimitCode({ turns_used, deadline_at: run.deadline_at }, limits, now);
   if (limit) return settle("failed", { failure_code: limit });
+  if (failure?.code === TASK_TURN_STOPPED || (observation.turn_interrupted && !stale))
+    return settle("waiting", { waiting_reason: "turn_stopped" });
   if (failure?.retry_at) return sleep(failure.retry_at, "provider_throttled");
   if (check) return sleep(check, "check_requested");
   if (no_progress_count >= TASK_NO_PROGRESS_LIMIT)
