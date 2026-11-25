@@ -149,6 +149,17 @@ export class ProfileFlow {
     appLog.info("diagnostics.copied");
   }
 
+  copyText(text: string): boolean {
+    try {
+      clipboard.writeText(text);
+      appLog.info("clipboard.copied", { length: text.length });
+      return true;
+    } catch (error) {
+      this.core.record("clipboard.copy", error);
+      return false;
+    }
+  }
+
   async openLogs(): Promise<void> {
     const folder = appLog.directory;
     if (!folder) return;

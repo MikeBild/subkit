@@ -55,7 +55,11 @@ const compatible: CheckResult = {
 };
 
 function stubBridge(
-  answers: { check?: () => Promise<CheckResult>; login?: () => Promise<CheckResult> } = {},
+  answers: {
+    check?: () => Promise<CheckResult>;
+    login?: () => Promise<CheckResult>;
+    copy?: () => Promise<boolean>;
+  } = {},
 ) {
   const calls: unknown[][] = [];
   let push: (state: ConnectState) => void = () => {};
@@ -89,6 +93,10 @@ function stubBridge(
     saveDiagnostics: record("saveDiagnostics") as ConnectBridge["saveDiagnostics"],
     submitReport: record("submitReport") as ConnectBridge["submitReport"],
     openLogs: record("openLogs") as ConnectBridge["openLogs"],
+    copyText: (text) => {
+      calls.push(["copyText", text]);
+      return answers.copy?.() ?? Promise.resolve(true);
+    },
     local: {
       pickFolder: () => Promise.resolve({ status: "cancelled" }),
       listAllowances: () => Promise.resolve({ personal_enabled: false, items: [] }),
@@ -224,6 +232,19 @@ describe("sign-in store over the preload bridge", () => {
       ["openPermissionSettings", "accessibility"],
       ["restartApp"],
     ]);
+  });
+
+  test("copying text goes through the main process and reports whether it landed", async () => {
+    const stub = stubBridge();
+    const store = createSignInStore(stub.bridge);
+    expect(await store.copyText("Please update the server")).toBe(true);
+    expect(stub.calls).toEqual([["copyText", "Please update the server"]]);
+    const refused = createSignInStore(stubBridge({ copy: () => Promise.resolve(false) }).bridge);
+    expect(await refused.copyText("x")).toBe(false);
+    const broken = createSignInStore(
+      stubBridge({ copy: () => Promise.reject(new Error("gone")) }).bridge,
+    );
+    expect(await broken.copyText("x")).toBe(false);
   });
 
   test("unsubscribed listeners hear nothing more", async () => {

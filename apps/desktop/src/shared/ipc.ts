@@ -34,6 +34,7 @@ export const CONNECT_CHANNELS = {
   updateAction: "connect:update-action",
   reportProblem: "connect:report-problem",
   copyDiagnostics: "connect:copy-diagnostics",
+  copyText: "connect:copy-text",
   saveDiagnostics: "connect:save-diagnostics",
   submitReport: "connect:submit-report",
   openLogs: "connect:open-logs",
@@ -218,6 +219,14 @@ export function reportInput(raw: unknown): ReportInput {
   };
 }
 
+export const CLIPBOARD_TEXT_LIMIT = 2000;
+
+export function clipboardText(raw: unknown): string | null {
+  return typeof raw === "string" && raw.length > 0 && raw.length <= CLIPBOARD_TEXT_LIMIT
+    ? raw
+    : null;
+}
+
 export interface SettingsPatch {
   locale?: LocaleSetting;
   launchAtLogin?: boolean;
@@ -259,6 +268,7 @@ export interface ConnectBridge {
   updateAction(): Promise<void>;
   reportProblem(): Promise<void>;
   copyDiagnostics(): Promise<void>;
+  copyText(text: string): Promise<boolean>;
   saveDiagnostics(): Promise<void>;
   submitReport(input: ReportInput): Promise<void>;
   openLogs(): Promise<void>;

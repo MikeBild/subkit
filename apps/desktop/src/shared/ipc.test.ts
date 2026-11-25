@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { desktopSettingsPatch, desktopUpdateView } from "./ipc.ts";
+import { clipboardText, desktopSettingsPatch, desktopUpdateView } from "./ipc.ts";
 
 describe("settings the Cockpit may change", () => {
   test("only launch at login and diagnostics pass, with real booleans", () => {
@@ -42,5 +42,16 @@ describe("the update line the Cockpit shows", () => {
 
   test("without updates there is no action", () => {
     expect(desktopUpdateView({ phase: "disabled" }, "11.2.0", t).action).toBeNull();
+  });
+});
+
+describe("text the sign-in window may put on the clipboard", () => {
+  test("only a bounded, non-empty string passes", () => {
+    expect(clipboardText("Please update the server")).toBe("Please update the server");
+    expect(clipboardText("x".repeat(2000))).toHaveLength(2000);
+    expect(clipboardText("x".repeat(2001))).toBeNull();
+    expect(clipboardText("")).toBeNull();
+    expect(clipboardText(42)).toBeNull();
+    expect(clipboardText(null)).toBeNull();
   });
 });

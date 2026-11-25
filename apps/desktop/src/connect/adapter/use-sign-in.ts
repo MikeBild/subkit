@@ -34,6 +34,7 @@ export interface SignInSession {
   main: ConnectState | null;
   t: Translate;
   dispatch: (command: Command) => void;
+  copyText: (text: string) => Promise<boolean>;
 }
 
 export function useSignIn(): SignInSession {
@@ -42,5 +43,5 @@ export function useSignIn(): SignInSession {
   const main = store.getState().main;
   const messages = main?.messages;
   const t = useMemo(() => translator(messages ?? {}), [messages]);
-  return { view, main, t, dispatch: store.dispatch };
+  return { view, main, t, dispatch: store.dispatch, copyText: store.copyText };
 }

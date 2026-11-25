@@ -63,6 +63,7 @@ function render(
     getState: () => state,
     getView: () => current,
     dispatch: () => {},
+    copyText: () => Promise.resolve(true),
     subscribe: () => () => {},
   };
   return renderToStaticMarkup(<SignInWindow store={store} local={createMockLocalCapabilities()} />);

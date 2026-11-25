@@ -539,6 +539,10 @@ const MESSAGES = {
     de: "Nachricht für deinen Administrator kopiert",
     en: "Message for your administrator copied",
   },
+  "notice.askFailed": {
+    de: "Nachricht konnte nicht kopiert werden",
+    en: "Couldn’t copy the message",
+  },
   "notice.ask.text": {
     de: "Bitte aktualisiere den SubKit-Server {host} von Version {version} auf {needs} oder neuer, damit SubKit Desktop sich verbinden kann.",
     en: "Please update the SubKit server {host} from version {version} to {needs} or later so SubKit Desktop can connect.",

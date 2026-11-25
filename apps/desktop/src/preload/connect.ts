@@ -14,6 +14,7 @@ const bridge: ConnectBridge = {
   updateAction: () => ipcRenderer.invoke(CONNECT_CHANNELS.updateAction),
   reportProblem: () => ipcRenderer.invoke(CONNECT_CHANNELS.reportProblem),
   copyDiagnostics: () => ipcRenderer.invoke(CONNECT_CHANNELS.copyDiagnostics),
+  copyText: (text) => ipcRenderer.invoke(CONNECT_CHANNELS.copyText, String(text)),
   saveDiagnostics: () => ipcRenderer.invoke(CONNECT_CHANNELS.saveDiagnostics),
   submitReport: (input) =>
     ipcRenderer.invoke(CONNECT_CHANNELS.submitReport, {

@@ -16,6 +16,7 @@ export interface SignInStore {
   getState(): SignInState;
   getView(): WindowView | null;
   dispatch(command: Command): void;
+  copyText(text: string): Promise<boolean>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -161,6 +162,11 @@ export function createSignInStore(bridge: ConnectBridge, options: StoreOptions =
       apply(decision.events);
       for (const effect of decision.effects) run(effect);
     },
+    copyText: (text) =>
+      bridge.copyText(text).then(
+        (copied) => copied === true,
+        () => false,
+      ),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
