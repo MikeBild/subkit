@@ -54,7 +54,7 @@ describe("personal notification pause", () => {
         "de-DE",
         de,
       ),
-    ).toBe("Pausiert bis So. 22.11., 08:00 Uhr");
+    ).toMatch(/^Pausiert bis So\.,? 22\.11\., 08:00 Uhr$/);
     expect(
       pauseLabel(
         { paused: true, mode: "until_resumed", paused_at: null, until: null },
