@@ -562,7 +562,7 @@ export async function advanceTaskRun(
     if (resumed.resumed) await enqueueNext(db, ref, overrides);
     return resumed.resumed ? "resumed" : "idle";
   }
-  if (run.waiting_reason === "no_progress") {
+  if (run.waiting_reason === "no_progress" || run.waiting_reason === "turn_stopped") {
     if (!taskRunLimitReached(run, { max_turns: loaded.task.max_turns }, p.now)) return "idle";
     await observeTaskRun(
       db,

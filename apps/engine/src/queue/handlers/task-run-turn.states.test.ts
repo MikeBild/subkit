@@ -327,6 +327,32 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
     expect(await advanceTaskRun(db, scope)).toBe("enqueued");
   }, 180_000);
 
+  test("a run that waits after an interrupted turn still ends at its deadline", async () => {
+    const { w, run } = await freshRun();
+    await clearQueue();
+    const interrupted = { id: null, driver: "task" as const, failure: null, interrupted: true };
+    await observeTaskRun(db, {
+      tenant_id: w.tenant_id,
+      task_run_id: run.id,
+      turn: interrupted,
+      source: "queue",
+    });
+    const held = await runRow(w, run.id);
+    expect(held).toMatchObject({ state: "waiting", waiting_reason: "turn_stopped" });
+    const scope = { tenant_id: w.tenant_id, task_run_id: run.id };
+    expect(await advanceTaskRun(db, { ...scope, now: FIXED_NOW })).toBe("idle");
+    const deadline = new Date(held.deadline_at);
+    expect(await advanceTaskRun(db, { ...scope, now: deadline }, { now: () => deadline })).toBe(
+      "observed",
+    );
+    expect(await runRow(w, run.id)).toMatchObject({
+      state: "failed",
+      failure_code: "deadline_exceeded",
+      waiting_reason: null,
+    });
+    expect(await queuedJobs(run.id)).toHaveLength(0);
+  }, 180_000);
+
   test("a turn that worked resets the count of failed jobs", async () => {
     const { w, run } = await freshRun();
     await clearQueue();
