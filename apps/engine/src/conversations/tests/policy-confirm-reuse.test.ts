@@ -7,6 +7,7 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { getElicitation } from "../elicitations.ts";
 import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext } from "../tools/index.ts";
@@ -110,7 +111,7 @@ test("an expired but still pending approval for the same action is not reused", 
   if (!firstId) throw new Error("missing first elicitation");
   await ctx.testDb.db
     .update(conversationElicitations)
-    .set({ expires_at: new Date(Date.now() - 60_000) })
+    .set({ expires_at: new Date(getTestNow() - 60_000) })
     .where(eq(conversationElicitations.id, firstId));
   const second = await invoke();
   const secondId = second.signals.pendingElicitation?.elicitation_id;
@@ -122,5 +123,5 @@ test("an expired but still pending approval for the same action is not reused", 
     .where(eq(conversationElicitations.conversation_id, conversation.id));
   expect(rows.filter((row) => row.status === "pending").map((row) => row.id)).toEqual([secondId]);
   const fresh = rows.find((row) => row.id === secondId);
-  expect(fresh?.expires_at.getTime()).toBeGreaterThan(Date.now());
+  expect(fresh?.expires_at.getTime()).toBeGreaterThan(getTestNow());
 });
