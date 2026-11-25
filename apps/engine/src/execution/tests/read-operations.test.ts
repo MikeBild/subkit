@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { resolveUrl } from "../../connectors/drivers/resolve-url.ts";
 import { getBuiltinTemplate, loadBuiltinReadOperations } from "../../connectors/templates.ts";
 import { isDocumentedReadOperation } from "../steps/request/read-operations.ts";
 
@@ -69,13 +70,18 @@ test("the scheduled HubSpot deal sweep is a documented read POST", () => {
   )!;
   const step = recipe.workflow.steps.find((step) => step.id === "deals_due") as {
     method: string;
-    url: string;
+    path: string;
+    connector_id: string;
     headers: Record<string, string>;
     body: unknown;
   };
+  expect(recipe.required_connectors).toContainEqual({
+    placeholder: step.connector_id,
+    template: "hubspot",
+  });
   const search = {
     method: step.method,
-    url: step.url.replace(/^.*(?=\/crm\/)/, hubspot.base_url!),
+    url: resolveUrl(hubspot.base_url, step.path).href,
     headers: step.headers,
     body: step.body,
   };
