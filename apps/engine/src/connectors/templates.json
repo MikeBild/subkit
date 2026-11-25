@@ -18234,9 +18234,15 @@
             },
             {
               "kind": "transform",
+              "id": "page_input",
+              "language": "javascript",
+              "expression": "return { html: input.scope.fetch.data, url: input.input.url };"
+            },
+            {
+              "kind": "transform",
               "id": "to_markdown",
               "language": "html-to-markdown",
-              "data_selector": "{ \"html\": fetch.data, \"url\": $step_meta.fetch.url }"
+              "input_from": "page_input.data"
             }
           ],
           "output_transform": "to_markdown"
@@ -18284,21 +18290,27 @@
             },
             {
               "kind": "transform",
+              "id": "page_input",
+              "language": "javascript",
+              "expression": "return { html: input.scope.fetch.data, url: input.input.url };"
+            },
+            {
+              "kind": "transform",
               "id": "readable",
               "language": "readability",
-              "data_selector": "{ \"html\": fetch.data, \"url\": $step_meta.fetch.url }"
+              "input_from": "page_input.data"
             },
             {
               "kind": "transform",
               "id": "to_markdown",
               "language": "html-to-markdown",
-              "data_selector": "readable"
+              "input_from": "readable.data"
             },
             {
               "kind": "transform",
               "id": "envelope",
               "language": "javascript",
-              "expression": "return { title: input.scope.readable.title, byline: input.scope.readable.byline, lang: input.scope.readable.lang, url: input.scope.readable.url, markdown: input.scope.to_markdown.markdown, bytes: input.scope.to_markdown.bytes, truncated: input.scope.to_markdown.truncated };"
+              "expression": "const page = input.scope.readable.data; const md = input.scope.to_markdown.data; return { title: page.title, byline: page.byline, lang: page.lang, url: input.input.url, markdown: md.markdown, bytes: md.bytes, truncated: md.truncated };"
             }
           ],
           "output_transform": "envelope"
@@ -18370,23 +18382,29 @@
             },
             {
               "kind": "transform",
+              "id": "page_inputs",
+              "language": "javascript",
+              "expression": "return input.scope.fetch_page.data.map((entry, index) => ({ html: entry.fetch_page.data, url: input.scope.urls.data[index].page_url }));"
+            },
+            {
+              "kind": "transform",
               "id": "readable",
-              "for_each": "(sourceData) => sourceData.urls.data",
+              "for_each": "(sourceData) => sourceData.page_inputs.data",
               "language": "readability",
-              "data_selector": "{ \"html\": $scope.fetch_page.data[$loop_index].fetch_page.data, \"url\": $item.page_url }"
+              "input_from": "$item"
             },
             {
               "kind": "transform",
               "id": "to_markdown",
               "for_each": "(sourceData) => sourceData.readable.data",
               "language": "html-to-markdown",
-              "data_selector": "$item.readable.data"
+              "input_from": "$item.readable.data"
             },
             {
               "kind": "transform",
               "id": "pages",
               "language": "javascript",
-              "expression": "const markdown = input.scope.to_markdown.data; return input.scope.readable.data.map((entry, index) => { const page = entry.readable.data; const md = markdown[index].to_markdown.data; return { title: page.title, url: page.url, markdown: md.markdown, bytes: md.bytes }; });"
+              "expression": "const markdown = input.scope.to_markdown.data; const urls = input.scope.urls.data; return input.scope.readable.data.map((entry, index) => { const page = entry.readable.data; const md = markdown[index].to_markdown.data; return { title: page.title, url: urls[index].page_url, markdown: md.markdown, bytes: md.bytes }; });"
             }
           ],
           "output_transform": "{ \"pages\": $scope.pages.data }"

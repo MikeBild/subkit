@@ -812,6 +812,10 @@ export const TransformStepSchema = z
     markdown: MarkdownConfigSchema.optional(),
     structured_data: StructuredDataConfigSchema.optional(),
     file: ParseFileConfigSchema.optional(),
+    input_from: z.string().min(1).optional().openapi({
+      description:
+        "Dot path to an earlier step's output that this transform reads instead of the workflow input, such as `fetch.data`. Inside a for_each step, `$item.<field>` reads the current item. Without it the transform receives the workflow input. `data_selector` still only narrows this step's own output.",
+    }),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     silence_warnings: z
@@ -866,6 +870,14 @@ export const TransformStepSchema = z
         code: z.ZodIssueCode.custom,
         path: ["file"],
         message: "transform.language=parse-file requires a `file` block with a `source`",
+      });
+    }
+    if (language === "parse-file" && s.input_from !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["input_from"],
+        message:
+          "transform.language=parse-file reads its file from `file.source`; remove `input_from`",
       });
     }
     if (s.file !== undefined && language !== "parse-file") {

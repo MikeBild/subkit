@@ -494,3 +494,33 @@ describe("square write recipes (#564)", () => {
     );
   });
 });
+
+describe("web-scraper recipes (#522)", () => {
+  const literalUrls = (workflow: unknown): unknown => {
+    const copy = JSON.parse(JSON.stringify(workflow)) as { steps: Array<{ url?: string }> };
+    for (const step of copy.steps) if (step.url) step.url = "https://example.test/page";
+    return copy;
+  };
+
+  test("every recipe validates once its fetch urls are literal", () => {
+    const outcomes = getBuiltinTemplate("web-scraper")!.recipes.map((recipe) => ({
+      slug: recipe.slug,
+      errors: validateWorkflowDef(literalUrls(recipe.workflow)).errors,
+    }));
+    expect(outcomes.map((outcome) => outcome.slug).sort()).toEqual([
+      "crawl-sitemap-to-markdown",
+      "extract-main-content",
+      "fetch-url-as-markdown",
+    ]);
+    expect(outcomes.filter((outcome) => outcome.errors.length > 0)).toEqual([]);
+  });
+
+  test("every html transform names its input with input_from", () => {
+    const htmlTransforms = getBuiltinTemplate("web-scraper")!.recipes.flatMap((recipe) =>
+      (recipe.workflow.steps as Array<{ id: string; language?: string; input_from?: string }>)
+        .filter((step) => step.language === "readability" || step.language === "html-to-markdown")
+        .map((step) => ({ step: `${recipe.slug}/${step.id}`, input_from: step.input_from })),
+    );
+    expect(htmlTransforms.filter((transform) => !transform.input_from)).toEqual([]);
+  });
+});

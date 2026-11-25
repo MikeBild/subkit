@@ -73,6 +73,17 @@ describe("DAG reference grammars", () => {
     expect(dag.edges).toContainEqual({ from: "select", to: "select", reason: "jsonata_bare" });
   });
 
+  test("orders a transform after the step its input_from names, even without a dot path", () => {
+    const dag = buildStepDag(
+      workflow([
+        { id: "convert", kind: "transform", language: "html-to-markdown", input_from: "fetch" },
+        { id: "fetch", kind: "request", method: "GET", url: "https://example.test" },
+      ]),
+    );
+    expect(dag.edges).toEqual([{ from: "convert", to: "fetch", reason: "transform_input" }]);
+    expect(topoSort(dag)).toEqual(["fetch", "convert"]);
+  });
+
   test("deduplicates adjacency pairs while retaining reference reasons for diagnostics", () => {
     const dag = buildStepDag(
       workflow([
