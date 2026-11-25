@@ -230,6 +230,7 @@ test("earliest user tie breaks by ID independently of insertion order", async ()
   await ctx.db
     .insert(conversations)
     .values({ id, tenant_id: tenantId, status: "active", title: "First by stable ID" });
+  const sharedCreatedAt = new Date(getTestNow());
   await ctx.db.insert(conversationMessages).values([
     {
       id: "00000000-0000-4000-8000-000000000022",
@@ -237,7 +238,7 @@ test("earliest user tie breaks by ID independently of insertion order", async ()
       conversation_id: id,
       role: "user",
       content: { text: "Inserted earlier" },
-      created_at: new Date(getTestNow()),
+      created_at: sharedCreatedAt,
     },
     {
       id: "00000000-0000-4000-8000-000000000011",
@@ -245,7 +246,7 @@ test("earliest user tie breaks by ID independently of insertion order", async ()
       conversation_id: id,
       role: "user",
       content: { text: "First by stable ID" },
-      created_at: new Date(getTestNow()),
+      created_at: sharedCreatedAt,
     },
   ]);
   expect(await isConversationTitleOpening(ctx.db, tenantId, id)).toBe(true);

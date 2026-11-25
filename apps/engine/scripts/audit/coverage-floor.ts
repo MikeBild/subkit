@@ -173,6 +173,33 @@ export function readCoverageRun(result: CoverageCommandResult): CoverageRun {
   return { rows: parseCoverageTable(`${result.stdout ?? ""}\n${result.stderr ?? ""}`) };
 }
 
+const TEST_BOUNDARY = /^\((pass|fail|skip|todo)\)|\.test\.[cm]?[jt]sx?:$/;
+
+function failureBlocks(lines: readonly string[]): string[] {
+  return lines.flatMap((line, index) => {
+    if (!line.startsWith("(fail)")) return [];
+    let start = index;
+    while (start > 0 && !TEST_BOUNDARY.test(lines[start - 1]?.trim() ?? "")) start -= 1;
+    const body = lines.slice(start, index).join("\n").trim();
+    const capped = body.length > 2_500 ? `${body.slice(0, 2_500)}\n...` : body;
+    return [capped ? `${capped}\n${line}` : line];
+  });
+}
+
+export function coverageFailureDetail(output: string, tailLimit = 4_000, failureLimit = 12_000) {
+  const trimmed = output.trim();
+  const tail = trimmed.slice(-tailLimit);
+  const blocks = failureBlocks(trimmed.split("\n")).filter((block) => !tail.includes(block));
+  const kept: string[] = [];
+  let used = 0;
+  for (const block of blocks) {
+    if (used + block.length + 2 > failureLimit) continue;
+    kept.push(block);
+    used += block.length + 2;
+  }
+  return kept.length === 0 ? tail : `${kept.join("\n\n")}\n\n--- output tail ---\n${tail}`;
+}
+
 export function aggregateByPrefix(
   rows: readonly CoverageRow[],
   prefix: string,

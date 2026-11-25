@@ -35,6 +35,7 @@ import {
 import {
   aggregateByPrefix,
   type CoverageRun,
+  coverageFailureDetail,
   coverageTargetWanted,
   type FloorEntry,
   judgeFile,
@@ -243,7 +244,7 @@ async function runCoverageGroup(
       };
     }
     if (outcome.exitCode !== 0 || outcome.error) {
-      const detail = `${out}\n${err}`.trim().slice(-4_000);
+      const detail = coverageFailureDetail(`${out}\n${err}`);
       return {
         group,
         lcovPath,
