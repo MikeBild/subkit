@@ -3,8 +3,11 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { apiKeys, conversations, roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { adminHeaders, seedTenant } from "../../test-helpers/seed.ts";
 import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
+
+const nextUuid = createDeterministicUuidFactory(4802);
 
 let srv: HttpTestServer;
 let conversation_id: string;
@@ -151,7 +154,7 @@ describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)
 
   test("a foreign private conversation answers like a missing one, the owner gets 200", async () => {
     const hidden = await sendFeedback(privateConvId, adminHeaders(srv.apiKey));
-    const missing = await sendFeedback(crypto.randomUUID(), adminHeaders(srv.apiKey));
+    const missing = await sendFeedback(nextUuid(), adminHeaders(srv.apiKey));
     expect(hidden.status).toBe(404);
     expect(missing.status).toBe(404);
     const { request_id: _hiddenRequest, ...hiddenBody } = hidden.body;

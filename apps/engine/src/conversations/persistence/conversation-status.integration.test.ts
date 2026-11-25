@@ -2,10 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { CONVERSATION_TRANSITIONS } from "../core/conversation-status.ts";
 import { cancelConversation } from "../service/lifecycle.ts";
 import type { ConversationStatus } from "../types.ts";
 import { transitionConversation } from "./conversation-status.ts";
+
+const nextUuid = createDeterministicUuidFactory(4801);
 
 const STATUSES = Object.keys(CONVERSATION_TRANSITIONS) as ConversationStatus[];
 
@@ -103,8 +106,6 @@ describe("transitionConversation", () => {
     const second = await cancelConversation(tenant_id, id, null, ctx.db, "system");
     expect(first?.status).toBe("abandoned");
     expect(second?.status).toBe("abandoned");
-    expect(await cancelConversation(tenant_id, crypto.randomUUID(), null, ctx.db, "system")).toBe(
-      null,
-    );
+    expect(await cancelConversation(tenant_id, nextUuid(), null, ctx.db, "system")).toBe(null);
   });
 });
