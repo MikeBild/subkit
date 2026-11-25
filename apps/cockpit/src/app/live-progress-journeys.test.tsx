@@ -1,7 +1,14 @@
 import { expect } from "bun:test";
 import { CONVERSATION } from "./conversation-journey-fixtures";
 import { de, journeys, type LiveStream, liveStream, mount } from "./journey-fixtures";
-import { NOW, run, runDetail, WORKFLOW, workflow } from "./workspace-journey-fixtures";
+import {
+  NOW,
+  run,
+  runDetail,
+  runningOutcome,
+  WORKFLOW,
+  workflow,
+} from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 const runningStep = (step: string) => de("ops.sched.live.step", { step });
@@ -164,7 +171,7 @@ function scheduleRoutes(live: LiveStream, steps: () => unknown[]) {
       url.searchParams.get("request_source") === "scheduler"
         ? { items: [liveRun], next_cursor: null, total: 1 }
         : { items: [run], next_cursor: null, total: 1 },
-    [`/v1/executions/${LIVE_RUN}`]: () => ({ ...runDetail, ...liveRun, outcome: null }),
+    [`/v1/executions/${LIVE_RUN}`]: () => ({ ...runDetail, ...liveRun, outcome: runningOutcome }),
     [`/v1/executions/${LIVE_RUN}/steps`]: () => ({ items: steps(), next_cursor: null }),
     [`/v1/executions/${LIVE_RUN}/cost`]: () => ({}),
     [`/v1/workflows/${WORKFLOW}/schedule-occurrences`]: () => ({

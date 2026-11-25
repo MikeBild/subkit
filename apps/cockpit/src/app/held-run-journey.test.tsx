@@ -19,6 +19,7 @@ import {
   RUN,
   run,
   runDetail,
+  runningOutcome,
   USER,
   workflow,
 } from "./workspace-journey-fixtures";
@@ -78,7 +79,7 @@ const heldItem = attentionItem({
 async function heldRunContinues(locale: Locale) {
   let released = false;
   let answer: unknown = null;
-  const running = { ...runDetail, status: "running", finished_at: null, outcome: null };
+  const running = { ...runDetail, status: "running", finished_at: null, outcome: runningOutcome };
   const respond = `/v1/conversations/${CONVERSATION}/elicitations/${ELICITATION}/respond`;
   const app = await mount("/", {
     locale,

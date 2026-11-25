@@ -281,6 +281,13 @@ export const runDetail = {
   result_markdown_truncated: false,
 };
 
+export const runningOutcome = {
+  ...runDetail.outcome,
+  kind: "running",
+  cause_class: null,
+  steps: { total: 1, succeeded: 0, failed: 0, held: 0, skipped: 0 },
+};
+
 export type Handler = (url: URL, init: RequestInit | undefined) => unknown;
 
 export const BASE_ROUTES: Record<string, Handler> = {
