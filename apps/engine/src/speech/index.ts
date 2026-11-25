@@ -1,7 +1,7 @@
-import { readLlmSetting } from "../llm/runtime/model-init.ts";
+import { readLlmSetting, transcriptionConfigured } from "../llm/index.ts";
 import { createModelStore } from "./local/model-store.ts";
 import { createWhisperWorkerClient, defaultWhisperWorker } from "./local/whisper-client.ts";
-import { cloudTranscriberConfigured, createCloudTranscriber } from "./providers/cloud.ts";
+import { createCloudTranscriber } from "./providers/cloud.ts";
 import { createLocalTranscriber } from "./providers/local.ts";
 import { createSpeechService, parsePreference, type SpeechService } from "./service.ts";
 
@@ -20,7 +20,7 @@ function createDefaultSpeechService(): SpeechService {
       model: readLlmSetting("TRANSCRIPTION_MODEL", tenantId),
       primaryProvider: readLlmSetting("LLM_PROVIDER", tenantId) ?? "",
     }),
-    configured: cloudTranscriberConfigured,
+    configured: transcriptionConfigured,
     transcribers: {
       openai: createCloudTranscriber("openai"),
       azure: createCloudTranscriber("azure"),

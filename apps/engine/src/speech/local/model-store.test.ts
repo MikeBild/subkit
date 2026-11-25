@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelFile } from "../core/model-files.ts";
-import { createModelStore } from "./model-store.ts";
+import { createModelStore, speechModelDirFrom } from "./model-store.ts";
 
 const body = new TextEncoder().encode("model-bytes");
 const good: ModelFile = {
@@ -62,5 +62,26 @@ describe("model store", () => {
     const fetcher = (async () => new Response(null, { status: 503 })) as unknown as typeof fetch;
     const state = await createModelStore({ dir, files: [good], fetcher }).prepare();
     expect(state.kind === "failed" && state.reason).toContain("HTTP 503");
+  });
+
+  test("puts the model next to the object store, else in a temporary folder, unless set", () => {
+    const revision = "27a07b4b52b3a4c5886134bb4320e93e1a4bbc7c";
+    expect(
+      speechModelDirFrom({
+        explicit: "/models",
+        objectStorageRoot: "/data/files",
+        temporary: "/tmp",
+      }),
+    ).toBe("/models");
+    expect(
+      speechModelDirFrom({
+        explicit: undefined,
+        objectStorageRoot: "/data/files",
+        temporary: "/tmp",
+      }),
+    ).toBe(join("/data", "speech-models", revision));
+    expect(
+      speechModelDirFrom({ explicit: undefined, objectStorageRoot: undefined, temporary: "/tmp" }),
+    ).toBe(join("/tmp", "subkit-speech-models", revision));
   });
 });

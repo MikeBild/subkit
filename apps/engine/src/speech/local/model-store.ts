@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { readEnv } from "../../env.ts";
 import { logger } from "../../logging/index.ts";
@@ -12,9 +12,24 @@ import {
   modelFileUrl,
 } from "../core/model-files.ts";
 
+export function speechModelDirFrom(source: {
+  readonly explicit: string | undefined;
+  readonly objectStorageRoot: string | undefined;
+  readonly temporary: string;
+}): string {
+  if (source.explicit) return source.explicit;
+  const base = source.objectStorageRoot
+    ? join(dirname(source.objectStorageRoot), "speech-models")
+    : join(source.temporary, "subkit-speech-models");
+  return join(base, LOCAL_SPEECH_REVISION);
+}
+
 export const speechModelDir = (): string =>
-  readEnv("SPEECH_MODEL_DIR") ??
-  join(homedir(), ".cache", "subkit", "speech", LOCAL_SPEECH_REVISION);
+  speechModelDirFrom({
+    explicit: readEnv("SPEECH_MODEL_DIR"),
+    objectStorageRoot: readEnv("OBJECT_STORAGE_ROOT"),
+    temporary: tmpdir(),
+  });
 
 const fileOnDisk = async (dir: string, file: ModelFile): Promise<boolean> =>
   stat(join(dir, file.path)).then(

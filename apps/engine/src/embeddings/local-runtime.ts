@@ -38,6 +38,10 @@ export async function importTransformersWeb<T>(): Promise<T> {
   }
 }
 
+export async function onnxRuntimeAssets(): Promise<{ mjs: string; wasm: string }> {
+  return (await import("./embedded-assets.ts")).ORT_ASSETS;
+}
+
 async function importWebBuild(): Promise<TransformersWeb> {
   const { ORT_ASSETS, MODEL_FILE_BY_BASENAME } = await import("./embedded-assets.ts");
   const mod = await importTransformersWeb<TransformersWeb>();

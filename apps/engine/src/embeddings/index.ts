@@ -5,6 +5,7 @@ export {
   embeddingsAvailable,
   embedTexts,
 } from "./local-provider.ts";
+export { importTransformersWeb, onnxRuntimeAssets } from "./local-runtime.ts";
 export {
   embedQuery,
   type QueryEmbedder,

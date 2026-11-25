@@ -30,8 +30,8 @@ interface TransformersWeb {
 const recognizers = new Map<string, Promise<Recognizer>>();
 
 async function importWebBuild(dir: string): Promise<TransformersWeb> {
-  const { ORT_ASSETS } = await import("../../embeddings/embedded-assets.ts");
-  const { importTransformersWeb } = await import("../../embeddings/local-runtime.ts");
+  const { importTransformersWeb, onnxRuntimeAssets } = await import("../../embeddings/index.ts");
+  const ORT_ASSETS = await onnxRuntimeAssets();
   const transformers = await importTransformersWeb<TransformersWeb>();
   const { env } = transformers;
   env.allowRemoteModels = true;
