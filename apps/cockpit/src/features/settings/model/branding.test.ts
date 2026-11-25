@@ -54,6 +54,10 @@ describe("tenant branding client contracts", () => {
     expect(brandingDraft(branding)).not.toHaveProperty("logo_urls");
   });
 
+  test("saving the branding form never sends a display name that would overwrite the saved one", () => {
+    expect(brandingDraft(branding)).not.toHaveProperty("display_name");
+  });
+
   test("the app icon draft previews its canonical large icon and clears locally", () => {
     const draft = brandingDraft(branding);
     expect(brandingDraftAppIcon(draft, branding)).toContain("/icon-512?revision=7");

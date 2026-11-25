@@ -7609,7 +7609,6 @@
         },
         "required": [
           "revision",
-          "display_name",
           "subtitle",
           "palette",
           "logos"

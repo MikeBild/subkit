@@ -30885,7 +30885,7 @@ export interface components {
              * @deprecated
              * @description Deprecated: accepted for compatibility and not shown. The Cockpit wordmark and title show the workspace name; rename the workspace with PATCH /v1/identity/workspace (display_name) or in the Cockpit under Settings → Workspace.
              */
-            display_name: string | null;
+            display_name?: string | null;
             subtitle: string | null;
             /** @enum {string|null} */
             palette: "standard" | "indigo" | "teal" | null;
