@@ -7,6 +7,8 @@ import {
   parseBinds,
   recipeWorkflowSource,
   SOLUTIONS_VERTICAL,
+  templateRecipeRef,
+  templateRecipeWorkflowSource,
   type WorkflowSource,
 } from "../lib/recipe-source.ts";
 import {
@@ -28,18 +30,28 @@ async function loadWorkflowSource(
 ): Promise<WorkflowSource> {
   if (args["from-recipe"]) {
     const binds = parseBinds(args.bind);
-    const [pack, known] = await Promise.all([
+    const reference = String(args["from-recipe"]);
+    const templateRef = templateRecipeRef(reference);
+    const knownConnectors = async () =>
+      (await client.listConnectors({ limit: 1000 })).items.map((item) => ({
+        id: String(item.id),
+        slug: String(item.slug),
+        template_slug: typeof item.template_slug === "string" ? item.template_slug : null,
+      }));
+    if (templateRef) {
+      const recipe = await client.getConnectorTemplateRecipe(
+        templateRef.template,
+        templateRef.recipe,
+      );
+      const connectors =
+        (recipe.required_connectors ?? []).length > 0 ? await knownConnectors() : [];
+      return templateRecipeWorkflowSource(templateRef.template, recipe, binds, connectors);
+    }
+    const [pack, connectors] = await Promise.all([
       client.getRecipePack(SOLUTIONS_VERTICAL),
-      Object.keys(binds).length > 0
-        ? client.listConnectors({ limit: 1000 })
-        : Promise.resolve({ items: [] }),
+      Object.keys(binds).length > 0 ? knownConnectors() : Promise.resolve([]),
     ]);
-    const connectors = known.items.map((item) => ({
-      id: String(item.id),
-      slug: String(item.slug),
-      template_slug: typeof item.template_slug === "string" ? item.template_slug : null,
-    }));
-    return recipeWorkflowSource(pack, String(args["from-recipe"]), binds, connectors);
+    return recipeWorkflowSource(pack, reference, binds, connectors);
   }
   const { readFileSync } = await import("node:fs");
   return {

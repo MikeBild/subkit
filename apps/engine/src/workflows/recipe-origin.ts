@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { recipePackPredicate } from "../connectors/recipe-packs.ts";
-import { builtFromRecipe, recipeForOrigin } from "../connectors/solutions.ts";
+import { builtFromRecipe, getTemplateRecipe, recipeForOrigin } from "../connectors/solutions.ts";
+import { type RecipeOrigin, recipeOriginName } from "./draft-schemas.ts";
 import { pinInstallInputs } from "./recipe-install-inputs.ts";
 
 export type RecipeOriginCheck =
@@ -11,7 +12,8 @@ export type RecipeOriginCheck =
       readonly message: string;
     };
 
-const originRecipe = (origin: { vertical: string; slug: string }) => {
+const originRecipe = (origin: RecipeOrigin) => {
+  if ("template" in origin) return getTemplateRecipe(origin.template, origin.slug);
   const predicate = recipePackPredicate(origin.vertical);
   return recipeForOrigin(
     origin,
@@ -28,7 +30,7 @@ export type PinnedRecipeDefinition =
     };
 
 export function pinnedRecipeDefinition(
-  origin: { vertical: string; slug: string; inputs?: Record<string, unknown> | undefined },
+  origin: RecipeOrigin,
   definition: unknown,
 ): PinnedRecipeDefinition {
   const recipe = originRecipe(origin);
@@ -40,7 +42,7 @@ export function pinnedRecipeDefinition(
     recipe.workflow,
   );
   if (pinned.ok) return pinned;
-  const name = `install input ${pinned.key} of recipe ${origin.vertical}/${origin.slug}`;
+  const name = `install input ${pinned.key} of recipe ${recipeOriginName(origin)}`;
   return pinned.missing
     ? {
         ok: false,
@@ -75,17 +77,17 @@ export function recipeDeliveryBinding<T>(
   return { definition: { ...shape, steps } as T, binding_id };
 }
 
-export function checkRecipeOrigin(
-  origin: { vertical: string; slug: string },
-  definition: unknown,
-): RecipeOriginCheck {
+export function checkRecipeOrigin(origin: RecipeOrigin, definition: unknown): RecipeOriginCheck {
   const recipe = originRecipe(origin);
-  const name = `${origin.vertical}/${origin.slug}`;
+  const name = recipeOriginName(origin);
   if (!recipe)
     return {
       ok: false,
       reason: "recipe_unknown",
-      message: `no recipe ${name} in the recipe packs`,
+      message:
+        "template" in origin
+          ? `no recipe ${name} on the built-in connector templates`
+          : `no recipe ${name} in the recipe packs`,
     };
   if (!builtFromRecipe(definition, recipe))
     return {

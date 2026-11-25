@@ -45,6 +45,7 @@ import {
   missingConnectors,
   NEW_CONNECTOR,
   planSolution,
+  recipeEntryKey,
   type SolutionConnector,
   type SolutionEntry,
   type SolutionTrigger,
@@ -57,6 +58,7 @@ import {
   solutionText,
   solutionTrigger,
   templateConnectorBody,
+  templateRecipeEntries,
 } from "../model/create-template-model";
 import { InstallInputFields } from "./install-input-fields";
 
@@ -115,17 +117,27 @@ async function refreshLookups(client: QueryClient): Promise<void> {
 }
 
 function useSolutionPack(active: boolean) {
-  return useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
+  const pack = useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
+  const catalog = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
+  const entries = [
+    ...(pack.data?.recipes ?? []),
+    ...templateRecipeEntries(catalog.data?.items ?? []),
+  ];
+  return {
+    catalog,
+    entries,
+    pending: pack.isPending || catalog.isPending,
+    failed: pack.isError || catalog.isError,
+    retry: () => {
+      void pack.refetch();
+      void catalog.refetch();
+    },
+  };
 }
 
 export function useSolutionTemplates(active: boolean) {
-  const pack = useSolutionPack(active);
-  return {
-    entries: pack.data?.recipes ?? [],
-    pending: pack.isPending,
-    failed: pack.isError,
-    retry: () => void pack.refetch(),
-  };
+  const { entries, pending, failed, retry } = useSolutionPack(active);
+  return { entries, pending, failed, retry };
 }
 
 function useBindingService(): (
@@ -182,17 +194,26 @@ export function SolutionGallery({
         const text = solutionText(entry, t);
         return (
           <TemplateCard
-            key={entry.recipe_slug}
+            key={recipeEntryKey(entry)}
             title={text.title}
             line={text.line}
-            icons={entry.connectors
-              .filter(
-                (connector, index, all) =>
-                  all.findIndex((other) => other.template === connector.template) === index,
-              )
-              .map((connector) => (
-                <ServiceIcon key={connector.template} service={serviceOf(connector)} />
-              ))}
+            icons={
+              entry.template_slug
+                ? [
+                    <ServiceIcon
+                      key={entry.template_slug}
+                      service={templateIdentity(entry.template_slug)}
+                    />,
+                  ]
+                : entry.connectors
+                    .filter(
+                      (connector, index, all) =>
+                        all.findIndex((other) => other.template === connector.template) === index,
+                    )
+                    .map((connector) => (
+                      <ServiceIcon key={connector.template} service={serviceOf(connector)} />
+                    ))
+            }
             meta={[
               <>
                 <Zap aria-hidden="true" />
@@ -202,8 +223,8 @@ export function SolutionGallery({
                 {joinNames(solutionNeeds(entry), tag)}
               </span>,
             ]}
-            onSelect={() => onPick(entry.recipe_slug)}
-            testId={`create-solution-${entry.recipe_slug}`}
+            onSelect={() => onPick(recipeEntryKey(entry))}
+            testId={`create-solution-${recipeEntryKey(entry)}`}
           />
         );
       })}
@@ -225,8 +246,7 @@ export function useSolutionFlow(
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const created = useRef<Record<string, string>>({});
-  const pack = useSolutionPack(active);
-  const catalog = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
+  const { catalog, entries, pending, failed, retry } = useSolutionPack(active);
   const serviceOf = useBindingService();
   const choiceFor = (connector: SolutionConnector): BindingChoice =>
     bindingChoice(connector, choices, catalog.data?.items ?? [], addresses);
@@ -239,7 +259,6 @@ export function useSolutionFlow(
     setInputs({});
     created.current = {};
   };
-  const entries = pack.data?.recipes ?? [];
   const tag = LOCALE_TAGS[locale];
   const find = (slug: string) => findSolution(entries, slug);
   const create = useMutation({
@@ -309,9 +328,9 @@ export function useSolutionFlow(
         />
         <SolutionGallery
           entries={entries.filter((entry) => solutionMatches(entry, solutionText(entry, t), query))}
-          pending={pack.isPending}
-          failed={pack.isError}
-          onRetry={() => void pack.refetch()}
+          pending={pending}
+          failed={failed}
+          onRetry={retry}
           onPick={onPick}
         />
       </div>
@@ -346,41 +365,45 @@ export function useSolutionFlow(
                     .map((step) => t(stepKindKey(step)))
                     .join(" → "),
                 },
-                {
-                  label: t("create.solution.connectors"),
-                  value: (
-                    <span className="flex flex-col gap-2">
-                      {entry.connectors.map((connector) => (
-                        <span
-                          key={connector.placeholder}
-                          className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
-                        >
-                          <ServiceIcon
-                            service={serviceOf(connector, choiceFor(connector))}
-                            className="size-[18px]"
-                          />
-                          <span className="min-w-0 flex-1 truncate">
-                            {connector.connector_name ?? connector.template_name}
+                ...(entry.connectors.length === 0
+                  ? []
+                  : [
+                      {
+                        label: t("create.solution.connectors"),
+                        value: (
+                          <span className="flex flex-col gap-2">
+                            {entry.connectors.map((connector) => (
+                              <span
+                                key={connector.placeholder}
+                                className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
+                              >
+                                <ServiceIcon
+                                  service={serviceOf(connector, choiceFor(connector))}
+                                  className="size-[18px]"
+                                />
+                                <span className="min-w-0 flex-1 truncate">
+                                  {connector.connector_name ?? connector.template_name}
+                                </span>
+                                <StatusBadge
+                                  state={connector.connector_id ? "ok" : "pending"}
+                                  label={t(
+                                    connector.connector_id
+                                      ? "create.solution.connected"
+                                      : "create.solution.missing",
+                                  )}
+                                  testId={`create-solution-connector-${connector.template}`}
+                                />
+                              </span>
+                            ))}
                           </span>
-                          <StatusBadge
-                            state={connector.connector_id ? "ok" : "pending"}
-                            label={t(
-                              connector.connector_id
-                                ? "create.solution.connected"
-                                : "create.solution.missing",
-                            )}
-                            testId={`create-solution-connector-${connector.template}`}
-                          />
-                        </span>
-                      ))}
-                    </span>
-                  ),
-                },
-                {
-                  label: t("create.solution.boundary"),
-                  value: boundary,
-                  help: t("create.solution.boundaryHelp"),
-                },
+                        ),
+                      },
+                      {
+                        label: t("create.solution.boundary"),
+                        value: boundary,
+                        help: t("create.solution.boundaryHelp"),
+                      },
+                    ]),
               ]}
             />
             <InstallInputFields
@@ -422,7 +445,11 @@ export function useSolutionFlow(
                 mono
               />
             ))}
-            <p className="text-sm text-muted-foreground" data-testid="create-solution-line">
+            <p
+              className="text-sm text-muted-foreground"
+              data-testid="create-solution-line"
+              hidden={entry.connectors.length === 0}
+            >
               {missing.length > 0
                 ? t(
                     missing.length === 1

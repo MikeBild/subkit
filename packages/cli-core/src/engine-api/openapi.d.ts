@@ -34933,11 +34933,19 @@ export interface components {
         };
         /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills, files and tasks of a tenant; `GET /v1/categories` lists it. */
         CatalogCategory: string;
-        /** @description The recipe pack entry this workflow was created from; recorded in the audit trail. */
+        /** @description The recipe this workflow was created from: a recipe pack entry (vertical) or a connector template recipe (template); recorded in the audit trail. */
         RecipeOrigin: {
             vertical: string;
             slug: string;
-            /** @description Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored. */
+            /** @description Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths, a host list into the request boundary, or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored. */
+            inputs?: {
+                [key: string]: unknown;
+            };
+        } | {
+            /** @description Slug of the connector template that ships the recipe. */
+            template: string;
+            slug: string;
+            /** @description Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths, a host list into the request boundary, or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored. */
             inputs?: {
                 [key: string]: unknown;
             };

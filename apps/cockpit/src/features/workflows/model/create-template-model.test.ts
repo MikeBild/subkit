@@ -247,11 +247,13 @@ describe("solution templates: list, detail, create", () => {
 
   test("each declared install input becomes a field labelled from the recipe's input schema", () => {
     expect(installInputFields(report(true))).toEqual([
-      { key: "property_id", label: "GA4 property id (digits only)" },
+      { key: "property_id", label: "GA4 property id (digits only)", list: false },
     ]);
     expect(installInputFields({ ...report(true), install_inputs: undefined })).toEqual([]);
     const untitled = { ...report(true), install_inputs: ["view_id"] };
-    expect(installInputFields(untitled)).toEqual([{ key: "view_id", label: "view_id" }]);
+    expect(installInputFields(untitled)).toEqual([
+      { key: "view_id", label: "view_id", list: false },
+    ]);
   });
 
   test("an install input must be one plain path segment, like the engine pins it", () => {

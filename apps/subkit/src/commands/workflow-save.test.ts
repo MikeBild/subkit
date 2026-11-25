@@ -64,3 +64,67 @@ test("recipe validation, preview and save use the same pinned install input (#51
   expect(create).toHaveBeenCalledWith(pinned);
   expect(definition.steps[0]?.path).toBe(`/v1beta/properties/\${input.property_id}:runReport`);
 });
+
+const scraperRecipe = () => ({
+  slug: "fetch-page",
+  title: "Fetch a page",
+  install_inputs: ["site"],
+  required_connectors: [],
+  sample_input: { site: "docs" },
+  workflow: {
+    name: "fetch-page",
+    steps: [{ id: "fetch", kind: "request", path: `/sites/\${input.site}/page` }],
+  },
+});
+
+test("a template recipe is fetched by <template>/<recipe> and installed with its input (#895)", async () => {
+  const recipeLookup = mock(async (_template: string, _recipe: string) => scraperRecipe());
+  const create = mock(async (_body: unknown) => ({ id: "wf-2", name: "fetch-page" }));
+  spyOn(runtime, "makeClient").mockReturnValue({
+    getConnectorTemplateRecipe: recipeLookup,
+    createWorkflow: create,
+  } as unknown as EngineClient);
+  spyOn(process.stdout, "write").mockImplementation(() => true);
+  spyOn(process.stderr, "write").mockImplementation(() => true);
+
+  await saveWorkflow(
+    { kind: "create" },
+    {
+      "from-recipe": "web-scraper/fetch-page",
+      input: JSON.stringify({ site: "handbook" }),
+      "skip-checks": true,
+      json: true,
+    },
+  );
+
+  expect(recipeLookup).toHaveBeenCalledWith("web-scraper", "fetch-page");
+  expect(create).toHaveBeenCalledWith({
+    name: "fetch-page",
+    steps: [{ id: "fetch", kind: "request", path: "/sites/handbook/page" }],
+    recipe: { template: "web-scraper", slug: "fetch-page", inputs: { site: "handbook" } },
+  });
+});
+
+test("a template recipe without its install input fails before anything is sent (#895)", async () => {
+  const create = mock(async (_body: unknown) => ({ id: "wf-3" }));
+  const validate = mock(async (_body: unknown) => ({ ok: true }));
+  spyOn(runtime, "makeClient").mockReturnValue({
+    getConnectorTemplateRecipe: async () => scraperRecipe(),
+    validateWorkflowDraft: validate,
+    createWorkflow: create,
+  } as unknown as EngineClient);
+  const written: string[] = [];
+  spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    written.push(String(chunk));
+    return true;
+  });
+  spyOn(process.stderr, "write").mockImplementation(() => true);
+
+  await expect(
+    saveWorkflow({ kind: "create" }, { "from-recipe": "web-scraper/fetch-page", json: true }),
+  ).rejects.toThrow("recipe web-scraper/fetch-page needs install input site");
+
+  expect(written.join("")).toContain("needs install input site");
+  expect(validate).not.toHaveBeenCalled();
+  expect(create).not.toHaveBeenCalled();
+});

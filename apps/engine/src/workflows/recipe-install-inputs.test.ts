@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createBodyFor } from "../../../subkit/src/lib/recipe-source.ts";
 import { getSolutionRecipe } from "../connectors/solutions.ts";
 import { getBuiltinTemplate } from "../connectors/templates.ts";
 import { gateRequestBoundary } from "./effect-resolution.ts";
@@ -212,6 +213,27 @@ describe("install-time allowed hosts pinned into web-scraper boundaries (#859)",
           }),
         ),
     );
+
+  test("the engine accepts host inputs already pinned by CLI creation (#895)", () => {
+    for (const slug of ["fetch-url-as-markdown", "crawl-sitemap-to-markdown"]) {
+      const recipe = scraper(slug);
+      const origin = { template: "web-scraper", slug };
+      const inputs = { allowed_hosts: ["Example.com", "docs.example.com", "example.com"] };
+      const body = createBodyFor(
+        {
+          body: recipe.workflow as Record<string, unknown>,
+          recipe: origin,
+          previewInput: null,
+          installInputs: recipe.install_inputs,
+        },
+        inputs,
+      );
+      expect(pinnedRecipeDefinition({ ...origin, inputs }, body)).toEqual({
+        ok: true,
+        definition: body,
+      });
+    }
+  });
 
   test("a pinned host list is approved as a boundary that names every host", async () => {
     const recipe = scraper("crawl-sitemap-to-markdown");

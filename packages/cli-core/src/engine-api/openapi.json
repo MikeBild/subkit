@@ -22176,30 +22176,60 @@
         "description": "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills, files and tasks of a tenant; `GET /v1/categories` lists it."
       },
       "RecipeOrigin": {
-        "type": "object",
-        "properties": {
-          "vertical": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128
-          },
-          "inputs": {
+        "anyOf": [
+          {
             "type": "object",
-            "additionalProperties": {},
-            "description": "Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored."
+            "properties": {
+              "vertical": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "slug": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "inputs": {
+                "type": "object",
+                "additionalProperties": {},
+                "description": "Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths, a host list into the request boundary, or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored."
+              }
+            },
+            "required": [
+              "vertical",
+              "slug"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "template": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Slug of the connector template that ships the recipe."
+              },
+              "slug": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "inputs": {
+                "type": "object",
+                "additionalProperties": {},
+                "description": "Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths, a host list into the request boundary, or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored."
+              }
+            },
+            "required": [
+              "template",
+              "slug"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "vertical",
-          "slug"
         ],
-        "additionalProperties": false,
-        "description": "The recipe pack entry this workflow was created from; recorded in the audit trail."
+        "description": "The recipe this workflow was created from: a recipe pack entry (vertical) or a connector template recipe (template); recorded in the audit trail."
       },
       "UpdateWorkflowDraft": {
         "type": "object",
