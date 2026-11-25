@@ -36,7 +36,7 @@ describe("bounded coverage runner", () => {
     let rejected = false;
     try {
       await runBoundedInOrder([0, 1], 1, async (value) => {
-        if (value === 0) return Promise.reject(undefined);
+        if (value === 0) throw undefined;
         return value;
       });
     } catch (error) {

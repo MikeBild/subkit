@@ -7,6 +7,19 @@ export class EngineBootStoppedError extends Error {
 
 type Stop = () => void | Promise<void>;
 
+async function deferred<T>(operation: () => T | Promise<T>): Promise<T> {
+  await Promise.resolve();
+  return operation();
+}
+
+async function stopWhenReady<T>(
+  ready: Promise<{ kind: "resource"; value: T } | { kind: "absent" }>,
+  stop: (resource: T) => void | Promise<void>,
+): Promise<void> {
+  const outcome = await ready;
+  if (outcome.kind === "resource") await stop(outcome.value);
+}
+
 export class EngineBootLifetime {
   private stopped = false;
   private tasks = new Set<Promise<unknown>>();
@@ -41,7 +54,7 @@ export class EngineBootLifetime {
         const task = Promise.resolve(operation()).catch((error: unknown) => {
           this.failures.push(error);
         });
-        this.track(task);
+        void this.track(task);
       } catch (error) {
         this.failures.push(error);
       }
@@ -52,7 +65,7 @@ export class EngineBootLifetime {
 
   async step<T>(operation: () => T | Promise<T>): Promise<T> {
     const task = this.track(
-      Promise.resolve().then(() => {
+      deferred(() => {
         this.assertRunning();
         return operation();
       }),
@@ -81,7 +94,7 @@ export class EngineBootLifetime {
     };
     this.registerStop(() => {
       if (outcome) return outcome.kind === "resource" ? stop(outcome.value) : undefined;
-      return ready.then((value) => (value.kind === "resource" ? stop(value.value) : undefined));
+      return stopWhenReady(ready, stop);
     });
     try {
       return await this.step(async () => {
@@ -111,7 +124,7 @@ export class EngineBootLifetime {
   background(operation: () => Promise<unknown>, onRejected: (error: unknown) => void): void {
     this.assertRunning();
     this.own(
-      Promise.resolve().then(() => {
+      deferred(() => {
         this.assertRunning();
         return operation();
       }),
@@ -121,7 +134,7 @@ export class EngineBootLifetime {
 
   handleRequest<T>(operation: () => T | Promise<T>): Promise<T> {
     this.assertRunning();
-    return this.track(Promise.resolve().then(operation));
+    return this.track(deferred(operation));
   }
 
   finalize(): Promise<void> {
@@ -129,7 +142,7 @@ export class EngineBootLifetime {
     this.finalizedPromise = (async () => {
       await this.stop();
       const results = await Promise.allSettled(
-        [...this.finalizers].map((operation) => Promise.resolve().then(operation)),
+        [...this.finalizers].map((operation) => deferred(operation)),
       );
       this.finalizers.clear();
       const failures = results
@@ -143,7 +156,7 @@ export class EngineBootLifetime {
   stop(): Promise<void> {
     if (this.stoppedPromise) return this.stoppedPromise;
     this.stopped = true;
-    this.stoppedPromise = Promise.resolve().then(async () => {
+    this.stoppedPromise = deferred(async () => {
       while (this.tasks.size > 0 || this.cleanups.size > 0) {
         for (const stop of [...this.cleanups]) stop();
         await Promise.allSettled([...this.tasks]);
@@ -170,10 +183,17 @@ export function installEngineScheduler(
   lifetime.registerStop(() => scheduler.stop());
   const installation = scheduler.install();
   lifetime.own(
-    installation.firstPass.then(() => {
-      if (!lifetime.stopping) observers.completed();
-    }),
+    reportFirstPass(lifetime, installation.firstPass, observers.completed),
     observers.failed,
   );
   return installation.installed;
+}
+
+async function reportFirstPass(
+  lifetime: EngineBootLifetime,
+  firstPass: Promise<void>,
+  completed: () => void,
+): Promise<void> {
+  await firstPass;
+  if (!lifetime.stopping) completed();
 }

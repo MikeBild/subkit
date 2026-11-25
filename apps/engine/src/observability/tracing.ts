@@ -114,7 +114,7 @@ function shutdownTracing(): Promise<void> {
   if (tracingClosed) return tracingClosed;
   tracingClosing = true;
   tracingClosed = serializeTracing(async () => {
-    if (state.shutdown) trackTracingShutdown(state.shutdown);
+    if (state.shutdown) void trackTracingShutdown(state.shutdown);
     state.started = false;
     state.active = false;
     delete state.shutdown;

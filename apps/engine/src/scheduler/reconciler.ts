@@ -109,7 +109,7 @@ export class SchedulerReconciler {
       return operation();
     });
     this.producerPasses.set(producer, task);
-    this.track(task);
+    void this.track(task);
     const finished = () => {
       if (this.producerPasses.get(producer) === task) this.producerPasses.delete(producer);
     };

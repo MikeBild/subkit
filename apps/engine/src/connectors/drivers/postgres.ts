@@ -290,7 +290,7 @@ export async function closePoolForConnector(connector: ConnectorView): Promise<v
   const closing = [...pools].filter(([key]) => key.startsWith(prefix));
   for (const [key, pool] of closing) {
     pools.delete(key);
-    endPool(key, pool);
+    void endPool(key, pool);
   }
   await awaitPoolClosures(
     [...closingPools.values()]
@@ -302,7 +302,7 @@ export async function closePoolForConnector(connector: ConnectorView): Promise<v
 export async function closeAllPools(): Promise<void> {
   for (const [key, pool] of pools) {
     pools.delete(key);
-    endPool(key, pool);
+    void endPool(key, pool);
   }
   await awaitPoolClosures([...closingPools.values()].map((item) => item.task));
 }

@@ -123,6 +123,9 @@
       "includes": ["apps/engine/**"],
       "linter": {
         "rules": {
+          "nursery": {
+            "noFloatingPromises": "error"
+          },
           "suspicious": {
             "noTemplateCurlyInString": "off"
           }
