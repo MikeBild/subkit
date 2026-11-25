@@ -52,6 +52,21 @@ describe("buildCapAlternatives", () => {
 });
 
 describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes", () => {
+  it("recipe input failures explain which user values to collect before retrying", () => {
+    const missing = buildCapAlternatives(
+      new Map([["start_workflow_from_recipe", "recipe_inputs_missing|missing"]]),
+    );
+    expect(missing).toContain("missing_inputs");
+    expect(missing).toContain("inputs");
+    expect(missing).toContain("start_workflow_from_recipe");
+    const invalid = buildCapAlternatives(
+      new Map([["start_workflow_from_recipe", "recipe_input_invalid|invalid"]]),
+    );
+    expect(invalid).toContain("invalid_input");
+    expect(invalid).toContain("plain value");
+    expect(invalid).toContain("start_workflow_from_recipe");
+  });
+
   it("draft_write_held explains the read-only preparation and approved saved-connector path", () => {
     const hint = ERROR_CODE_ALTERNATIVES.draft_write_held;
     expect(hint).toContain("before credential lookup or dispatch");

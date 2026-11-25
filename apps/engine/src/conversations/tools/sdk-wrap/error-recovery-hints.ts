@@ -9,6 +9,10 @@ import {
 } from "../error-codes.ts";
 
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  recipe_inputs_missing:
+    "the recipe needs installation values before it can be prepared. Read data.missing_inputs and ask the user for each listed value, then retry start_workflow_from_recipe with those values in inputs. Never invent values.",
+  recipe_input_invalid:
+    "the recipe installation value named by data.invalid_input is invalid. Ask the user for the plain value described by the error, then retry start_workflow_from_recipe with the corrected value in inputs. Never invent a replacement.",
   api_key_issuer_unknown:
     "no API key was issued because this conversation has no authenticated issuer. Continue from Cockpit's API access page with the person's signed-in session. Do not retry in this conversation, fabricate an issuer, or use owner_id as a substitute for the issuer.",
   caller_saved_workflow_required:
