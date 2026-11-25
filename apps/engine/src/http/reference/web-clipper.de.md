@@ -113,7 +113,7 @@ Nach einem Neustart des Browsers fügst du den Schlüssel erneut ein; warum, ste
 Schneller geht es per Rechtsklick mit **Seite in SubKit sichern** oder **Auswahl in SubKit sichern**, oder mit **Alt+Shift+K**. Das Tastenkürzel änderst du unter `chrome://extensions/shortcuts`.
 
 Bei Erfolg meldet das Popup zum Beispiel „Gesammelt: research. Noch nicht als Wissen oder Skill übernommen.“ Mit **Im Chat prüfen** startest du die Prüfung sofort.
-Schlägt das Speichern fehl, bleibt dein Entwurf im Web Clipper. Dieselbe Seite wird nie doppelt gesammelt.
+Schlägt das Speichern fehl, bleibt dein Entwurf im Web Clipper. Ein erneuter Versuch legt nie einen zweiten Eintrag an. Sammelst du eine Seite, deren Eintrag im **Eingang** noch offen ist, fügt SubKit die neue Erfassung diesem Eintrag hinzu, statt einen weiteren anzulegen.
 
 ### Wie es weitergeht
 
@@ -186,7 +186,7 @@ Schlägt eine Erfassung per Kontextmenü oder Tastenkürzel fehl, öffnet der We
 | --- | --- |
 | „Die Speicherung ist noch nicht bestätigt. Versuche es erneut; dein Entwurf bleibt erhalten.“ | Netzwerk oder Engine hatten einen Fehler. Wähle **Erneut versuchen**. |
 | „SubKit hat den Clip abgelehnt. …“ | Prüfe Kategorie und Inhalt und versuche es erneut. |
-| „Dieser Clip existiert bereits.“ | Er wurde schon gesammelt. |
+| „Dieser Clip existiert bereits.“ | Dieser Clip wurde schon mit anderem Inhalt gesendet. Erfasse erneut. |
 | „Wähle eine gültige Kategorie, bevor du sammelst.“ oder „Gib eine gültige Kategorie ein.“ | Nutze Kleinbuchstaben, Ziffern und Bindestriche, höchstens 40 Zeichen. |
 | „Die gespeicherte Kategorie ist nicht verfügbar. Wähle eine andere Kategorie.“ | Wähle eine andere Kategorie. |
 | „Dieser Entwurf gehört zu einer anderen Engine.“ | Wechsle zu der Engine zurück, für die er entstand, um ihn zu senden. |

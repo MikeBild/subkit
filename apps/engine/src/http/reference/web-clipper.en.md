@@ -113,7 +113,7 @@ If the engine address changes, you need the key for the new engine. **Clear API 
 It is quicker to right-click and select **Save page to SubKit** or **Save selection to SubKit**, or to press **Alt+Shift+K**. Change the shortcut at `chrome://extensions/shortcuts`.
 
 On success, the popup says for example "Collected: research. Not yet admitted as knowledge or a skill." **Review in chat** starts the review right away.
-If saving fails, your draft stays in the Web Clipper. The same page is never collected twice.
+If saving fails, your draft stays in the Web Clipper. Trying again never creates a second item. If you collect a page whose item is still open in the **Inbox**, SubKit adds the new capture to that item instead of creating another one.
 
 ### What happens next
 
@@ -186,7 +186,7 @@ If a capture from the context menu or the shortcut fails, the Web Clipper opens 
 | --- | --- |
 | "Saving is not confirmed yet. Retry; your draft remains available." | The network or the engine failed. Select **Try again**. |
 | "SubKit rejected the clip. …" | Check the category and the content, then try again. |
-| "This clip already exists." | It was already collected. |
+| "This clip already exists." | This clip was already sent with different content. Capture again. |
 | "Choose a valid category before collecting." or "Enter a valid category." | Use lowercase letters, digits and hyphens, at most 40 characters. |
 | "The saved category is unavailable. Choose another category." | Pick another category. |
 | "This draft belongs to a different engine." | Switch back to the engine it was made for to send it. |

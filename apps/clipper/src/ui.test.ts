@@ -173,6 +173,33 @@ test("missing intake write names the Cockpit key preset and page labels", () => 
   }
 });
 
+test("guide explains recapture merging and the duplicate clip refusal", () => {
+  const inbox = cockpitLabels("nav.inbox");
+  for (const language of ["de", "en"] as const) {
+    const lines = readFileSync(
+      join(import.meta.dir, `../../engine/src/http/reference/web-clipper.${language}.md`),
+      "utf8",
+    ).split("\n");
+    const actionFor = (message: string) =>
+      lines.find((line) => line.startsWith("| ") && line.includes(message))?.split(" | ")[1];
+    const steps = lines.findIndex((line) => line.startsWith(`1. **${inbox[language]}:**`));
+    const heading = lines.findLastIndex((line, index) => index < steps && line.startsWith("### "));
+    const failureNote = lines.slice(0, heading).findLast((line) => line.trim() !== "");
+    expect(failureNote).toContain(`**${inbox[language]}**`);
+    expect(
+      actionFor(copy[language].duplicate)?.endsWith(
+        ` ${actionFor(workerCopy[language].pageChanged)}`,
+      ),
+    ).toBe(true);
+  }
+  expect(
+    readFileSync(
+      join(import.meta.dir, "../../engine/src/http/reference/web-clipper.en.md"),
+      "utf8",
+    ),
+  ).not.toMatch(/never collected twice/i);
+});
+
 test("help link follows the configured engine address", () => {
   const link = { hidden: true, href: "about:blank" } as HTMLAnchorElement;
   showHelpLink(link, "https://engine.example");
