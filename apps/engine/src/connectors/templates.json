@@ -8897,6 +8897,17 @@
                   }
                 ]
               },
+              "pagination": {
+                "strategy": "cursor",
+                "cursor_request_param": "after",
+                "cursor_response_path": "paging.next.after",
+                "parameter_location": "body",
+                "limit_param": "limit",
+                "page_size": 100,
+                "max_pages": 100,
+                "items_path": "results",
+                "unique_by": "id"
+              },
               "state_read": {
                 "key": "last_postmortem_sweep",
                 "into_var": "last_postmortem_sweep",
@@ -8904,14 +8915,14 @@
               },
               "state_write": {
                 "key": "last_postmortem_sweep",
-                "value_path": "results"
+                "value_path": "."
               }
             },
             {
               "kind": "transform",
               "id": "shape_digest",
               "language": "javascript",
-              "expression": "const days = Number(input.input?.days ?? 7); const fromMs = Number(input.scope.sweep_window?.from_ms ?? Date.now()); const untilMs = fromMs + days * 86400000; const prior = input.scope.$state?.last_postmortem_sweep; const priorIds = new Set((Array.isArray(prior) ? prior : []).map((d) => d.id)); const due = (input.scope.deals_due?.results ?? []).filter((d) => { const p = d.properties ?? {}; const closeMs = Date.parse(p.closedate); return p.dealstage === 'closedlost' && closeMs >= fromMs && closeMs <= untilMs; }); return { swept_at: new Date(fromMs).toISOString(), window_days: days, prior_sweep_size: Array.isArray(prior) ? prior.length : null, deals_in_window: due.length, new_since_last_sweep: due.filter((d) => !priorIds.has(d.id)).length, deals: due.map((d) => ({ id: d.id, dealname: d.properties.dealname, closedate: d.properties.closedate, seen_before: priorIds.has(d.id) })) };"
+              "expression": "const days = Number(input.input?.days ?? 7); const fromMs = Number(input.scope.sweep_window?.from_ms ?? Date.now()); const untilMs = fromMs + days * 86400000; const prior = input.scope.$state?.last_postmortem_sweep; const priorIds = new Set((Array.isArray(prior) ? prior : []).map((d) => d.id)); const rows = Array.isArray(input.scope.deals_due) ? input.scope.deals_due : (input.scope.deals_due?.results ?? []); const due = rows.filter((d) => { const p = d.properties ?? {}; const closeMs = Date.parse(p.closedate); return p.dealstage === 'closedlost' && closeMs >= fromMs && closeMs <= untilMs; }); return { swept_at: new Date(fromMs).toISOString(), window_days: days, prior_sweep_size: Array.isArray(prior) ? prior.length : null, deals_in_window: due.length, new_since_last_sweep: due.filter((d) => !priorIds.has(d.id)).length, deals: due.map((d) => ({ id: d.id, dealname: d.properties.dealname, closedate: d.properties.closedate, seen_before: priorIds.has(d.id) })) };"
             }
           ]
         }

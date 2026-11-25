@@ -28,13 +28,11 @@ describe("stateful recipes — paths match the request step output (#534)", () =
     const outcome = await runTransform(
       transformCode("hubspot", "postmortem-due-in-n-days-via-state"),
       {
-        deals_due: {
-          results: [
-            deal("1", "closedlost", isoInDays(2)),
-            deal("2", "closedwon", isoInDays(2)),
-            deal("3", "closedlost", isoInDays(30)),
-          ],
-        },
+        deals_due: [
+          deal("1", "closedlost", isoInDays(2)),
+          deal("2", "closedwon", isoInDays(2)),
+          deal("3", "closedlost", isoInDays(30)),
+        ],
         $state: { last_postmortem_swept_at: null },
       },
       { days: 7 },
@@ -104,7 +102,7 @@ describe("stateful recipes — paths match the request step output (#534)", () =
                 }),
               ),
           );
-          scope[step.id] = { results };
+          scope[step.id] = results;
           const write = planStateWrite(scope[step.id], step.state_write!.value_path);
           expect(write.write).toBe(true);
           if (write.write) prior = write.value;
@@ -122,6 +120,38 @@ describe("stateful recipes — paths match the request step output (#534)", () =
         { id: "seen", seen_before: true },
       ],
     });
+  });
+
+  test("hubspot sweep pages through every search result page (#842)", async () => {
+    const recipe = getBuiltinTemplate("hubspot")!.recipes.find(
+      (r) => r.slug === "postmortem-due-in-n-days-via-state",
+    )!;
+    const steps = recipe.workflow.steps as Array<{
+      id: string;
+      pagination?: Record<string, unknown>;
+      state_write?: { value_path: string };
+    }>;
+    const dealsDue = steps.find((step) => step.id === "deals_due")!;
+    expect(dealsDue.pagination).toMatchObject({
+      strategy: "cursor",
+      cursor_request_param: "after",
+      cursor_response_path: "paging.next.after",
+      parameter_location: "body",
+      items_path: "results",
+    });
+    const mergedPages = Array.from({ length: 150 }, (_, index) =>
+      deal(String(index), "closedlost", isoInDays(2)),
+    );
+    const outcome = await runTransform(
+      transformCode("hubspot", "postmortem-due-in-n-days-via-state"),
+      { deals_due: mergedPages, $state: { last_postmortem_sweep: null } },
+      { days: 7 },
+    );
+    expect(outcome.ok).toBe(true);
+    expect((outcome as { value: { deals_in_window: number } }).value.deals_in_window).toBe(150);
+    const write = planStateWrite(mergedPages, dealsDue.state_write!.value_path);
+    expect(write.write).toBe(true);
+    expect(write.write && (write.value as unknown[]).length).toBe(150);
   });
 
   test("intercom nurture and stripe incremental transforms read the body directly", async () => {
