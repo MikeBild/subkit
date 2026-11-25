@@ -117,6 +117,25 @@ describe("POST /v1/intake/items/file", () => {
     expect(((await res.json()) as Item).body).toBe("name,mail\nAda,ada@example.test\n");
   });
 
+  test("a whitespace-only text file keeps its text as body and original", async () => {
+    const res = await request(
+      "/v1/intake/items/file",
+      "POST",
+      fileBody("20000000-0000-4000-8000-000000000007", {
+        filename: "blank.txt",
+        content_type: "text/plain",
+        content_base64: Buffer.from(" \t\n \n").toString("base64"),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const item = (await res.json()) as Item;
+    expect(item.body).toBe(" \t\n \n");
+    const detail = (await (await request(`/v1/intake/items/${item.id}`, "GET")).json()) as Item & {
+      original_snapshot: { body?: string };
+    };
+    expect(detail.original_snapshot.body).toBe(" \t\n \n");
+  });
+
   test("a type outside the list, or bytes that lie about their type, are refused", async () => {
     const html = await request(
       "/v1/intake/items/file",

@@ -74,6 +74,6 @@ export function intakeFileBody(
   file: { filename: string; content_type: IntakeFileType; size_bytes: number },
   text: string | null,
 ): string {
-  if (text !== null && text.trim().length > 0) return text.slice(0, INTAKE_TEXT_BODY_MAX_CHARS);
+  if (text !== null && text.length > 0) return text.slice(0, INTAKE_TEXT_BODY_MAX_CHARS);
   return `${file.filename} (${file.content_type}, ${file.size_bytes} bytes)`;
 }
