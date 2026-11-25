@@ -1,3 +1,4 @@
+export { useCatalogAiCount } from "./api/catalog-ai-count";
 export { type CategoryUsage, categoryMatches } from "./model/catalog-categories-model";
 export {
   type CatalogKind,

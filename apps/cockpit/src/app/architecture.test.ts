@@ -183,7 +183,7 @@ const INTERNAL_DEBT_CEILING = 59;
 // R3.1 ratchet: queries and mutations written inline in .tsx components. Lower it as they move
 // into feature api/ hooks; never raise it.
 const INLINE_QUERY = /\buse(?:Query|Mutation)\s*\(/g;
-const INLINE_QUERY_CEILING = 302;
+const INLINE_QUERY_CEILING = 301;
 
 describe("architecture: dependencies point downward", () => {
   test("packages/ui imports nothing from an app, an API or a domain module", () => {

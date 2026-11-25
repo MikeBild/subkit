@@ -14,28 +14,25 @@ import { absolute, chatNewHref, connectorHref } from "@/app/links";
 import { subscribeLiveFrames } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/cockpit/patterns/controls";
+import {
+  ListSummary,
+  ListToolbar,
+  NoMatch,
+  useListState,
+} from "@/components/cockpit/patterns/list-kit";
 import { TopPageHeader } from "@/components/cockpit/patterns/page-header";
 import { Screen } from "@/components/cockpit/patterns/screen";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { ForbiddenState } from "@/components/failure-state";
+import { useCatalogAiCount } from "@/features/catalog";
 import { connectorSignIn, signInFailure } from "@/features/connectors/api/connector-sign-in";
 import { driverLabel } from "@/features/connectors/model/connector-labels";
-import {
-  allPages,
-  ChatMenu,
-  categoryCounts,
-  ListSummary,
-  NoMatch,
-  sortRows,
-  Toolbar,
-  useLegacySearch,
-  useListState,
-  usePageMenu,
-} from "@/features/knowledge";
+import { allPages, ChatMenu, useLegacySearch, usePageMenu } from "@/features/knowledge";
 import { CreateAction } from "@/features/workflows";
 import { humanizeCategory } from "@/features/workflows/model";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
+import { categoryCounts, sortRows } from "@/lib/list-state";
 import { plural } from "@/lib/plural";
 import { namedService } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
@@ -113,6 +110,7 @@ function ConnectorsScreen() {
     );
   }, [connectors.data, workflows.data]);
   const st = useListState();
+  const aiCount = useCatalogAiCount("connector");
   const menu = usePageMenu({ pkg: "connector", categories: "connector", category: st.cat });
   const [kind, setKind] = useSearchParamState<KindFilter>("kind", "all", isKind);
   const [health, setHealth] = useSearchParamState<ConnectorAttention>("health", "", isAttention);
@@ -197,11 +195,12 @@ function ConnectorsScreen() {
         )
       ) : (
         <>
-          <Toolbar
+          <ListToolbar
             st={st}
             groups={["category", "kind", "status"]}
             categories={categoryCounts(cards)}
             createdBy
+            categoryLabel={humanizeCategory}
             onReset={reset}
             filters={[
               {
@@ -241,7 +240,7 @@ function ConnectorsScreen() {
           />
           <ListSummary
             testId="cn-summary"
-            kind="connector"
+            aiCount={aiCount}
             loaded={connectors.data}
             parts={[
               t(
