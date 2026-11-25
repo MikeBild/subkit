@@ -34,7 +34,7 @@ export interface TenantBrandingValue {
 
 export interface TenantBrandingUpdate {
   revision: number;
-  display_name: string | null;
+  display_name?: string | null | undefined;
   subtitle: string | null;
   palette: BrandingPalette | null;
   logo_light: Uint8Array | null | undefined;
@@ -178,7 +178,8 @@ export async function updateTenantBranding(
       .limit(1);
     if ((current?.revision ?? 0) !== input.revision) throw new TenantBrandingConflictError();
     const values = {
-      display_name: input.display_name,
+      display_name:
+        input.display_name === undefined ? (current?.display_name ?? null) : input.display_name,
       subtitle: input.subtitle,
       palette: input.palette,
       logo_light: input.logo_light === undefined ? (current?.logo_light ?? null) : input.logo_light,

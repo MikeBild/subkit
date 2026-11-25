@@ -456,4 +456,29 @@ describe("tenant branding HTTP acceptance", () => {
       .where(eq(tenantBranding.tenant_id, racing.tenantId));
     expect(rows).toEqual([{ revision: 1 }]);
   });
+
+  test("a write without display_name keeps the saved display name", async () => {
+    const partial = await createSecondaryTenant(ctx, "tenant-branding-partial");
+    const headers = await partial.admin.sessionHeaders();
+    const first = await request(
+      "/v1/tenant/branding",
+      { method: "PUT", body: JSON.stringify(update(0)) },
+      headers,
+    );
+    expect(first.status).toBe(200);
+    const { display_name: _omitted, ...withoutDisplayName } = update(1, { subtitle: null });
+    const cleared = await request(
+      "/v1/tenant/branding",
+      { method: "PUT", body: JSON.stringify(withoutDisplayName) },
+      headers,
+    );
+    expect(cleared.status).toBe(200);
+    const readback = await request("/v1/tenant/branding", {}, headers);
+    expect(await readback.json()).toMatchObject({
+      revision: 2,
+      display_name: "Acme Research",
+      subtitle: null,
+      palette: "indigo",
+    });
+  });
 });

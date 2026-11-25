@@ -56,7 +56,7 @@ export async function writeTenantBranding(
       ...(input.actor_type ? { actor_type: input.actor_type } : {}),
       ...(input.request_source ? { request_source: input.request_source } : {}),
       revision: value.revision,
-      display_name: value.display_name,
+      ...(value.display_name === undefined ? {} : { display_name: value.display_name }),
       subtitle: value.subtitle,
       palette: value.palette,
       logo_light: await logo(value.logos.light),

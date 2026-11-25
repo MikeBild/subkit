@@ -26,6 +26,7 @@ export const TenantBrandingUpdateSchema = z
       .trim()
       .max(80)
       .nullable()
+      .optional()
       .meta({ deprecated: true, description: DEPRECATED_BRANDING_DISPLAY_NAME }),
     subtitle: z.string().trim().max(160).nullable(),
     palette: z.enum(["standard", "indigo", "teal"]).nullable(),
