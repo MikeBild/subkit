@@ -1,4 +1,3 @@
-/** Pure list helpers shared by catalog-style lists: sorting, category counts, column choice. */
 export type SortOrder = "asc" | "desc";
 export type CreatedBy = "all" | "ai" | "person";
 export type SortValue = string | number | null | undefined;

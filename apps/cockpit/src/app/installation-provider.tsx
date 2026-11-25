@@ -179,9 +179,7 @@ export function InstallationProvider({
           rebind: (subscription) => rebindPushSubscriptionBinding(subscription, pushDeviceId()),
         });
         if (bound && active) setPushSubscribed(true);
-      } catch {
-        // Restoring push is best effort: the settings page offers a manual subscribe.
-      }
+      } catch {}
     };
     void restore();
     return () => {
@@ -230,9 +228,7 @@ export function InstallationProvider({
           save: (subscription) => savePushSubscription(subscription, { device: pushDeviceId() }),
         });
         if (bound && current()) setPushSubscribed(true);
-      } catch {
-        // Rebinding push is best effort: the settings page offers a manual subscribe.
-      }
+      } catch {}
     };
     const register = async () => {
       let registration: ServiceWorkerRegistration | null | undefined;
@@ -312,9 +308,7 @@ export function InstallationProvider({
     const release = async () => {
       try {
         await releaseBrowserPush(navigator.serviceWorker, window.location.origin, public_key);
-      } catch {
-        // Releasing the old browser subscription is best effort; the new one is already saved.
-      }
+      } catch {}
     };
     const rebound = await rebindPushSubscription({
       registration,
@@ -337,9 +331,7 @@ export function InstallationProvider({
     } catch (error) {
       try {
         await subscription.unsubscribe();
-      } catch {
-        // The save already failed; that error is the one to report.
-      }
+      } catch {}
       throw error;
     }
     setPushSubscribed(true);

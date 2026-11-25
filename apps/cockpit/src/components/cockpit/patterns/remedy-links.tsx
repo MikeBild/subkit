@@ -1,7 +1,6 @@
 import { createContext, type ReactNode, useContext } from "react";
 import type { FailureFacts, FailureRemedyKind } from "@/lib/failure-remedy";
 
-/** Where a failure remedy leads. The app supplies its routes, so patterns stay route-free. */
 export type RemedyHref = (
   kind: Exclude<FailureRemedyKind, "retry">,
   facts: FailureFacts,

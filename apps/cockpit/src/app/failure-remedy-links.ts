@@ -10,7 +10,6 @@ import {
 } from "./links";
 import { loginHref } from "./login-href";
 
-/** The Cockpit route behind each failure remedy, handed to patterns via RemedyLinksProvider. */
 export function failureRemedyHref(
   kind: Exclude<FailureRemedyKind, "retry">,
   facts: FailureFacts,

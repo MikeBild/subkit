@@ -102,7 +102,6 @@ function unclassified(): string[] {
   return [...out].sort();
 }
 
-// Patterns that still reach into app/, and cockpit components that still import the API.
 const DEBT = new Set<string>([
   "components/cockpit/create-refusal.ts -> @/api/client",
   "components/cockpit/patterns/data-table.tsx -> @/app/links",
@@ -114,7 +113,6 @@ const DEBT = new Set<string>([
   "components/cockpit/patterns/workspace-changed.tsx -> @/app/links",
 ]);
 
-// Imports of another feature's internals (its model/ included) that bypass its index.ts.
 const INTERNAL_DEBT = new Set<string>([
   "app/actor-directory-model.ts -> @/features/admin/model",
   "app/actor-directory.ts -> @/features/audit/model",
@@ -180,8 +178,6 @@ const INTERNAL_DEBT = new Set<string>([
 const DEBT_CEILING = 8;
 const INTERNAL_DEBT_CEILING = 59;
 
-// R3.1 ratchet: queries and mutations written inline in .tsx components. Lower it as they move
-// into feature api/ hooks; never raise it.
 const INLINE_QUERY = /\buse(?:Query|Mutation)\s*\(/g;
 const INLINE_QUERY_CEILING = 301;
 

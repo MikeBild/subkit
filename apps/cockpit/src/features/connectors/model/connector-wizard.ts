@@ -1,8 +1,3 @@
-/**
- * Draft state shared by the connector dialogs (create and edit): the fields the person
- * types, the wizard step, and the error the dialog shows. `Step` is a single value for a
- * one-page dialog; `Problem` is whatever the dialog renders as its error.
- */
 export interface ConnectorWizard<Fields, Step extends string, Problem> {
   step: Step;
   fields: Fields;
@@ -14,12 +9,9 @@ export type FieldValue<Fields, K extends keyof Fields> =
   | ((current: Fields[K]) => Fields[K]);
 
 export type ConnectorWizardEvent<Fields, Step extends string, Problem> =
-  /** A field changed; editing keeps the error until the next submit. */
   | { [K in keyof Fields]: { type: "edit"; key: K; value: FieldValue<Fields, K> } }[keyof Fields]
-  /** Moving to another step clears the error. */
   | { type: "go"; step: Step }
   | { type: "fail"; error: Problem | null }
-  /** Back to a fresh draft, e.g. after the dialog closed or saved. */
   | { type: "reset"; to: ConnectorWizard<Fields, Step, Problem> };
 
 function nextValue<Fields, K extends keyof Fields>(

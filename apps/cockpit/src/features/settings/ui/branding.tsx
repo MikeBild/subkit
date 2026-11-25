@@ -200,9 +200,7 @@ export function BrandingSettings({
         onConfirm={async () => {
           try {
             await mutation.mutateAsync(true);
-          } catch {
-            // The mutation's onError already shows the failure inline.
-          }
+          } catch {}
         }}
       />
     </div>

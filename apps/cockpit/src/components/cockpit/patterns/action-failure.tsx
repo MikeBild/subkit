@@ -87,7 +87,6 @@ export function ActionFailureHost({
   className?: string;
   level?: FailureHostLevel;
   scope?: string;
-  /** Where remedies lead; defaults to the links the app provides via RemedyLinksProvider. */
   remedyHref?: RemedyHref;
 }) {
   const { t } = useI18n();

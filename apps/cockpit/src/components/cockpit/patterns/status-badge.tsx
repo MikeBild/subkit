@@ -22,7 +22,6 @@ export function StatusBadge({
 }: {
   state: string;
   label?: string;
-  /** Overrides the tone the shared status table gives `state`, for a feature's own states. */
   tone?: BadgeTone;
   testId?: string;
   wrap?: boolean;

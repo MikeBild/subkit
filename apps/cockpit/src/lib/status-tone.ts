@@ -1,4 +1,3 @@
-/** Tone of a status badge. The table maps the engine's status words; unknown states stay neutral. */
 export type BadgeTone = "ok" | "warn" | "error" | "neutral";
 
 const TONES: Partial<Record<string, BadgeTone>> = {

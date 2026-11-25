@@ -23,9 +23,6 @@ import {
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { Button } from "./controls";
 
-// List kit for catalog-style lists: search, category chips, grouping, sorting and column
-// choice kept in the address, plus the summary line and the "no match" state.
-
 export const tid = (...parts: (string | number)[]) =>
   parts
     .join("-")
@@ -173,7 +170,6 @@ export function ListToolbar({
   filters?: readonly FilterSelect[];
   columns?: ColumnChoice;
   onReset?: () => void;
-  /** Turns a category value into its label; `other` is the label for an empty category. */
   categoryLabel?: (category: string, other: string) => string;
 }) {
   const { t } = useI18n();
@@ -291,7 +287,6 @@ export function ListSummary({
   loaded,
 }: {
   parts: ReactNode[];
-  /** How many of the listed items AI created; shown as an extra part when above zero. */
   aiCount?: number | null;
   testId?: string;
   loaded?: { items: unknown[]; total: number; truncated?: boolean } | undefined;
