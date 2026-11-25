@@ -398,21 +398,16 @@ async function insertElicitation(
         updated_at: new Date(),
       },
     });
-    const staleToolCallIds = stale
-      .map((row) => row.tool_call_id)
-      .filter((id): id is string => typeof id === "string" && id.length > 0);
-    if (staleToolCallIds.length > 0) {
-      await exec
-        .update(conversationToolCalls)
-        .set({
-          output: {
-            ok: false,
-            abandoned: true,
-            reason: "elicitation_superseded",
-          } as Record<string, unknown>,
-        })
-        .where(inArray(conversationToolCalls.id, staleToolCallIds));
-    }
+    await exec
+      .update(conversationToolCalls)
+      .set({
+        output: {
+          ok: false,
+          abandoned: true,
+          reason: "elicitation_superseded",
+        } as Record<string, unknown>,
+      })
+      .where(or(...stale.map(attachedToolCalls)));
   }
   const [inserted] = await exec
     .insert(conversationElicitations)

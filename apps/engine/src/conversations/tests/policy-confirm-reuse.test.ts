@@ -277,7 +277,7 @@ test("an ask-user save card never reuses the open card", async () => {
   expect(await pendingIds(conversationId)).toEqual([second.id]);
 });
 
-for (const decision of ["approved", "declined", "expired"] as const) {
+for (const decision of ["approved", "declined", "expired", "superseded"] as const) {
   test(`all calls attached to a reused save card settle when ${decision}`, async () => {
     const conversationId = await seedConversation();
     const calls = await ctx.testDb.db
@@ -311,6 +311,26 @@ for (const decision of ["approved", "declined", "expired"] as const) {
     }
     expect(new Set(cards.map((card) => card.id)).size).toBe(1);
     const id = cards[0]!.id;
+    if (decision === "superseded") {
+      const replacement = await ask(
+        conversationId,
+        "Save changed draft",
+        saveGateInput(null, "invoices"),
+      );
+      expect(replacement.id).not.toBe(id);
+      const settled = await ctx.testDb.db
+        .select()
+        .from(conversationToolCalls)
+        .where(eq(conversationToolCalls.conversation_id, conversationId));
+      for (const call of settled) {
+        expect(call.output).toEqual({
+          ok: false,
+          abandoned: true,
+          reason: "elicitation_superseded",
+        });
+      }
+      return;
+    }
     if (decision === "expired") {
       await expireElicitationAndReactivate(
         { tenant_id: ctx.tenant_id, conversation_id: conversationId, id },
