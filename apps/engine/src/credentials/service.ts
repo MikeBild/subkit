@@ -13,20 +13,19 @@ import { connectors, outboundConnections, vaultItems } from "../db/schema/index.
 import { logger } from "../logging/index.ts";
 import { invalidateTenantState } from "../operator/tenant-state.ts";
 import { emitCredentialChange } from "../pubsub/resource-changes.ts";
+import { isUuid } from "../utils/index.ts";
 import { connectorItemName, withNameSuffix } from "../vault/index.ts";
 import type { ConnectionAuthorityIdentity } from "./authority-metadata.ts";
 import { authorityScopeSet, sameAuthorityScopes, storedScopes } from "./authority-scopes.ts";
 import { readAccessToken, summarizeConnections } from "./connections/service.ts";
 import type { ConnectionSummary } from "./connections/types.ts";
+
+import { type CredentialPlaintext, deserializePlain, serializePlain } from "./credential-value.ts";
 import {
   type CredentialUseSnapshot,
   type VerifiedProviderIdentity,
   VerifiedProviderIdentitySchema,
 } from "./provider-identity.ts";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-import { type CredentialPlaintext, deserializePlain, serializePlain } from "./credential-value.ts";
 import { parseSignedJwtConfig, validateSignedJwtPrivateKey } from "./signed-jwt.ts";
 import {
   type CredentialMode,
@@ -462,7 +461,7 @@ export async function getCredentialForConnector(
   connection_authority?: ConnectionAuthorityIdentity | null;
   credential_snapshot?: CredentialUseSnapshot;
 } | null> {
-  if (!UUID_RE.test(connector_id)) return null;
+  if (!isUuid(connector_id)) return null;
   const [row] = await withTenantScope(db, tenant_id, (tx) =>
     tx
       .select()
@@ -555,7 +554,7 @@ export async function describeConnectorCredentialStates(
   db: Executor,
 ): Promise<Map<string, ConnectorCredentialState | null>> {
   const found = new Map<string, ConnectorCredentialState | null>();
-  const ids = targets.map((target) => target.id).filter((id) => UUID_RE.test(id));
+  const ids = targets.map((target) => target.id).filter((id) => isUuid(id));
   if (ids.length === 0) return found;
   const rows = await db
     .select({
@@ -606,7 +605,7 @@ export async function describeCredentialForConnector(
   header_names: string[];
   updated_at: string;
 } | null> {
-  if (!UUID_RE.test(connector_id)) return null;
+  if (!isUuid(connector_id)) return null;
   const [row] = await withTenantScope(db, tenant_id, (tx) =>
     tx
       .select({
@@ -678,7 +677,7 @@ export async function getOAuth2ClientCredential(
   client_secret: string | undefined;
   credential_snapshot: CredentialUseSnapshot;
 } | null> {
-  if (!UUID_RE.test(connector_id)) return null;
+  if (!isUuid(connector_id)) return null;
   const [row] = await withTenantScope(db, tenant_id, (tx) =>
     tx
       .select()
@@ -725,7 +724,7 @@ export async function resolveDefaultEnvironmentForConnector(
   connector_id: string,
   db: Executor,
 ): Promise<"dev" | "prod" | null> {
-  if (!UUID_RE.test(connector_id)) return null;
+  if (!isUuid(connector_id)) return null;
   const rows = await db
     .select({ environment: vaultItems.environment })
     .from(vaultItems)
@@ -760,7 +759,7 @@ export async function resolveDryRunEnvironment(p: {
     ),
   ];
   if (connectorIds.length === 0) return "dev";
-  const uuidIds = connectorIds.filter((id) => UUID_RE.test(id));
+  const uuidIds = connectorIds.filter((id) => isUuid(id));
   const authRows = uuidIds.length
     ? await p.exec
         .select({ id: connectors.id, auth_type: connectors.auth_type })
@@ -806,7 +805,7 @@ export async function getOAuth2PrivateKeyCredential(
   algorithm: string;
   credential_snapshot: CredentialUseSnapshot;
 } | null> {
-  if (!UUID_RE.test(connector_id)) return null;
+  if (!isUuid(connector_id)) return null;
   const [row] = await withTenantScope(db, tenant_id, (tx) =>
     tx
       .select()

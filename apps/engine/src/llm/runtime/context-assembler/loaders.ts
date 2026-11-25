@@ -9,6 +9,7 @@ import { DOMAIN_TAG_PREFIX } from "../../../knowledge/tags.ts";
 import { logger } from "../../../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { listLatestShapes } from "../../../schema-versions/index.ts";
+import { isUuid } from "../../../utils/index.ts";
 import { findSimilarActive, type PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
 import { countTokens } from "../../accounting/index.ts";
 import type {
@@ -214,8 +215,6 @@ export async function loadLatestPreview(
   }
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export async function loadProbeShapeExamples(
   tenant_id: string,
   connector_ids: string[],
@@ -223,7 +222,7 @@ export async function loadProbeShapeExamples(
 ): Promise<ProbeShapeExample[]> {
   try {
     const ids = [...new Set(connector_ids)]
-      .filter((id) => UUID_RE.test(id))
+      .filter((id) => isUuid(id))
       .slice(0, PROBE_SHAPE_MAX_CONNECTORS);
     if (ids.length === 0) return [];
     const out: ProbeShapeExample[] = [];
@@ -291,7 +290,7 @@ export async function loadConnectorSchemaSummaries(
 ): Promise<ConnectorSchemaSummary[]> {
   try {
     const ids = [...new Set(connector_ids)]
-      .filter((id) => UUID_RE.test(id))
+      .filter((id) => isUuid(id))
       .slice(0, SCHEMA_MAX_CONNECTORS);
     if (ids.length === 0) return [];
     const out: ConnectorSchemaSummary[] = [];

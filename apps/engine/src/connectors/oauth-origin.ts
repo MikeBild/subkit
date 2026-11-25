@@ -1,4 +1,5 @@
 import { resolvePublicOrigin } from "../credentials/oauth2/redirect-uri.ts";
+import { isUuid } from "../utils/index.ts";
 
 export const OAUTH_FLOW_ORIGINS = ["cli", "cockpit", "chat", "portal"] as const;
 export type OAuthFlowOrigin = (typeof OAUTH_FLOW_ORIGINS)[number];
@@ -31,8 +32,6 @@ export type SignInReturn =
   | { kind: "signed_in" }
   | { kind: "signin_failed"; failure: SignInFailure; provider_code?: string | null };
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function httpOrigin(raw: string | null | undefined): string | null {
   if (!raw) return null;
   try {
@@ -50,7 +49,7 @@ export function cockpitConnectorUrl(p: {
   redirect_uri: string | null;
   outcome?: SignInReturn;
 }): string | null {
-  if (!UUID.test(p.connector_id)) return null;
+  if (!isUuid(p.connector_id)) return null;
   const configured = resolvePublicOrigin();
   const base = configured
     ? httpOrigin(configured)

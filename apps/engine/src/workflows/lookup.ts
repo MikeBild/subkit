@@ -1,6 +1,7 @@
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { UUID_RE } from "../utils/index.ts";
 
 interface WorkflowLookupResult {
   id: string;
@@ -13,8 +14,6 @@ interface WorkflowLookupResult {
 interface ResolveWorkflowOptions {
   require_published?: boolean;
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function looksLikeUuid(ref: string): boolean {
   return UUID_RE.test(ref);

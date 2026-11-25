@@ -16,6 +16,7 @@ import { catalogGroupOrder } from "../db/list-result.ts";
 import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
 import { ConflictError, HttpError, NotFoundError } from "../http/errors.ts";
 import { log } from "../logging/index.ts";
+import { isUuid } from "../utils/index.ts";
 import {
   type CreateSkillInput,
   type Skill,
@@ -44,8 +45,6 @@ function resolveSkillActor(
   if (actor_type) return { actor_type, actor_id };
   return { actor_type: "system", actor_id: null };
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function blobToFields(blob: unknown): Required<SkillExamplesBlob> {
   const b = (blob ?? {}) as SkillExamplesBlob;
@@ -285,7 +284,7 @@ export async function countSkills(
 }
 
 export async function getSkill(tenant_id: string, id: string, db: Executor): Promise<Skill | null> {
-  if (!UUID_RE.test(id)) return null;
+  if (!isUuid(id)) return null;
   const rows = await db
     .select()
     .from(skills)

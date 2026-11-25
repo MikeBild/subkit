@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
+import { isUuid } from "../utils/index.ts";
 
 interface ConversationLabel {
   title: string | null;
@@ -8,14 +9,12 @@ interface ConversationLabel {
   updated_at: string;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export async function readConversationLabels(
   db: Db,
   tenantId: string,
   ids: readonly string[],
 ): Promise<Map<string, ConversationLabel>> {
-  const wanted = [...new Set(ids.filter((id) => UUID.test(id)))];
+  const wanted = [...new Set(ids.filter((id) => isUuid(id)))];
   if (wanted.length === 0) return new Map();
   const rows = await db
     .select({

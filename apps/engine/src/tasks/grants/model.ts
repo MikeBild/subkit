@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import type { taskGrants } from "../../db/schema/index.ts";
+import { isUuid } from "../../utils/index.ts";
 import { TASK_GRANT_AUTHORITY_REVOCATION_REASONS } from "../../workflows/execution-authorities.ts";
 import {
   TASK_GRANT_BLOCK_REASONS,
@@ -11,7 +12,6 @@ import {
 
 const Id = z.string().uuid();
 const Digest = z.string().regex(/^[0-9a-f]{64}$/);
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const TASK_AUTHORITY_MAX_RUNS = 10_000;
 
@@ -109,7 +109,7 @@ export type TaskGrantRow = typeof taskGrants.$inferSelect;
 export function createdAuthorityIds(row: Pick<TaskGrantRow, "workflow_authority_ids">): string[] {
   const stored: unknown = row.workflow_authority_ids;
   if (!Array.isArray(stored)) return [];
-  return stored.filter((id): id is string => typeof id === "string" && UUID.test(id));
+  return stored.filter((id): id is string => typeof id === "string" && isUuid(id));
 }
 
 export function taskGrantView(row: TaskGrantRow): TaskGrant {

@@ -4,13 +4,12 @@ import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { retryTransient } from "../db/transient.ts";
 import { getContext } from "../logging/context.ts";
 import { logger } from "../logging/index.ts";
+import { isUuid } from "../utils/index.ts";
 import { scrubAuditEntry } from "./scrub.ts";
 import type { AuditEntry } from "./types.ts";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export function normalizeAuditActorId(actorId: string | null | undefined): string | null {
-  return actorId && UUID_RE.test(actorId) ? actorId : null;
+  return actorId && isUuid(actorId) ? actorId : null;
 }
 
 function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
@@ -67,11 +66,11 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     reason: sensitive && entry.reason ? "sensitive_execution" : (entry.reason ?? null),
     metadata,
   });
-  if (ctx.api_key_id && UUID_RE.test(ctx.api_key_id)) {
+  if (ctx.api_key_id && isUuid(ctx.api_key_id)) {
     scrubbed.metadata.api_key_id = ctx.api_key_id;
     scrubbed.metadata.audit_used_api_key_id = ctx.api_key_id;
   }
-  if (ctx.session_id && UUID_RE.test(ctx.session_id))
+  if (ctx.session_id && isUuid(ctx.session_id))
     scrubbed.metadata.audit_used_session_id = ctx.session_id;
   if (ctx.audit_access_type) scrubbed.metadata.audit_access_type = ctx.audit_access_type;
   if (ctx.audit_oauth_client_id)

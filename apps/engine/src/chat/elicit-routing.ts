@@ -23,6 +23,7 @@ import {
 import type { Db } from "../db/client.ts";
 import { isNoSuchTool } from "../llm/runtime/sdk-errors.ts";
 import { logger } from "../logging/index.ts";
+import { isUuid } from "../utils/index.ts";
 import {
   ChatInteractionEnvelopeSchema,
   ChatViewMetadataSchema,
@@ -34,8 +35,6 @@ import { withConversationTurnLock } from "./turn-lock.ts";
 import type { ChatEvent, ElicitationKind } from "./types.ts";
 
 export { completeApprovalBackedElicitation, inTaskRunApprovalTrace, taskRunApprovalRefusal };
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface ChatAnswer {
   readonly tenant_id: string;
@@ -234,7 +233,7 @@ export async function routeChatInteraction(
       return { status: "ignored" };
     }
     const approvalElicId = approval[2] ?? "";
-    if (!UUID_RE.test(approvalElicId) || !UUID_RE.test(actionValue)) {
+    if (!isUuid(approvalElicId) || !isUuid(actionValue)) {
       logger.warn({
         module: "chat",
         action: "interaction.approval_ids_malformed",

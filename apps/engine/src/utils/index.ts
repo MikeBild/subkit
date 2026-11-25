@@ -11,6 +11,7 @@ export type { SafeRegex } from "./safe-regex.ts";
 export { isSafeRegex, SAFE_REGEX_REMEDY, safeRegex, UnsafeRegexError } from "./safe-regex.ts";
 export { TtlCache } from "./ttl-cache.ts";
 export { isRecord } from "./type-guards.ts";
+export { isUuid, UUID_RE } from "./uuid.ts";
 export { parseXmlBody, serializeXmlBody } from "./xml-parser.ts";
 export { walkZipEntries } from "./zip-walk.ts";
 export { isSafeArchivePath, writeDeterministicZip } from "./zip-write.ts";

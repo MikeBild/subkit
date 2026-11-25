@@ -2,14 +2,9 @@ import type { KnownAuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
+import { isUuid } from "../../utils/index.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../runtime/base-types.ts";
 import { recordUsage } from "./budget.ts";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isUuid(value: unknown): value is string {
-  return typeof value === "string" && UUID_RE.test(value);
-}
 
 export function usageAttribution(metadata: Record<string, unknown> | undefined): {
   execution_id?: string;

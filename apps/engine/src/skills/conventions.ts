@@ -1,6 +1,7 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { connectors, skills, workflows } from "../db/schema/index.ts";
+import { isUuid } from "../utils/index.ts";
 import { type SkillRule, SkillRuleSchema } from "./types.ts";
 
 export type ConventionLevel = "workflow" | "connector" | "global";
@@ -31,8 +32,6 @@ export interface ConventionScope {
   workflow_id?: string | null | undefined;
   categories?: readonly string[] | undefined;
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const NO_CONVENTIONS: ActiveConventions = { conventions: [], conflicts: [] };
 
@@ -140,9 +139,8 @@ export async function loadActiveConventions(
   exec?: Executor,
 ): Promise<ActiveConventions> {
   const db = exec ?? getDb();
-  const connectorIds = [...new Set((scope.connector_ids ?? []).filter((id) => UUID_RE.test(id)))];
-  const workflowId =
-    scope.workflow_id && UUID_RE.test(scope.workflow_id) ? scope.workflow_id : null;
+  const connectorIds = [...new Set((scope.connector_ids ?? []).filter((id) => isUuid(id)))];
+  const workflowId = scope.workflow_id && isUuid(scope.workflow_id) ? scope.workflow_id : null;
   const levels = [eq(skills.scope, "global")];
   if (connectorIds.length > 0)
     levels.push(

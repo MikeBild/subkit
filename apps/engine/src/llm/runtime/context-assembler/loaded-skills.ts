@@ -1,11 +1,10 @@
 import type { Executor } from "../../../db/client.ts";
 import { getSkill, getSkillBySlug } from "../../../skills/service.ts";
 import type { Skill } from "../../../skills/types.ts";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isUuid } from "../../../utils/index.ts";
 
 async function fetchSkillRef(tenant_id: string, ref: string, db: Executor): Promise<Skill | null> {
-  return UUID_RE.test(ref)
+  return isUuid(ref)
     ? await getSkill(tenant_id, ref, db)
     : await getSkillBySlug(tenant_id, ref, db);
 }

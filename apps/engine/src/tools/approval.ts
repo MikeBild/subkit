@@ -10,6 +10,7 @@ import { toolApprovals } from "../db/schema/index.ts";
 import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../execution/caller-context.ts";
 import { logger } from "../logging/index.ts";
+import { isUuid } from "../utils/index.ts";
 import { approvalOwnerFilter } from "./approval-owner.ts";
 import {
   type ApprovalPreview,
@@ -115,8 +116,6 @@ export interface ApprovalAuditResource {
 export function approvalAuditResource(claim: ClaimedApproval): ApprovalAuditResource {
   return { approval_id: claim.approval_id, resource_type: resourceTypeOf(claim.surface) };
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function lifecycleMetadata(p: {
   tool: string;
@@ -312,7 +311,7 @@ async function decideApproval(
   const action =
     decision === "grant" ? AuditAction.APPROVAL_GRANTED : AuditAction.APPROVAL_DECLINED;
 
-  if (!UUID_RE.test(approval_id)) {
+  if (!isUuid(approval_id)) {
     logDecisionMiss({
       approval_id,
       tenant_id,
@@ -614,7 +613,7 @@ export async function consumeApproval(input: ConsumeApprovalInput): Promise<Cons
         "Confirmed call carried no confirm_id. Re-issue the original call, then approve the returned tool_call_id.",
     };
   }
-  if (!UUID_RE.test(approval_id)) {
+  if (!isUuid(approval_id)) {
     logNonMutatingClaim({
       principal,
       approval_id,

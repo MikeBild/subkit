@@ -1,6 +1,7 @@
 import { ALLOWANCE_ENTERED_BY, DEVICE_ALLOWANCE_KINDS } from "@shared/device/boundary.ts";
 import { DEVICE_CAPABILITIES, DEVICE_REFUSALS } from "@shared/device/protocol.ts";
 import { scrubSecrets } from "../logging/scrub-secrets.ts";
+import { UUID_RE } from "../utils/index.ts";
 import { DEVICE_LOSS_CODES } from "./device-metadata.ts";
 import { sanitizeForAudit } from "./sanitize.ts";
 import type { AuditEntry } from "./types.ts";
@@ -8,7 +9,6 @@ import type { AuditEntry } from "./types.ts";
 type Detail = string | number | boolean | null;
 type DetailCheck = (value: unknown) => Detail | undefined;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256 = /^[0-9a-f]{64}$/;
 const ORIGIN = /^https?:\/\/[A-Za-z0-9.:[\]-]{1,253}$/;
 const ITEM_ID = /^[A-Za-z0-9._:/-]{1,200}$/;
@@ -33,7 +33,7 @@ const flag: DetailCheck = (value) => (typeof value === "boolean" ? value : undef
 const count: DetailCheck = (value) =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 
-const id = matching(UUID);
+const id = matching(UUID_RE);
 const digest = matching(SHA256);
 const label = text(120);
 const code = oneOf([...DEVICE_REFUSALS, ...DEVICE_LOSS_CODES]);

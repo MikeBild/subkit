@@ -15,6 +15,7 @@ import {
 import { log } from "../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { now } from "../utils/clock.ts";
+import { isUuid } from "../utils/index.ts";
 import { isOperatorPermission } from "./catalog.ts";
 import {
   credentialCeilingCause,
@@ -169,15 +170,13 @@ async function userGroupIds(db: Executor, tenantId: string, userId: string): Pro
   return rows.map((r) => r.group_id);
 }
 
-const RESOURCE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 async function hasResourceGrant(
   db: Executor,
   check: PermissionCheck,
   permissionId: string,
 ): Promise<boolean> {
   if (!check.resource) return false;
-  if (!RESOURCE_UUID_RE.test(check.resource.id)) return false;
+  if (!isUuid(check.resource.id)) return false;
 
   const subjectClauses = [
     and(

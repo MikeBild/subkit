@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Executor } from "../db/index.ts";
 import { logger, scrubString } from "../logging/index.ts";
+import { isUuid } from "../utils/index.ts";
 import { findApprovalSubjectWorkflow } from "./persistence/approval-subject.ts";
 
 const SUBJECT_TEXT_LIMIT = 160;
@@ -8,8 +9,6 @@ const SUBJECT_TEXT_LIMIT = 160;
 const WORKFLOW_SUBJECT_FIELDS = ["name", "slug", "description", "lifecycle"] as const;
 
 const WORKFLOW_SUBJECT_TOOLS = new Set(["update_workflow"]);
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const ApprovalSubjectSchema = z
   .object({
@@ -47,7 +46,7 @@ export async function captureApprovalSubject(input: {
   const { db, tenant_id, tool, args } = input;
   if (!WORKFLOW_SUBJECT_TOOLS.has(tool)) return null;
   const workflowId = args.id;
-  if (typeof workflowId !== "string" || !UUID_PATTERN.test(workflowId)) return null;
+  if (typeof workflowId !== "string" || !isUuid(workflowId)) return null;
   const current = await findApprovalSubjectWorkflow(db, tenant_id, workflowId);
   if (!current)
     logger.warn({

@@ -1,8 +1,8 @@
 import { scrubSecrets } from "../logging/scrub-secrets.ts";
+import { isUuid } from "../utils/index.ts";
 import type { AuditEntry } from "./types.ts";
 
 const SNAPSHOT_SCRUB = { promptKeys: false } as const;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NUL = "\u0000";
 const REPLACEMENT = "\uFFFD";
 
@@ -22,12 +22,12 @@ function withoutNul(value: unknown): unknown {
 
 export function scrubAuditEntry(entry: AuditEntry): AuditEntry {
   const metadata = withoutNul(scrubSecrets(entry.metadata ?? {})) as Record<string, unknown>;
-  if (typeof entry.metadata?.api_key_id === "string" && UUID_RE.test(entry.metadata.api_key_id)) {
+  if (typeof entry.metadata?.api_key_id === "string" && isUuid(entry.metadata.api_key_id)) {
     metadata.api_key_id = entry.metadata.api_key_id;
   }
   if (
     typeof entry.metadata?.audit_used_api_key_id === "string" &&
-    UUID_RE.test(entry.metadata.audit_used_api_key_id)
+    isUuid(entry.metadata.audit_used_api_key_id)
   ) {
     metadata.audit_used_api_key_id = entry.metadata.audit_used_api_key_id;
   }
