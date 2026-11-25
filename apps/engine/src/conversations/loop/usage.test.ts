@@ -8,7 +8,28 @@ describe("readStepUsage", () => {
       outputTokens: 0,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cacheReported: false,
     });
+  });
+
+  test("preserves omitted cache reporting through SDK normalization", () => {
+    for (const raw of [
+      { prompt_tokens: 10, completion_tokens: 2 },
+      { input_tokens: 10, output_tokens: 2 },
+    ]) {
+      expect(
+        readStepUsage({
+          usage: { inputTokens: 10, inputTokenDetails: { cacheReadTokens: 0 }, raw },
+        }).cacheReported,
+      ).toBe(false);
+    }
+  });
+
+  test("marks an explicitly reported zero cache read as reported", () => {
+    expect(
+      readStepUsage({ usage: { inputTokens: 10, inputTokenDetails: { cacheReadTokens: 0 } } })
+        .cacheReported,
+    ).toBe(true);
   });
 
   test("reads unified usage when present", () => {
@@ -25,6 +46,7 @@ describe("readStepUsage", () => {
       outputTokens: 50,
       cacheReadTokens: 80,
       cacheCreationTokens: 10,
+      cacheReported: true,
     });
   });
 
@@ -46,6 +68,7 @@ describe("readStepUsage", () => {
       outputTokens: 50,
       cacheReadTokens: 80,
       cacheCreationTokens: 10,
+      cacheReported: true,
     });
   });
 
@@ -68,6 +91,7 @@ describe("readStepUsage", () => {
       outputTokens: 50,
       cacheReadTokens: 80,
       cacheCreationTokens: 10,
+      cacheReported: true,
     });
   });
 });

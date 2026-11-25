@@ -13,6 +13,7 @@ import { logger } from "../../logging/index.ts";
 import { recordLlmFallbackInvocation } from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../../observability/tracing.ts";
+import { cacheReadReported } from "../core/cache-reporting.ts";
 import { classifyProviderError, shouldFallBack } from "../provider-errors.ts";
 import type {
   SubkitLlm,
@@ -127,6 +128,7 @@ type GenerateTextOptions = Parameters<typeof generateText>[0];
 type GenerateTextOutcome = Awaited<ReturnType<typeof generateText>>;
 
 export interface AiSdkUsage {
+  raw?: unknown;
   inputTokens?: unknown;
   outputTokens?: unknown;
   inputTokenDetails?: { cacheReadTokens?: unknown; cacheWriteTokens?: unknown } | undefined;
@@ -145,6 +147,7 @@ export function usageOf(usage: AiSdkUsage | undefined, providerMetadata: unknown
     output_tokens: Number(usage?.outputTokens ?? 0),
     cache_read_tokens: cacheRead || extractCacheRead(providerMetadata),
     cache_creation_tokens: cacheWrite || extractCacheCreation(providerMetadata),
+    cache_reported: cacheReadReported(usage) || metadataReportsCache(providerMetadata),
   };
 }
 
@@ -472,6 +475,15 @@ function refusalOf(
   const call = toolCalls?.find((c) => c.toolName === ABORT_TOOL_NAME);
   if (!call) return null;
   return parseGenerationAbort(call.input);
+}
+
+function metadataReportsCache(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object") return false;
+  const m = meta as Record<string, Record<string, unknown> | undefined>;
+  return [m.anthropic?.usage, m.gateway?.usage].some(
+    (usage) =>
+      (usage as { cache_read_input_tokens?: unknown } | undefined)?.cache_read_input_tokens != null,
+  );
 }
 
 function extractCacheRead(meta: unknown): number {

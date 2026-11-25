@@ -74,6 +74,48 @@ describe("suggestNextMessage — llm usage accounting", () => {
     });
   });
 
+  test("carries reported cache figures so the call counts toward the cache share", async () => {
+    const { recordedEntries } = await runWith(async () => ({
+      text: "commit this",
+      model: "anthropic/claude-haiku-4-5",
+      usage: {
+        input_tokens: 80,
+        output_tokens: 4,
+        cache_read_tokens: 60,
+        cache_creation_tokens: 0,
+        cache_reported: true,
+      },
+    }));
+    expect(recordedEntries[0]).toMatchObject({ cache_read_tokens: 60, cache_reported: true });
+  });
+
+  test("keeps an explicit zero cache read distinct from a missing figure", async () => {
+    const reported = await runWith(async () => ({
+      text: "commit this",
+      model: "openai/gpt-5-mini",
+      usage: {
+        input_tokens: 80,
+        output_tokens: 4,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        cache_reported: true,
+      },
+    }));
+    const omitted = await runWith(async () => ({
+      text: "commit this",
+      model: "openai/gpt-5-mini",
+      usage: {
+        input_tokens: 80,
+        output_tokens: 4,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        cache_reported: false,
+      },
+    }));
+    expect(reported.recordedEntries[0]?.cache_reported).toBe(true);
+    expect(omitted.recordedEntries[0]?.cache_reported).toBe(false);
+  });
+
   test("records nothing when no model answered", async () => {
     const { result, recordedEntries } = await runWith(async () => ({ text: null }));
     expect(result.reason).toBe("empty");

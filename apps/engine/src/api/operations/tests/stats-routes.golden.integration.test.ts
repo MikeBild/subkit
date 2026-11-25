@@ -166,6 +166,7 @@ async function seedFacts(): Promise<void> {
       total_tokens: (prompt as number) + (completion as number),
       cache_read_tokens: cacheRead as number,
       cache_creation_tokens: 0,
+      cache_reported: true,
       latency_ms: 500 + i * 100,
       result: result as string,
       month_bucket: 202601,

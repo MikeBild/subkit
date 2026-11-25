@@ -1,6 +1,7 @@
 import {
   bigint,
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -37,6 +38,7 @@ export const llmUsage = pgTable(
     total_tokens: integer("total_tokens").notNull().default(0),
     cache_read_tokens: integer("cache_read_tokens").notNull().default(0),
     cache_creation_tokens: integer("cache_creation_tokens").notNull().default(0),
+    cache_reported: boolean("cache_reported"),
     latency_ms: integer("latency_ms").notNull().default(0),
     result: text("result").notNull(),
     error: text("error"),

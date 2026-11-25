@@ -2,9 +2,10 @@ export type { AuditGroupDim, AuditOutcome, StatusClass } from "./aggregate-audit
 export { aggregateAudit } from "./aggregate-audit.ts";
 export type { ExecutionGroupDim } from "./aggregate-executions.ts";
 export { aggregateExecutions } from "./aggregate-executions.ts";
-export type { LlmGroup, LlmGroupDim } from "./aggregate-llm.ts";
+export type { LlmCacheReported, LlmGroup, LlmGroupDim } from "./aggregate-llm.ts";
 export {
   aggregateLlm,
+  aggregateLlmCacheReportedByFlow,
   LLM_GROUP_DIMS,
   LLM_RESULTS,
   llmBucketKey,

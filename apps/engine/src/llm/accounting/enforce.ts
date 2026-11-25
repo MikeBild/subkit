@@ -39,7 +39,7 @@ export class RunLlmBudget {
     }
   }
 
-  account(usage: LlmCallUsage): void {
+  account(usage: Omit<LlmCallUsage, "cache_reported">): void {
     this.running += Math.max(0, usage.total_tokens);
   }
 }

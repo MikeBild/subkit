@@ -66,6 +66,7 @@ async function recordStepUsage(
       completion_tokens: u.outputTokens,
       cache_read_tokens: u.cacheReadTokens,
       cache_creation_tokens: u.cacheCreationTokens,
+      cache_reported: u.cacheReported,
       latency_ms,
       result: "success",
       conversation_id: p.conversation_id,

@@ -54,6 +54,12 @@ export interface TokenAgg {
   total: number;
 }
 
+export interface LlmCacheReported {
+  calls: number;
+  prompt: number;
+  cache_read: number;
+}
+
 export interface LlmBucketRow {
   ts: string;
   calls: number;
@@ -201,6 +207,34 @@ export function llmBucketKey(groupKey: string, ts: string): string {
 
 export function llmBucketExpr(p: Pick<LlmStatsParams, "bucket" | "tz">): SQL {
   return bucketStartExpr(sql`llm_usage.created_at`, p.bucket, p.tz);
+}
+
+export async function aggregateLlmCacheReportedByFlow(
+  db: Db,
+  p: LlmFilter,
+): Promise<Map<string, LlmCacheReported>> {
+  const rows = (
+    await db.execute(sql`
+      select
+        llm_usage.flow as flow,
+        count(*)::int as calls,
+        coalesce(sum(llm_usage.prompt_tokens), 0)::float8 as prompt,
+        coalesce(sum(llm_usage.cache_read_tokens), 0)::float8 as cache_read
+      from ${llmFromClause(p)}
+      where ${buildWhere(p)} and llm_usage.cache_reported
+      group by llm_usage.flow
+    `)
+  ).rows as Record<string, unknown>[];
+  return new Map(
+    rows.map((row) => [
+      String(row.flow),
+      {
+        calls: Number(row.calls ?? 0),
+        prompt: Math.round(Number(row.prompt ?? 0)),
+        cache_read: Math.round(Number(row.cache_read ?? 0)),
+      },
+    ]),
+  );
 }
 
 export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsResult> {

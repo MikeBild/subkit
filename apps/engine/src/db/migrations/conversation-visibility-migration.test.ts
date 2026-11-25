@@ -57,7 +57,9 @@ test(
       await session(slack, "1712345678.000100", slackThread);
       await session(gchat, "spaces/AAA:root", google);
 
-      expect(await runMigrations(ctx.db)).toMatchObject({ applied: 1 });
+      expect(await runMigrations(ctx.db)).toMatchObject({
+        applied: EMBEDDED_MIGRATIONS.length - baseline.length,
+      });
 
       const { rows } = await ctx.pool.query<{ id: string; visibility: string }>(
         "SELECT id, visibility FROM conversations",

@@ -28,6 +28,7 @@ describe("parseLlmUsage", () => {
       total_tokens: 23815,
       cache_read_tokens: 4000,
       cache_creation_tokens: 1000,
+      cache_reported: true,
     });
   });
 
@@ -47,6 +48,7 @@ describe("parseLlmUsage", () => {
       total_tokens: 23590,
       cache_read_tokens: 1531,
       cache_creation_tokens: 21266,
+      cache_reported: true,
     });
   });
 
@@ -62,6 +64,31 @@ describe("parseLlmUsage", () => {
     expect(usage?.prompt_tokens).toBe(1000);
     expect(usage?.cache_read_tokens).toBe(800);
     expect(usage?.cache_creation_tokens).toBe(0);
+  });
+
+  it("marks cache figures as unreported when the provider leaves the cache field out", () => {
+    for (const body of [
+      { usage: { prompt_tokens: 1000, completion_tokens: 200 } },
+      { usage: { prompt_tokens: 1000, completion_tokens: 200, prompt_tokens_details: {} } },
+      { usage: { input_tokens: 500, output_tokens: 20, input_tokens_details: {} } },
+      { usage: { input_tokens: 500, output_tokens: 20 } },
+    ]) {
+      const usage = parseLlmUsage(body)!;
+      expect(usage.cache_read_tokens).toBe(0);
+      expect(usage.cache_reported).toBe(false);
+    }
+  });
+
+  it("keeps an explicitly reported zero cache read as reported", () => {
+    for (const body of [
+      { usage: { prompt_tokens: 1000, prompt_tokens_details: { cached_tokens: 0 } } },
+      { usage: { input_tokens: 500, input_tokens_details: { cached_tokens: 0 } } },
+      { usage: { input_tokens: 500, cache_read_input_tokens: 0 } },
+    ]) {
+      const usage = parseLlmUsage(body)!;
+      expect(usage.cache_read_tokens).toBe(0);
+      expect(usage.cache_reported).toBe(true);
+    }
   });
 
   it("never reports a prompt count the weighting would have to clamp", () => {

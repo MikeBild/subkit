@@ -29,6 +29,7 @@ import sql0008NotificationChannelFloor from "./0008_notification_channel_floor.s
 import sql0009ConversationVisibility from "./0009_conversation_visibility.sql" with { type: "text" };
 import sql0010TenantRowSecurityForce from "./0010_tenant_row_security_force.sql" with { type: "text" };
 import sql0011TaskRunConversationAbandoned from "./0011_task_run_conversation_abandoned.sql" with { type: "text" };
+import sql0012LlmUsageCacheReported from "./0012_llm_usage_cache_reported.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -65,6 +66,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0009_conversation_visibility": sql0009ConversationVisibility,
   "0010_tenant_row_security_force": sql0010TenantRowSecurityForce,
   "0011_task_run_conversation_abandoned": sql0011TaskRunConversationAbandoned,
+  "0012_llm_usage_cache_reported": sql0012LlmUsageCacheReported,
 };
 
 const journal = journalMeta as unknown as Journal;

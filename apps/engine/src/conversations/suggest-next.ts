@@ -213,6 +213,9 @@ const suggestUsageEntry = (
   completion_tokens: modelResult.usage?.output_tokens ?? 0,
   cache_read_tokens: modelResult.usage?.cache_read_tokens ?? 0,
   cache_creation_tokens: modelResult.usage?.cache_creation_tokens ?? 0,
+  ...(modelResult.usage?.cache_reported !== undefined
+    ? { cache_reported: modelResult.usage.cache_reported }
+    : {}),
   latency_ms: modelResult.latency_ms ?? 0,
   result: "success",
   conversation_id: params.conversation_id,
