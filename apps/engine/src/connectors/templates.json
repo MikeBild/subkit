@@ -8877,7 +8877,6 @@
                 "Content-Type": "application/json"
               },
               "body": {
-                "limit": 100,
                 "properties": ["dealname", "dealstage", "closedate"],
                 "filterGroups": [
                   {

@@ -5,6 +5,8 @@ import { planStateWrite } from "../execution/state-write-plan.ts";
 import { resolvePlaceholdersTypePreserving } from "../llm/substitution/resolver.ts";
 import { pruneScopeForJs } from "../sandboxes/quickjs/scope-references.ts";
 import { FROZEN_NOW, getTestNow, setTestNow } from "../test-helpers/determinism/clock.ts";
+import { compileRequestBoundary } from "../workflows/request-boundary.ts";
+import { RequestStepSchema } from "../workflows/types.ts";
 import { getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
 describe("stateful recipes — paths match the request step output (#534)", () => {
@@ -120,6 +122,30 @@ describe("stateful recipes — paths match the request step output (#534)", () =
         { id: "seen", seen_before: true },
       ],
     });
+  });
+
+  test("hubspot sweep compiles its body pagination boundary (#842)", () => {
+    const recipe = getBuiltinTemplate("hubspot")!.recipes.find(
+      (r) => r.slug === "postmortem-due-in-n-days-via-state",
+    )!;
+    const dealsDue = RequestStepSchema.parse(
+      recipe.workflow.steps.find((step) => step.id === "deals_due"),
+    );
+    const compiled = compileRequestBoundary(
+      {
+        ...dealsDue,
+        boundary: { variables: {}, max_body_bytes: 4096, max_calls: 1 },
+        url: dealsDue.url!.replace("${connector.hubspot.base_url}", "https://api.hubapi.com"),
+      },
+      "https://api.hubapi.com",
+    );
+    expect(compiled.refusal).toBeUndefined();
+    expect(compiled.boundary?.pagination).toEqual({
+      params: ["after", "limit"],
+      max_requests: 100,
+      location: "body",
+    });
+    expect(dealsDue.pagination?.page_size).toBe(100);
   });
 
   test("hubspot sweep pages through every search result page (#842)", async () => {
