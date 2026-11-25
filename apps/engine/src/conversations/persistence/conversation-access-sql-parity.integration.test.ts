@@ -2,9 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { canReadConversation } from "../core/access.ts";
 import { ACCESS_CASES, ACCESS_ROWS, type AccessRowKind } from "../core/access-fixtures.ts";
 import { conversationReaderCond } from "./conversation-access.ts";
+
+const nextUuid = createDeterministicUuidFactory(4711);
 
 const MARKER = {
   task_id: "00000000-0000-4000-8000-0000000000a1",
@@ -72,7 +75,7 @@ describe("conversationReaderCond matches canReadConversation", () => {
   test("a viewer from another tenant matches nothing", async () => {
     const viewer = {
       id: ACCESS_CASES[0]?.viewer.id ?? "",
-      tenant_id: crypto.randomUUID(),
+      tenant_id: nextUuid(),
       is_admin: true,
     };
     const hits = await ctx.db
