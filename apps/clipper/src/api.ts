@@ -39,6 +39,31 @@ export function connectionErrorMessage(
   return copy.connectionFailed;
 }
 
+export class CollectionInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CollectionInputError";
+  }
+}
+
+export function collectionErrorMessage(
+  error: unknown,
+  copy: Parameters<typeof connectionErrorMessage>[1] & {
+    collectionRejected: string;
+    duplicate: string;
+  },
+): string {
+  if (error instanceof CollectionInputError) return error.message;
+  if (error instanceof ApiError) {
+    if (error.status === 401) return copy.invalidApiKey;
+    if (error.status === 403) return copy.missingIntakeWritePermission;
+    if ([400, 422].includes(error.status)) return copy.collectionRejected;
+    if (error.status === 409) return copy.duplicate;
+    return `${copy.apiResponseFailed} (HTTP ${error.status}${error.traceId ? `, Trace: ${error.traceId}` : ""})`;
+  }
+  return connectionErrorMessage(error, copy);
+}
+
 export class IntakeApi {
   constructor(
     readonly engineUrl: string,

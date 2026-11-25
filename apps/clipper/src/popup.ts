@@ -1,4 +1,11 @@
-import { ApiError, CollectionPermissionError, connectionErrorMessage, IntakeApi } from "./api.ts";
+import {
+  ApiError,
+  CollectionInputError,
+  CollectionPermissionError,
+  collectionErrorMessage,
+  connectionErrorMessage,
+  IntakeApi,
+} from "./api.ts";
 import { chromeApi, sendRuntimeMessage } from "./chrome-api.ts";
 import { apiUrl, isDraftForEngine, loadSettings, normalizeSourceUrl } from "./clipper.ts";
 import { intakeSubmission } from "./intake.ts";
@@ -71,17 +78,6 @@ let engineUrl: string | undefined;
 
 function connectionFailureMessage(error: unknown): string {
   return connectionErrorMessage(error, text);
-}
-
-function collectionFailureMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 401) return text.invalidApiKey;
-    if (error.status === 403) return text.missingIntakeWritePermission;
-    if ([400, 422].includes(error.status)) return text.collectionRejected;
-    if (error.status === 409) return text.duplicate;
-    return `${text.apiResponseFailed} (HTTP ${error.status}${error.traceId ? `, Trace: ${error.traceId}` : ""})`;
-  }
-  return connectionFailureMessage(error);
 }
 
 function setStatus(message: string, isError = false, showConnection = false): void {
@@ -528,12 +524,13 @@ async function save(): Promise<void> {
       await chromeApi.runtime.openOptionsPage();
       return;
     }
-    if (!isDraftForEngine(current, settings.engineUrl)) throw new Error(text.draftOtherEngine);
-    if (!current.body.trim()) throw new Error(text.emptyPreview);
+    if (!isDraftForEngine(current, settings.engineUrl))
+      throw new CollectionInputError(text.draftOtherEngine);
+    if (!current.body.trim()) throw new CollectionInputError(text.emptyPreview);
     const api = new IntakeApi(settings.engineUrl, settings.apiKey);
     if (!current.intakeAttempt) {
       if (!current.category || !isValidCategory(current.category))
-        throw new Error(text.categoryRequired);
+        throw new CollectionInputError(text.categoryRequired);
       current = { ...current, intakeAttempt: intakeSubmission(current, crypto.randomUUID()) };
       await queueDraft(current);
     }
@@ -558,9 +555,9 @@ async function save(): Promise<void> {
       await queueDraft({ ...retryable, state: "ready" });
     }
     setStatus(
-      draft?.intakeAttempt ? text.retryPending : collectionFailureMessage(error),
+      draft?.intakeAttempt ? text.retryPending : collectionErrorMessage(error, text),
       true,
-      !draft?.intakeAttempt,
+      !draft?.intakeAttempt && !(error instanceof CollectionInputError),
     );
   } finally {
     saving = false;

@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { IntakeApi } from "./api.ts";
+import { ApiError, CollectionInputError, collectionErrorMessage, IntakeApi } from "./api.ts";
 import { createDraft } from "./clipper.ts";
 import { intakeSubmission } from "./intake.ts";
+import { copy, offersHelp } from "./ui.ts";
 
 test("category lookup retains its error code", async () => {
   const originalFetch = globalThis.fetch;
@@ -73,4 +74,27 @@ test("restored drafts never claim to be a verified original page capture", () =>
   );
   delete draft.originalCapture;
   expect(intakeSubmission(draft, "request").original_snapshot.origin).toBe("restored_draft");
+});
+
+test("local collection validation shows its own message instead of a connection failure", () => {
+  const text = copy.en;
+  const message = collectionErrorMessage(new CollectionInputError(text.categoryRequired), text);
+  expect(message).toBe("Enter a valid category.");
+  expect(message).not.toBe(text.connectionFailed);
+  expect(offersHelp(text, message)).toBe(false);
+});
+
+test("collection failures keep their api and network mappings", () => {
+  const text = copy.en;
+  const apiFailure = (status: number) => new ApiError(status, undefined, "trace-1", "failed");
+  expect(collectionErrorMessage(apiFailure(401), text)).toBe(text.invalidApiKey);
+  expect(collectionErrorMessage(apiFailure(403), text)).toBe(text.missingIntakeWritePermission);
+  expect(collectionErrorMessage(apiFailure(409), text)).toBe(text.duplicate);
+  expect(collectionErrorMessage(apiFailure(422), text)).toBe(text.collectionRejected);
+  expect(collectionErrorMessage(apiFailure(500), text)).toBe(
+    `${text.apiResponseFailed} (HTTP 500, Trace: trace-1)`,
+  );
+  expect(collectionErrorMessage(new TypeError("Failed to fetch"), text)).toBe(
+    text.connectionFailed,
+  );
 });
