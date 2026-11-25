@@ -5,12 +5,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { mutationClosureFiles, mutationTestInputs } from "../audit/mutation-inputs.ts";
 import {
@@ -36,7 +38,7 @@ afterEach(() => {
 });
 
 function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: boolean } = {}) {
-  const root = mkdtempSync("/private/tmp/subkit-mutation-ticket-");
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "subkit-mutation-ticket-"));
   roots.push(root);
   const put = (path: string, text: string) => {
     mkdirSync(dirname(join(root, path)), { recursive: true });
