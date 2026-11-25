@@ -25,7 +25,7 @@ apps/engine/src/conversations/workflow-review.ts                            1
 apps/engine/src/db/issue-admin-key.ts                                       1
 apps/engine/src/docs-ingestion/parsers/strategy.ts                          1
 apps/engine/src/embeddings/embedding-worker.ts                              1
-apps/engine/src/engine-boot-lifetime.ts                                     8
+apps/engine/src/engine-boot-lifetime.ts                                     1
 apps/engine/src/execution/offload.ts                                        1
 apps/engine/src/execution/recovery.ts                                       1
 apps/engine/src/execution/run/prepare.ts                                    1
@@ -39,7 +39,6 @@ apps/engine/src/observability/runtime-diagnostics.ts                        1
 apps/engine/src/observability/tracing.ts                                    5
 apps/engine/src/operator/ai-access-attention.ts                             1
 apps/engine/src/operator/attention-readers.ts                               1
-apps/engine/src/operator/attention.ts                                       11
 apps/engine/src/queue/handlers/conversation-run-turn.ts                     1
 apps/engine/src/queue/handlers/task-run-turn.ts                             1
 apps/engine/src/queue/hosted-work.ts                                        1

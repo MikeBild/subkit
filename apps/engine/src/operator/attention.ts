@@ -84,27 +84,47 @@ export function invalidateAttention(tenantId?: string): void {
 }
 registerTenantStateCache(invalidateAttention);
 
+async function enrichedTenantFacts(
+  db: Db,
+  tenantId: string,
+  now: Date,
+  readers: AttentionReaderOverrides,
+): Promise<TenantFacts> {
+  const built = await buildTenantFacts(db, tenantId, now, readers);
+  const paused = await withPausedSchedules(db, tenantId, built);
+  const environments = await withExecutionEnvironments(db, tenantId, paused);
+  const paired = await withPendingPairRequests(db, tenantId, environments, now);
+  return withDeviceFacts(db, tenantId, paired, now);
+}
+
+async function evictUnlessAnswered(
+  tenantId: string,
+  pending: Promise<TenantFacts>,
+): Promise<TenantFacts> {
+  try {
+    const facts = await pending;
+    if (Object.values(facts.sources).includes("failed")) cache.delete(tenantId);
+    return facts;
+  } catch (error) {
+    cache.delete(tenantId);
+    throw error;
+  }
+}
+
 function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> {
   const at = Date.now();
   const existing = cache.get(tenantId);
   if (existing && existing.until > at) return existing.value;
-  const value = buildTenantFacts(db, tenantId, now, {})
-    .then((facts) => withPausedSchedules(db, tenantId, facts))
-    .then((facts) => withExecutionEnvironments(db, tenantId, facts))
-    .then((facts) => withPendingPairRequests(db, tenantId, facts, now))
-    .then((facts) => withDeviceFacts(db, tenantId, facts, now))
-    .then(
-      (facts) => {
-        if (Object.values(facts.sources).includes("failed")) cache.delete(tenantId);
-        return facts;
-      },
-      (error) => {
-        cache.delete(tenantId);
-        throw error;
-      },
-    );
+  const value = evictUnlessAnswered(tenantId, enrichedTenantFacts(db, tenantId, now, {}));
   cache.set(tenantId, { until: at + CACHE_MS, value });
   return value;
+}
+
+async function wholeTenantGate(
+  decision: Promise<{ allow: boolean }>,
+): Promise<{ any: boolean; allows: (id: string) => boolean }> {
+  const { allow } = await decision;
+  return { any: allow, allows: () => allow };
 }
 
 export interface BuildAttentionOptions {
@@ -134,31 +154,30 @@ export async function buildAttention(
             resource_type: gate.resource_type,
             quiet: true,
           })
-        : can(db, {
-            tenant_id: tenantId,
-            principal,
-            permission: gate.permission,
-            quiet: true,
-          }).then((decision) => ({ any: decision.allow, allows: () => decision.allow }));
+        : wholeTenantGate(
+            can(db, {
+              tenant_id: tenantId,
+              principal,
+              permission: gate.permission,
+              quiet: true,
+            }),
+          );
       gates.set(key, pending);
     }
     return pending;
   };
 
-  const [access, facts] = await Promise.all([
+  const [entries, facts] = await Promise.all([
     Promise.all(
       ATTENTION_SOURCES.map(
         async (source) => [source, await gateFor(SOURCE_GATES[source])] as const,
       ),
-    ).then((entries) => new Map(entries)),
+    ),
     opts.readers
-      ? buildTenantFacts(db, tenantId, now, opts.readers)
-          .then((built) => withPausedSchedules(db, tenantId, built))
-          .then((built) => withExecutionEnvironments(db, tenantId, built))
-          .then((built) => withPendingPairRequests(db, tenantId, built, now))
-          .then((built) => withDeviceFacts(db, tenantId, built, now))
+      ? enrichedTenantFacts(db, tenantId, now, opts.readers)
       : tenantFacts(db, tenantId, now),
   ]);
+  const access = new Map(entries);
   const permitted = (source: AttentionSource) => access.get(source)?.any === true;
 
   let conversationsState: "answered" | "failed" = "answered";
