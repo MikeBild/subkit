@@ -123,6 +123,12 @@ function main(): void {
       "Say what you want in a conversation, and SubKit clones the closest recipe as " +
       "your first draft.",
     "",
+    "Some recipes ask for a value when you install them, such as a GA4 property id or, for the " +
+      "web-scraper recipes, `allowed_hosts`: the host names their url may point to. SubKit writes " +
+      "these values into the steps before you approve the workflow, so the approval names them. " +
+      "A web-scraper run then fetches only https addresses on exactly those hosts and stops with " +
+      "`request_host_not_allowed` for any other address.",
+    "",
     "## Connector templates",
     "",
   ];

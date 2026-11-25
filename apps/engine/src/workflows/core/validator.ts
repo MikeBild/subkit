@@ -147,11 +147,14 @@ export function validateWorkflowDef(
         const isConnectorBaseUrlPlaceholder = /^\$\{connector\.[a-z0-9_-]+\.base_url\}(\/|$)/.test(
           step.url,
         );
-        if (!isAbsolute && !isConnectorBaseUrlPlaceholder) {
+        const isBoundedRuntimeUrl =
+          step.boundary?.allowed_hosts !== undefined &&
+          /^\$\{(?:input|item)(?:\.[A-Za-z_][A-Za-z0-9_]*)+\}$/.test(step.url);
+        if (!isAbsolute && !isConnectorBaseUrlPlaceholder && !isBoundedRuntimeUrl) {
           errors.push({
             path: `steps.${step.id}.url`,
             message:
-              "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path",
+              "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path. A url taken whole from the run (`${input.url}`, `${item.page_url}`) is allowed only with `boundary.allowed_hosts`, the hosts it may reach over https",
           });
         }
       } else if (step.connector_id === undefined) {

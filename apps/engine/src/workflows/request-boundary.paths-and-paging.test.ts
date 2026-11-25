@@ -282,7 +282,7 @@ test("a whole-path rule is refused anywhere but the last path position", () => {
 
 test("a whole-path rule does not widen a single approved segment", () => {
   const { boundary } = compileRequestBoundary(routeStep(), "https://www.example.test");
-  const forged = { ...boundary!, segments: [...boundary!.segments, "tail"] };
+  const forged = { ...boundary!, segments: [...(boundary!.segments ?? []), "tail"] };
   expect(
     requestBoundaryViolation(forged, {
       method: "GET",

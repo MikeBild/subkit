@@ -175,6 +175,39 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(draft.current.workflow?.steps ?? []).toEqual([]);
   });
 
+  test("install inputs pin a web-scraper recipe's allowed hosts into the draft boundary", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      {
+        template_slug: "web-scraper",
+        recipe_slug: "fetch-url-as-markdown",
+        inputs: { allowed_hosts: ["Docs.Example.com"] },
+      },
+    );
+    expect(result.ok).toBe(true);
+    const fetch = (
+      (draft.current.workflow?.steps ?? []) as Array<{
+        id: string;
+        url?: string;
+        boundary?: unknown;
+      }>
+    ).find((step) => step.id === "fetch");
+    expect(fetch?.url).toBe("${input.url}");
+    expect(fetch?.boundary).toMatchObject({ allowed_hosts: ["docs.example.com"] });
+
+    const refused = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      {
+        template_slug: "web-scraper",
+        recipe_slug: "fetch-url-as-markdown",
+        inputs: { allowed_hosts: ["*.example.com"] },
+      },
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error_code).toBe("recipe_input_invalid");
+  });
+
   test("unknown template returns connector_template_unknown", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(

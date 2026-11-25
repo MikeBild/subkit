@@ -1,3 +1,5 @@
+import { ALLOWED_HOST_RULE, canonicalHostList } from "./allowed-hosts.ts";
+
 export const PIN_RULE = "must be one plain path segment of letters, digits, _ or -";
 export const MAILBOX_RULE = "must be one plain email address of the sending mailbox";
 
@@ -70,6 +72,14 @@ const pinMailboxes = (step: Step, values: ReadonlyMap<string, string>): Step => 
   };
 };
 
+const pinHosts = (boundary: unknown, lists: ReadonlyMap<string, string[]>): unknown => {
+  if (boundary === null || typeof boundary !== "object" || Array.isArray(boundary)) return boundary;
+  const hosts = (boundary as { allowed_hosts?: unknown }).allowed_hosts;
+  const key = typeof hosts === "string" ? /^\$\{input\.([A-Za-z0-9_]+)\}$/.exec(hosts)?.[1] : null;
+  const list = key ? lists.get(key) : undefined;
+  return list ? { ...boundary, allowed_hosts: list } : boundary;
+};
+
 const refused = (key: string, missing: boolean, rule: string): InstallInputPin => ({
   ok: false,
   key,
@@ -87,8 +97,10 @@ export function pinInstallInputs(
   inputDefinition: unknown = definition,
 ): InstallInputPin {
   const mailboxKeys = new Set(mailboxInstallInputs(inputDefinition, keys));
+  const requests = stepsOf(definition).filter((step) => step?.kind === "request");
   const paths = new Map<string, string>();
   const senders = new Map<string, string>();
+  const lists = new Map<string, string[]>();
   for (const key of keys) {
     const given = Object.hasOwn(inputs, key);
     if (mailboxKeys.has(key)) {
@@ -99,21 +111,42 @@ export function pinInstallInputs(
       continue;
     }
     if (!given) continue;
+    const placeholder = `\${input.${key}}`;
+    const hostDestination = requests.some(
+      (step) =>
+        (step.boundary as { allowed_hosts?: unknown } | null)?.allowed_hosts === placeholder,
+    );
+    const scalarDestination = requests.some((step) =>
+      [step.path, step.url].some(
+        (destination) => typeof destination === "string" && destination.includes(placeholder),
+      ),
+    );
+    if (Array.isArray(inputs[key])) {
+      if (!hostDestination || scalarDestination) return refused(key, false, PIN_RULE);
+      const hosts = canonicalHostList(inputs[key]);
+      if (hosts === null) return refused(key, false, ALLOWED_HOST_RULE);
+      lists.set(key, hosts);
+      continue;
+    }
+    if (hostDestination) return refused(key, false, ALLOWED_HOST_RULE);
     const value = pinnableInstallInput(inputs[key]);
     if (value === null) return refused(key, false, PIN_RULE);
     paths.set(key, value);
   }
-  if (paths.size === 0 && senders.size === 0) return { ok: true, definition };
+  if (paths.size === 0 && senders.size === 0 && lists.size === 0) return { ok: true, definition };
   const shape = definition as { steps?: unknown };
   const steps = Array.isArray(shape.steps)
     ? shape.steps.map((step: Step) => {
         const withSender = senders.size > 0 ? pinMailboxes(step, senders) : step;
-        return withSender?.kind !== "request" || paths.size === 0
+        return withSender?.kind !== "request" || (paths.size === 0 && lists.size === 0)
           ? withSender
           : {
               ...withSender,
               ...("path" in withSender ? { path: pinPath(withSender.path, paths) } : {}),
               ...("url" in withSender ? { url: pinPath(withSender.url, paths) } : {}),
+              ...("boundary" in withSender
+                ? { boundary: pinHosts(withSender.boundary, lists) }
+                : {}),
             };
       })
     : shape.steps;

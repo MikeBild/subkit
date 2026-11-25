@@ -1,12 +1,31 @@
 import { z } from "@hono/zod-openapi";
+import {
+  ALLOWED_HOST_RULE,
+  canonicalHostList,
+  type DestinationHostIssue,
+  destinationHostIssue,
+  MAX_ALLOWED_HOSTS,
+} from "@shared/allowed-hosts.ts";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
 import { hasCode, isC0OrDelete } from "../utils/control-chars.ts";
-import { canonicalWorkflowJson, workflowJsonDigest } from "./canonical-json.ts";
+import { workflowJsonDigest } from "./canonical-json.ts";
 import { onlyVaultHandles } from "./core/vault-uses.ts";
 import type { McpBoundaryRefusal } from "./mcp-boundary.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
+import {
+  describePagedBodyViolation,
+  isPlainRecord,
+  type PagedBodyViolation,
+  pagedBodyParts,
+} from "./request-boundary-paging.ts";
 import type { RequestStep } from "./types.ts";
+
+export {
+  describePagedBodyViolation,
+  type PagedBodyViolation,
+  pagedBodyGuard,
+} from "./request-boundary-paging.ts";
 
 const expression = z
   .string()
@@ -81,9 +100,24 @@ function fixedForDelete(entry: RequestVariableRule): boolean {
   return "enum" in entry || "caller_bound" in entry;
 }
 
+const allowedHostList = z
+  .array(z.string().min(1).max(253))
+  .min(1)
+  .max(MAX_ALLOWED_HOSTS)
+  .refine((hosts) => canonicalHostList(hosts) !== null, {
+    message: `allowed_hosts ${ALLOWED_HOST_RULE}`,
+  });
+const allowedHostsPlaceholder = z.string().regex(/^\$\{input\.[A-Za-z_][A-Za-z0-9_]*\}$/);
+
 export const RequestBoundaryScopeSchema = z
   .object({
     variables: z.record(expression, rule, { error: variablesError }),
+    allowed_hosts: z
+      .union([allowedHostList, allowedHostsPlaceholder])
+      .optional()
+      .describe(
+        "Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time.",
+      ),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
     max_calls: z.number().int().min(1).max(10_000),
     destructive: z
@@ -153,13 +187,25 @@ export const RequestBoundarySchema = z
   .object({
     base_url: z.string().url().nullable(),
     method: z.enum(HTTP_METHODS),
-    origin: z.string().url(),
+    origin: z.string().url().optional(),
+    destination: z
+      .object({
+        var: expression,
+        hosts: z
+          .array(z.string())
+          .min(1)
+          .max(MAX_ALLOWED_HOSTS)
+          .refine((hosts) => canonicalHostList(hosts)?.join(" ") === hosts.join(" ")),
+      })
+      .strict()
+      .optional(),
     body_encoding: z.literal("multipart").optional(),
     idempotency_key: z.object({ var: expression }).strict().optional(),
     segments: z
       .array(z.union([z.string(), z.object({ var: expression }).strict()]))
       .min(2)
-      .max(50),
+      .max(50)
+      .optional(),
     variables: z.record(expression, rule, { error: variablesError }),
     query: z
       .object({
@@ -182,6 +228,17 @@ export const RequestBoundarySchema = z
     destructive: z.literal(true).optional(),
   })
   .strict()
+  .refine(
+    (boundary) =>
+      boundary.destination
+        ? boundary.origin === undefined &&
+          boundary.segments === undefined &&
+          boundary.method !== "DELETE" &&
+          boundary.pagination === undefined &&
+          boundary.connector_query === undefined
+        : boundary.origin !== undefined && boundary.segments !== undefined,
+    { message: "a request boundary names either a fixed origin and path or a bounded destination" },
+  )
   .refine((boundary) => boundary.method !== "DELETE" || boundary.destructive === true, {
     message: "a DELETE request boundary requires destructive: true",
   })
@@ -232,6 +289,8 @@ export type RequestBoundaryRefusal =
   | "connector_query_conflict"
   | "connector_query_unresolved"
   | "connector_query_needs_boundary"
+  | "allowed_hosts_unpinned"
+  | "runtime_destination_unsupported"
   | McpBoundaryRefusal
   | "report_delivery_unprepared"
   | "report_delivery_unobserved"
@@ -293,10 +352,6 @@ function paginationShape(
   };
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function bodyPagingRefusal(
   step: RequestStep,
   params: readonly string[],
@@ -310,14 +365,112 @@ function bodyPagingRefusal(
   return keys.some((key) => params.includes(key)) ? "pagination_param_conflict" : null;
 }
 
+function idempotencyHeader(
+  step: RequestStep,
+): { idempotency_key?: { var: string }; refusal?: never } | { refusal: RequestBoundaryRefusal } {
+  let idempotencyKey: { var: string } | undefined;
+  for (const [name, value] of Object.entries(step.headers ?? {})) {
+    if (hasRuntimeValue(name)) return refuse("runtime_header");
+    if (!hasRuntimeValue(value) || onlyVaultHandles(value)) continue;
+    const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
+    if (
+      name.toLowerCase() !== "idempotency-key" ||
+      idempotencyKey ||
+      !whole?.[1] ||
+      whole[1].startsWith("caller.") ||
+      !expression.safeParse(whole[1]).success
+    )
+      return refuse("runtime_header");
+    idempotencyKey = { var: whole[1] };
+  }
+  if (
+    idempotencyKey &&
+    Object.keys(step.headers ?? {}).filter((name) => name.toLowerCase() === "idempotency-key")
+      .length !== 1
+  )
+    return refuse("runtime_header");
+  return idempotencyKey ? { idempotency_key: idempotencyKey } : {};
+}
+
+function stepWithoutRuntimeParts(step: RequestStep) {
+  const {
+    body: _body,
+    path: _path,
+    url: _url,
+    query: _query,
+    headers: _headers,
+    multipart: _multipart,
+    for_each: _forEach,
+    data_selector: _dataSelector,
+    ...fixed
+  } = step;
+  return fixed;
+}
+
+type CompiledRequestBoundary =
+  | { boundary: RequestBoundary; refusal?: never }
+  | { boundary?: never; refusal: RequestBoundaryRefusal };
+
+function compileDestinationBoundary(
+  step: RequestStep,
+  base_url: string | null,
+  connector_query: ConnectorQuery | null | undefined,
+): CompiledRequestBoundary {
+  const scope = RequestBoundaryScopeSchema.safeParse(step.boundary);
+  if (!scope.success) return refuse("boundary_invalid");
+  if (typeof scope.data.allowed_hosts === "string") return refuse("allowed_hosts_unpinned");
+  const hosts = canonicalHostList(scope.data.allowed_hosts);
+  if (!hosts) return refuse("boundary_invalid");
+  const whole =
+    step.path === undefined && step.url !== undefined ? WHOLE_SEGMENT.exec(step.url) : null;
+  const destination = whole?.[1];
+  if (
+    !destination ||
+    !expression.safeParse(destination).success ||
+    isCallerExpression(destination) ||
+    base_url !== null ||
+    step.connector_id !== undefined ||
+    connectorQueryKeys(connector_query ?? undefined).length > 0 ||
+    step.multipart ||
+    step.pagination ||
+    Object.keys(step.query ?? {}).length > 0
+  )
+    return refuse("runtime_destination_unsupported");
+  const header = idempotencyHeader(step);
+  if (header.refusal) return refuse(header.refusal);
+  if (hasRuntimeValue(stepWithoutRuntimeParts(step)))
+    return refuse("runtime_value_outside_path_and_body");
+  const used = header.idempotency_key ? [header.idempotency_key.var] : [];
+  const declared = Object.keys(scope.data.variables);
+  if (used.length !== declared.length || used.some((name) => !declared.includes(name)))
+    return refuse("variables_mismatch");
+  const method = (step.method ?? "GET").toUpperCase();
+  if (!(HTTP_METHODS as readonly string[]).includes(method)) return refuse("not_http_step");
+  if (method === "DELETE")
+    return refuse(scope.data.destructive ? "delete_requires_enum" : "delete_requires_destructive");
+  if (!callerRulesConsistent(scope.data.variables)) return refuse("caller_bound_mismatch");
+  const candidate = RequestBoundarySchema.safeParse({
+    base_url: null,
+    method,
+    destination: { var: destination, hosts },
+    ...(header.idempotency_key ? { idempotency_key: header.idempotency_key } : {}),
+    variables: scope.data.variables,
+    query: { fixed: {}, variable: [] },
+    max_body_bytes: scope.data.max_body_bytes,
+    max_calls: scope.data.max_calls,
+    ...(scope.data.destructive ? { destructive: true as const } : {}),
+  });
+  return candidate.success ? { boundary: candidate.data } : refuse("boundary_invalid");
+}
+
 export function compileRequestBoundary(
   step: RequestStep,
   base_url: string | null,
   connector_query?: ConnectorQuery | null,
-):
-  | { boundary: RequestBoundary; refusal?: never }
-  | { boundary?: never; refusal: RequestBoundaryRefusal } {
+): CompiledRequestBoundary {
   if (step.s3 || step.sql || step.mcp || step.graphql || step.xml) return refuse("not_http_step");
+  if (step.boundary?.allowed_hosts !== undefined)
+    return compileDestinationBoundary(step, base_url, connector_query);
   if (step.multipart && step.pagination) return refuse("pagination_unsupported");
   const paging = step.pagination ? paginationShape(step.pagination) : null;
   if (step.pagination && !paging) return refuse("pagination_unsupported");
@@ -341,39 +494,11 @@ export function compileRequestBoundary(
   }
   variableQuery.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   vaultQuery.sort();
-  let idempotencyKey: { var: string } | undefined;
-  for (const [name, value] of Object.entries(step.headers ?? {})) {
-    if (hasRuntimeValue(name)) return refuse("runtime_header");
-    if (!hasRuntimeValue(value) || onlyVaultHandles(value)) continue;
-    const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
-    if (
-      name.toLowerCase() !== "idempotency-key" ||
-      idempotencyKey ||
-      !whole?.[1] ||
-      whole[1].startsWith("caller.") ||
-      !expression.safeParse(whole[1]).success
-    )
-      return refuse("runtime_header");
-    idempotencyKey = { var: whole[1] };
-  }
-  if (
-    idempotencyKey &&
-    Object.keys(step.headers ?? {}).filter((name) => name.toLowerCase() === "idempotency-key")
-      .length !== 1
-  )
-    return refuse("runtime_header");
-  const {
-    body: _body,
-    path: _path,
-    url: _url,
-    query: _query,
-    headers: _headers,
-    multipart: _multipart,
-    for_each: _forEach,
-    data_selector: _dataSelector,
-    ...fixed
-  } = step;
-  if (hasRuntimeValue(fixed)) return refuse("runtime_value_outside_path_and_body");
+  const header = idempotencyHeader(step);
+  if (header.refusal) return refuse(header.refusal);
+  const idempotencyKey = header.idempotency_key;
+  if (hasRuntimeValue(stepWithoutRuntimeParts(step)))
+    return refuse("runtime_value_outside_path_and_body");
   const authored = step.path ?? step.url;
   if (!authored || (step.path !== undefined && step.url !== undefined))
     return refuse("path_unsupported");
@@ -543,7 +668,11 @@ export function requestBoundary(
 }
 
 export function requestBoundaryTarget(boundary: RequestBoundary): string {
-  return `${boundary.origin}${boundary.segments
+  if (boundary.destination)
+    return `{${boundary.destination.var}} on ${boundary.destination.hosts
+      .map((host) => `https://${host}`)
+      .join(", ")}`;
+  return `${boundary.origin ?? ""}${(boundary.segments ?? [])
     .map((part) => (typeof part === "string" ? part : `{${part.var}}`))
     .join("/")}`;
 }
@@ -584,16 +713,18 @@ export function pathValueAllowed(value: string): boolean {
 }
 
 function matchTarget(boundary: RequestBoundary, url: URL): boolean {
-  if (url.origin !== boundary.origin || url.username || url.password || url.hash) return false;
+  const segments = boundary.segments;
+  if (!segments || url.origin !== boundary.origin || url.username || url.password || url.hash)
+    return false;
   const actual = url.pathname.split("/");
-  const last = boundary.segments[boundary.segments.length - 1];
+  const last = segments[segments.length - 1];
   const tailRule =
     last !== undefined && typeof last !== "string" ? boundary.variables[last.var] : undefined;
   if (isPathRule(tailRule)) {
-    const fixed = boundary.segments.length - 1;
+    const fixed = segments.length - 1;
     if (actual.length < fixed + 1) return false;
     for (let index = 0; index < fixed; index += 1) {
-      const expected = boundary.segments[index];
+      const expected = segments[index];
       const raw = actual[index] ?? "";
       const ok =
         typeof expected === "string"
@@ -603,8 +734,8 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
     }
     return pathValueAllowed(actual.slice(fixed).join("/"));
   }
-  if (actual.length !== boundary.segments.length) return false;
-  return boundary.segments.every((expected, index) => {
+  if (actual.length !== segments.length) return false;
+  return segments.every((expected, index) => {
     const raw = actual[index] ?? "";
     return typeof expected === "string"
       ? raw === expected
@@ -627,10 +758,11 @@ function ruleLabel(variableRule: RequestVariableRule | undefined): string {
 }
 
 function targetVariableIssue(boundary: RequestBoundary, url: URL): TargetVariableIssue | undefined {
-  if (url.origin !== boundary.origin) return undefined;
+  const segments = boundary.segments;
+  if (!segments || url.origin !== boundary.origin) return undefined;
   const actual = url.pathname.split("/");
-  if (actual.length !== boundary.segments.length) return undefined;
-  for (const [index, expected] of boundary.segments.entries()) {
+  if (actual.length !== segments.length) return undefined;
+  for (const [index, expected] of segments.entries()) {
     const raw = actual[index] ?? "";
     if (typeof expected === "string") {
       if (raw !== expected) return undefined;
@@ -710,58 +842,11 @@ export type RequestBoundaryViolation =
     }
   | { kind: "method"; actual: string; reviewed: string }
   | { kind: "target"; reviewed: string; actual: string; variable?: TargetVariableIssue }
+  | { kind: "destination"; issue: DestinationHostIssue; actual: string; hosts: string[] }
   | { kind: "query"; detail: RequestQueryViolation }
   | { kind: "body_forbidden"; method: string }
   | { kind: "body_size"; bytes: number; max_body_bytes: number }
   | { kind: "paged_body"; detail: PagedBodyViolation };
-
-export type PagedBodyViolation =
-  | { reason: "not_an_object" | "changed_between_pages" }
-  | { reason: "paging_value"; field: string };
-
-function pagedBodyParts(
-  boundary: RequestBoundary,
-  body: unknown,
-): { rest: string } | PagedBodyViolation {
-  let parsed: unknown = body;
-  if (typeof body === "string") {
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      return { reason: "not_an_object" };
-    }
-  }
-  if (!isPlainRecord(parsed)) return { reason: "not_an_object" };
-  const params = boundary.pagination?.params ?? [];
-  const rest: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (!params.includes(key)) {
-      rest[key] = value;
-      continue;
-    }
-    if (typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value)))
-      return { reason: "paging_value", field: key };
-  }
-  try {
-    return { rest: canonicalWorkflowJson(rest) };
-  } catch {
-    return { reason: "not_an_object" };
-  }
-}
-
-export function pagedBodyGuard(
-  boundary: RequestBoundary,
-): ((body: unknown) => PagedBodyViolation | null) | null {
-  if (boundary.pagination?.location !== "body") return null;
-  let first: string | undefined;
-  return (body) => {
-    const parts = pagedBodyParts(boundary, body);
-    if ("reason" in parts) return parts;
-    if (first !== undefined && parts.rest !== first) return { reason: "changed_between_pages" };
-    first = parts.rest;
-    return null;
-  };
-}
 
 export function requestBoundaryViolation(
   boundary: RequestBoundary,
@@ -795,7 +880,16 @@ export function requestBoundaryViolation(
   } catch {
     return { kind: "url_invalid" };
   }
-  if (!matchTarget(reviewed, url)) {
+  if (reviewed.destination) {
+    const issue = destinationHostIssue(reviewed.destination.hosts, url);
+    if (issue)
+      return {
+        kind: "destination",
+        issue,
+        actual: `${url.protocol}//${url.host}`.slice(0, 300),
+        hosts: reviewed.destination.hosts,
+      };
+  } else if (!matchTarget(reviewed, url)) {
     const variable = targetVariableIssue(reviewed, url);
     return {
       kind: "target",
@@ -804,7 +898,7 @@ export function requestBoundaryViolation(
       ...(variable ? { variable } : {}),
     };
   }
-  const query = queryViolation(reviewed, url);
+  const query = reviewed.destination ? null : queryViolation(reviewed, url);
   if (query) return { kind: "query", detail: query };
   if (reviewed.method === "GET" || reviewed.method === "HEAD")
     return request.body !== null && request.body !== undefined
@@ -825,7 +919,7 @@ export function requestBoundaryViolation(
       : null;
   }
   if (reviewed.pagination?.location === "body") {
-    const parts = pagedBodyParts(reviewed, request.body);
+    const parts = pagedBodyParts(reviewed.pagination?.params ?? [], request.body);
     if ("reason" in parts) return { kind: "paged_body", detail: parts };
   }
   if (request.body === null || request.body === undefined) return null;
@@ -836,6 +930,13 @@ export function requestBoundaryViolation(
     ? { kind: "body_size", bytes, max_body_bytes: reviewed.max_body_bytes }
     : null;
 }
+
+const DESTINATION_ISSUE: Record<DestinationHostIssue, string> = {
+  scheme: "only https is allowed",
+  userinfo: "a user name or password in the URL is not allowed",
+  port: "an explicit port is not allowed",
+  host: "the host is not on the list",
+};
 
 export function describeRequestBoundaryViolation(violation: RequestBoundaryViolation): string {
   switch (violation.kind) {
@@ -852,6 +953,8 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
         ? `${named}; the value fits the class \`${variable.fits_class}\`, so change that one rule to \`{class: "${variable.fits_class}"}\``
         : named;
     }
+    case "destination":
+      return `the resolved URL ${violation.actual} is not an https address without port or credentials on one of the allowed hosts (${violation.hosts.join(", ")}): ${DESTINATION_ISSUE[violation.issue]}`;
     case "method":
       return `the method is ${violation.actual} but the boundary was compiled for ${violation.reviewed}`;
     case "query": {
@@ -875,14 +978,6 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
     default:
       return "the request could not be compared with the boundary";
   }
-}
-
-export function describePagedBodyViolation(detail: PagedBodyViolation): string {
-  if (detail.reason === "paging_value")
-    return `the paging field \`${detail.field}\` in the body is not a plain text or number value`;
-  if (detail.reason === "changed_between_pages")
-    return "a later page differs from the first page in more than the reviewed paging fields";
-  return "paging through the body needs a JSON object body";
 }
 
 export function assertRequestBoundary(

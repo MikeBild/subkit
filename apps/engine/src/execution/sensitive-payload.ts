@@ -58,6 +58,8 @@ export function recoverExecutionPayload(
 const safeFailureCodes = new Set([
   ...DEVICE_STEP_ERROR_CODES,
   "request_outside_declared_boundary",
+  "request_host_not_allowed",
+  "request_destination_unbounded",
   "execution_authority_changed",
   "execution_boundary_mismatch",
   "execution_authority_required",

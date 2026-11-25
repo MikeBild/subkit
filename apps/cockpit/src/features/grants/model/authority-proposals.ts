@@ -142,7 +142,9 @@ function requestRow(
     title: shown.title,
     destructive: shown.destructive,
     lines: [
-      { key: "authorityProposals.host", values: { host: hostOf(boundary.origin) } },
+      ...(boundary.origin !== undefined
+        ? [{ key: "authorityProposals.host" as const, values: { host: hostOf(boundary.origin) } }]
+        : []),
       ...shown.variables.map((line) => ({
         key: line.key,
         values: { ...line.values, name: plainName(line.values.name ?? "") },

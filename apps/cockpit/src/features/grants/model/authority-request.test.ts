@@ -158,6 +158,28 @@ describe("presentRequestBoundary", () => {
     expect(translate("de", line!.key, line!.values)).toContain("nicht freigeben");
   });
 
+  test("a runtime url under allowed hosts names every host the approval covers", () => {
+    const { origin: _origin, segments: _segments, ...rest } = base;
+    const shown = presentRequestBoundary(
+      {
+        ...rest,
+        method: "GET",
+        destination: { var: "input.url", hosts: ["docs.example.com", "example.com"] },
+        variables: {},
+        max_body_bytes: 0,
+        max_calls: 1,
+      },
+      plain,
+    );
+    expect(shown.title).toBe("authority.boundary.readHosts");
+    expect(shown.target).toBe("{input.url} → https://docs.example.com, https://example.com");
+    expect(shown.destructive).toBe(false);
+    const [line] = shown.variables;
+    expect(line?.key).toBe("authority.boundary.allowedHosts");
+    for (const locale of ["de", "en"] as const)
+      expect(translate(locale, line!.key, line!.values)).toContain("docs.example.com, example.com");
+  });
+
   test("the copy is honest about what the approval does not cover", () => {
     for (const locale of ["de", "en"] as const) {
       const notice = translate(locale, "authority.boundary.contentNotice");

@@ -697,6 +697,8 @@ export async function insertStepRow(
 
 export const GOVERNANCE_REFUSALS: ReadonlySet<string> = new Set([
   "request_outside_declared_boundary",
+  "request_host_not_allowed",
+  "request_destination_unbounded",
   "execution_authority_changed",
   "execution_boundary_mismatch",
   "execution_authority_required",

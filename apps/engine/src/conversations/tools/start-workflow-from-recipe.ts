@@ -44,10 +44,10 @@ const inputSchema = z
         "Multi-connector path. Map each placeholder UUID declared in `recipe.required_connectors` to a saved connector id. Required when `required_connectors` is non-empty; the tool rejects partial maps with the missing placeholders listed.",
       ),
     inputs: z
-      .record(z.string().min(1).max(64), z.union([z.string(), z.number()]))
+      .record(z.string().min(1).max(64), z.union([z.string(), z.number(), z.array(z.string())]))
       .optional()
       .describe(
-        "Install-time values for every key the recipe lists in `install_inputs` (for example a GA4 `property_id`). Each value is written into the request paths so the reviewed boundary stays literal. Ask the user for them; never invent or reuse sample values.",
+        "Install-time values for every key in the recipe's `install_inputs` (see `inspect_recipe`), such as a GA4 `property_id` or an `allowed_hosts` list. Values are pinned into request paths and boundaries for approval. Ask the user for them; never invent values or hosts.",
       ),
   })
   .openapi("StartWorkflowFromRecipeToolInput");
@@ -171,9 +171,9 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
       return {
         ok: false,
         error_code: "recipe_input_invalid",
-        message: `${pinned.message}. Ask the user for the plain value, then call start_workflow_from_recipe again.`,
+        message: `${pinned.message}. Ask the user for a value that satisfies the stated rule, then call start_workflow_from_recipe again.`,
         next_best_actions: ["start_workflow_from_recipe"],
-        data: { install_inputs: installKeys, invalid_input: pinned.key },
+        data: { install_inputs: installKeys, invalid_input: pinned.key, key: pinned.key },
       };
     }
     const cloned = (
@@ -212,6 +212,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
           required_connectors: required,
           install_inputs_pinned: installKeys,
           connector_bindings_applied: Object.keys(bindings).length,
+          install_inputs: recipe.install_inputs,
           next_hint:
             "Recipe cloned. Inspect with inspect_workflow_draft, dry_run with dry_run_workflow, then save_workflow_draft.",
         },
