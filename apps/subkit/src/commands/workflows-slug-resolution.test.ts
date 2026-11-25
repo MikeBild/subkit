@@ -8,9 +8,9 @@ const ID_B = "84300d98-3e8d-4422-91b7-c4c94aae017b";
 function fakeClient(rows: Array<{ id: string; slug?: string; name?: string }>): EngineClient {
   let called = 0;
   return {
-    listWorkflows: async () => {
+    listWorkflows: async ({ limit = 50, offset = 0 }: { limit?: number; offset?: number } = {}) => {
       called++;
-      return { items: rows, total: rows.length };
+      return { items: rows.slice(offset, offset + Math.min(limit, 200)), total: rows.length };
     },
     get _listCalls() {
       return called;
@@ -53,5 +53,25 @@ describe("resolveWorkflowIdOrSlug", () => {
       { id: ID_B, slug: "dup", name: "B" },
     ];
     await expect(resolveWorkflowIdOrSlug(fakeClient(dupes), "dup")).rejects.toThrow(/ambiguous/);
+  });
+
+  const fillerRows = Array.from({ length: 200 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    slug: `filler-${index}`,
+    name: `Filler ${index}`,
+  }));
+
+  test("a slug past the first page of 200 workflows still resolves", async () => {
+    const catalog = [...fillerRows, { id: ID_B, slug: "late-workflow", name: "Late Workflow" }];
+    expect(await resolveWorkflowIdOrSlug(fakeClient(catalog), "late-workflow")).toBe(ID_B);
+  });
+
+  test("a duplicate slug spanning two pages is still ambiguous", async () => {
+    const catalog = [
+      { id: ID_A, slug: "dup", name: "A" },
+      ...fillerRows,
+      { id: ID_B, slug: "dup", name: "B" },
+    ];
+    await expect(resolveWorkflowIdOrSlug(fakeClient(catalog), "dup")).rejects.toThrow(/ambiguous/);
   });
 });
