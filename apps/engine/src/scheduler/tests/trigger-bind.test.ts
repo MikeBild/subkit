@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, workflowsSchedules } from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
-import { bindFromWorkflow, unbindFromWorkflow } from "../repo.ts";
+import { bindFromWorkflow, unbindFromWorkflow, updateSchedule } from "../repo.ts";
 import { createSchedulerCtx, type SchedulerTestCtx } from "./setup.ts";
 
 let ctx: SchedulerTestCtx;
@@ -93,6 +93,43 @@ describe("scheduler trigger bind/unbind helpers", () => {
     });
     expect(updated.status).toBe("updated");
     expect(updated.row.timezone).toBe("America/New_York");
+  });
+
+  test("bindFromWorkflow keeps saved workflow input across trigger rebinds", async () => {
+    const triggerUtc = { ...triggerDaily, tz: "UTC" };
+    const bindWith = (trigger: typeof triggerUtc) =>
+      bindFromWorkflow(ctx.engine.testDb.db, {
+        tenant_id: ctx.engine.tenantId,
+        workflow_id: workflowId,
+        trigger,
+        actor_id: null,
+      });
+    const created = await bindWith(triggerUtc);
+    await updateSchedule(ctx.engine.testDb.db, ctx.engine.tenantId, created.row.id, {
+      input: { batch: 17, business_days_only: true, skip_dates: ["2026-12-25"] },
+    });
+
+    const retimed = await bindWith({ ...triggerUtc, tz: "Etc/UTC" });
+    expect(retimed.status).toBe("updated");
+    expect(retimed.row.id).toBe(created.row.id);
+    expect(retimed.row.timezone).toBe("Etc/UTC");
+    expect(retimed.row.input).toEqual({
+      batch: 17,
+      business_days_only: true,
+      skip_dates: ["2026-12-25"],
+    });
+
+    const unchanged = await bindWith({ ...triggerUtc, tz: "Etc/UTC" });
+    expect(unchanged.status).toBe("noop");
+    expect((unchanged.row.input as { batch?: number }).batch).toBe(17);
+
+    const reskipped = await bindWith({ ...triggerUtc, tz: "Etc/UTC", skip_dates: ["2026-12-31"] });
+    expect(reskipped.status).toBe("updated");
+    expect(reskipped.row.input).toEqual({
+      batch: 17,
+      business_days_only: true,
+      skip_dates: ["2026-12-31"],
+    });
   });
 
   test("bindFromWorkflow preserves an explicit dev execution mode", async () => {
