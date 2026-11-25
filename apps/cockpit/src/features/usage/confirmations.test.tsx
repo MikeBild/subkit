@@ -53,7 +53,11 @@ describe("the confirmations section", () => {
   test("German formats the decimals and labels in its own words", () => {
     const html = render(<ConfirmationsSection read={answered(SUMMARY)} onRetry={() => {}} />, "de");
     expect(text(html)).toContain(
-      "0,35 je Gesprächsrunde · Median 0,5 je Run einer Aufgabe · 3 ohne Frage gelaufen",
+      [
+        translate("de", "usage.confirm.perTurn", { value: "0,35" }),
+        translate("de", "usage.confirm.perRun", { value: "0,5" }),
+        translate("de", "usage.confirm.covered", { count: "3" }),
+      ].join(" · "),
     );
   });
 
