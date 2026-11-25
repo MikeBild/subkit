@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, Pill } from "@ui/atoms/pill";
 import { AppWindow, Monitor } from "lucide-react";
-import { useState } from "react";
 import {
   getCurrentCockpitInstallation,
   revokeCockpitInstallation,
 } from "@/api/cockpit-installations";
 import { installationId } from "@/app/installation-context";
-import { Button, ConfirmDialog, IconTile } from "@/components/cockpit/patterns";
+import { Button, ConfirmDialog, IconTile, useConfirmTarget } from "@/components/cockpit/patterns";
 import { reportFailure } from "@/lib/action-failure";
 import { formatDate, formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -99,7 +98,8 @@ export function DevicesArea() {
   const { t } = useI18n();
   const client = useQueryClient();
   const askingFromDevice = installationId() !== null;
-  const [target, setTarget] = useState<DeviceRow | null>(null);
+  const targetConfirm = useConfirmTarget<DeviceRow>();
+  const target = targetConfirm.target;
   const installations = useQuery({
     queryKey: ["cockpit-installation"],
     queryFn: getCurrentCockpitInstallation,
@@ -109,7 +109,7 @@ export function DevicesArea() {
     mutationFn: (row: DeviceRow) => revokeCockpitInstallation(row.id),
     onError: (failure) => reportFailure(t("common.actionFailed"), failure),
     onSuccess: async (_done, row) => {
-      setTarget(null);
+      targetConfirm.close();
       if (row.current) {
         window.location.reload();
         return;
@@ -125,13 +125,10 @@ export function DevicesArea() {
       <p className="text-sm text-muted-foreground">
         {t(askingFromDevice ? "settings.devices.helpOnDevice" : "settings.devices.help")}
       </p>
-      <DeviceList rows={rows} askingFromDevice={askingFromDevice} onRevoke={setTarget} />
+      <DeviceList rows={rows} askingFromDevice={askingFromDevice} onRevoke={targetConfirm.ask} />
       {target && revocation ? (
         <ConfirmDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setTarget(null);
-          }}
+          {...targetConfirm.dialog()}
           object={target.name}
           verb={t(revocation.verb)}
           consequence={t(revocation.consequence)}

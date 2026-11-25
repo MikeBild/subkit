@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
   StatusBadge,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -64,7 +65,7 @@ export function PersonSheet({
   const canAssignCustom = session.permissions.includes("rbac:write");
   const [picked, setPicked] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
-  const [confirm, setConfirm] = useState<"deactivate" | "revokeGrants" | null>(null);
+  const confirmation = useConfirmTarget<"deactivate" | "revokeGrants">();
   const grants = useGrants(canReadGrants && user !== null);
   const ownGrants = (grants.data?.items ?? []).filter(
     (grant) => user && grant.subject_type === "user" && grant.subject_id === user.id,
@@ -100,7 +101,7 @@ export function PersonSheet({
     },
     onSuccess: async () => {
       setPicked(null);
-      setConfirm(null);
+      confirmation.close();
       await refresh();
       toast.success(t("people.roleUpdated"));
     },
@@ -121,7 +122,7 @@ export function PersonSheet({
   const remove = useMutation({
     mutationFn: (id: string) => apiCall("delete", "/v1/identity/users/{id}", { path: { id } }),
     onSuccess: async () => {
-      setConfirm(null);
+      confirmation.close();
       close();
       await refresh();
       toast.success(t("people.deactivated"));
@@ -134,7 +135,7 @@ export function PersonSheet({
     },
     onSettled: () => client.invalidateQueries({ queryKey: ["admin", "grants"] }),
     onSuccess: () => {
-      setConfirm(null);
+      confirmation.close();
       toast.success(t("people.grantsRevoked"));
     },
     onError: (error) => refusalToast(error, t),
@@ -156,7 +157,7 @@ export function PersonSheet({
             : [
                 {
                   label: t("people.deactivate"),
-                  onSelect: () => setConfirm("deactivate"),
+                  onSelect: () => confirmation.ask("deactivate"),
                   destructive: true,
                   testId: "people-deactivate",
                 },
@@ -165,7 +166,7 @@ export function PersonSheet({
             ? [
                 {
                   label: t("people.revokeGrants"),
-                  onSelect: () => setConfirm("revokeGrants"),
+                  onSelect: () => confirmation.ask("revokeGrants"),
                   destructive: true,
                   testId: "people-revoke-grants",
                 },
@@ -335,8 +336,7 @@ export function PersonSheet({
         ) : null}
       </RecordSheet>
       <ConfirmDialog
-        open={confirm === "deactivate"}
-        onOpenChange={(open) => !open && setConfirm(null)}
+        {...confirmation.dialog({ only: "deactivate" })}
         object={shownEmail}
         verb={t("people.deactivate")}
         consequence={
@@ -352,8 +352,7 @@ export function PersonSheet({
         testId="people-deactivate-confirm"
       />
       <ConfirmDialog
-        open={confirm === "revokeGrants"}
-        onOpenChange={(open) => !open && setConfirm(null)}
+        {...confirmation.dialog({ only: "revokeGrants" })}
         object={t("people.grantsObject", { email: shownEmail })}
         verb={t("people.revokeGrantsVerb")}
         consequence={tn("people.revokeGrantsConsequence", ownGrants.length)}

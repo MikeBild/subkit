@@ -34,6 +34,7 @@ import {
   SegmentedControl,
   StatusBadge,
   SummaryLine,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
@@ -210,8 +211,10 @@ function KeysSection({
   const directory = useActorDirectory(true);
   const canRotate = session.permissions.includes("api_key:rotate");
   const canRevoke = session.permissions.includes("api_key:revoke");
-  const [rotating, setRotating] = useState<ApiKeyItem | null>(null);
-  const [revoking, setRevoking] = useState<ApiKeyItem | null>(null);
+  const rotatingConfirm = useConfirmTarget<ApiKeyItem>();
+  const rotating = rotatingConfirm.target;
+  const revokingConfirm = useConfirmTarget<ApiKeyItem>();
+  const revoking = revokingConfirm.target;
   const [opened, setOpened] = useState<ApiKeyItem | null>(null);
   const [search, setSearch] = useState("");
   const [groupBy, setGroupBy] = useState("all");
@@ -224,7 +227,7 @@ function KeysSection({
         body: { overlap_minutes: ROTATE_OVERLAP_MINUTES },
       }),
     onSuccess: async (result) => {
-      setRotating(null);
+      rotatingConfirm.close();
       setOpened(null);
       onIssued({ secret: result.new.plaintext_key, name: result.new.name });
       await refresh();
@@ -236,7 +239,7 @@ function KeysSection({
   const revoke = useMutation({
     mutationFn: (id: string) => apiCall("delete", "/v1/identity/api-keys/{id}", { path: { id } }),
     onSuccess: async () => {
-      setRevoking(null);
+      revokingConfirm.close();
       setOpened(null);
       await refresh();
       toast.success(t("apiKeys.revoked"));
@@ -337,13 +340,13 @@ function KeysSection({
     if (canRotate)
       items.push({
         label: t("apiKeys.rotate"),
-        onSelect: () => setRotating(key),
+        onSelect: () => rotatingConfirm.ask(key),
         testId: `${prefix}-rotate`,
       });
     if (canRevoke)
       items.push({
         label: t("apiKeys.revoke"),
-        onSelect: () => setRevoking(key),
+        onSelect: () => revokingConfirm.ask(key),
         destructive: true,
         testId: `${prefix}-revoke`,
       });
@@ -489,8 +492,7 @@ function KeysSection({
         ) : null}
       </RecordSheet>
       <ConfirmDialog
-        open={Boolean(rotating)}
-        onOpenChange={(next) => !next && setRotating(null)}
+        {...rotatingConfirm.dialog()}
         object={keyName(rotating)}
         verb={t("apiKeys.rotate")}
         consequence={t("apiKeys.rotateConsequenceHours", { hours: ROTATE_OVERLAP_MINUTES / 60 })}
@@ -500,8 +502,7 @@ function KeysSection({
         testId="api-key-rotate-dialog"
       />
       <ConfirmDialog
-        open={Boolean(revoking)}
-        onOpenChange={(next) => !next && setRevoking(null)}
+        {...revokingConfirm.dialog()}
         object={keyName(revoking)}
         verb={t("apiKeys.revoke")}
         consequence={t("apiKeys.revokeConsequence")}
@@ -657,7 +658,8 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
   const session = useSession();
   const client = useQueryClient();
   const canRevoke = session.permissions.includes("mcp_oauth_client:revoke");
-  const [revoking, setRevoking] = useState<ConnectedClientItem | null>(null);
+  const revokingConfirm = useConfirmTarget<ConnectedClientItem>();
+  const revoking = revokingConfirm.target;
   const [opened, setOpened] = useState<ConnectedClientItem | null>(null);
   const [search, setSearch] = useState("");
   const [groupBy, setGroupBy] = useState("all");
@@ -666,7 +668,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
       apiCall("delete", "/v1/oauth/clients/{client_id}", { path: { client_id: clientId } }),
     onSuccess: async () => {
       const name = revoking?.client_name || t("connectedClients.unnamed");
-      setRevoking(null);
+      revokingConfirm.close();
       await client.invalidateQueries({ queryKey: CLIENTS_QUERY });
       toast.success(t("connectedClients.revokedToast", { name }));
     },
@@ -791,7 +793,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setRevoking(item)}
+                    onClick={() => revokingConfirm.ask(item)}
                     data-testid={`connected-client-revoke-${id}-${index}`}
                   >
                     {t("connectedClients.revoke")}
@@ -884,8 +886,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
         ) : null}
       </RecordSheet>
       <ConfirmDialog
-        open={Boolean(revoking)}
-        onOpenChange={(next) => !next && setRevoking(null)}
+        {...revokingConfirm.dialog()}
         object={t("connectedClients.object", {
           name: revoking?.client_name || t("connectedClients.unnamed"),
         })}

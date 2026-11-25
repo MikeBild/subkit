@@ -132,6 +132,11 @@ export { TextBlock } from "./text-block";
 export { Timeline, type TimelineGroup, type TimelineItem, type TimelineTone } from "./timeline";
 export { TimezoneSelect } from "./timezone-select";
 export {
+  type ConfirmDialogState,
+  type ConfirmTarget,
+  useConfirmTarget,
+} from "./use-confirm-target";
+export {
   type ErrorDetail,
   type ErrorNoticeFacts,
   type PageFailureProps,

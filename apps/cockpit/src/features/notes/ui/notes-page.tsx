@@ -9,6 +9,7 @@ import {
   DataState,
   SegmentedControl,
   TopPageHeader,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { Screen } from "@/components/cockpit/patterns/screen";
 import type { PersonalNote, PersonalNoteDetail } from "@/features/notes/api/notes-api";
@@ -34,8 +35,10 @@ export function NotesPage() {
   const openId = resourceId ?? null;
   const [filter, setFilter] = useState<Filter>("active");
   const [editing, setEditing] = useState<PersonalNoteDetail | null>(null);
-  const [forgetting, setForgetting] = useState<PersonalNoteDetail | null>(null);
-  const [sharing, setSharing] = useState<PersonalNoteDetail | null>(null);
+  const forgettingConfirm = useConfirmTarget<PersonalNoteDetail>();
+  const forgetting = forgettingConfirm.target;
+  const sharingConfirm = useConfirmTarget<PersonalNoteDetail>();
+  const sharing = sharingConfirm.target;
   const list = useNotesList(filter === "archived");
   const detail = useNote(openId);
   const exporting = useNotesExport();
@@ -47,7 +50,7 @@ export function NotesPage() {
       open(note);
     },
     onGone: () => {
-      setForgetting(null);
+      forgettingConfirm.close();
       home();
     },
   });
@@ -58,8 +61,8 @@ export function NotesPage() {
     else if (action === "edit") {
       actions.update.reset();
       setEditing(note);
-    } else if (action === "share") setSharing(note);
-    else setForgetting(note);
+    } else if (action === "share") sharingConfirm.ask(note);
+    else forgettingConfirm.ask(note);
   };
   const groups = groupByStatus(list.data ?? []);
   const busy = actions.confirm.isPending || actions.archive.isPending || actions.restore.isPending;
@@ -147,10 +150,7 @@ export function NotesPage() {
       />
       {forgetting ? (
         <ConfirmDialog
-          open
-          onOpenChange={(next) => {
-            if (!next) setForgetting(null);
-          }}
+          {...forgettingConfirm.dialog()}
           object={nt("notes.forget.object")}
           verb={nt("notes.forget")}
           consequence={nt("notes.forget.consequence")}
@@ -162,15 +162,14 @@ export function NotesPage() {
       ) : null}
       {sharing ? (
         <ConfirmDialog
-          open
-          onOpenChange={(next) => {
-            if (!next) setSharing(null);
-          }}
+          {...sharingConfirm.dialog()}
           title={nt("notes.share.title")}
           consequence={nt("notes.share.consequence")}
           confirmLabel={nt("notes.share.confirm")}
           pending={actions.share.isPending}
-          onConfirm={() => actions.share.mutate(sharing.id, { onSettled: () => setSharing(null) })}
+          onConfirm={() =>
+            actions.share.mutate(sharing.id, { onSettled: () => sharingConfirm.close() })
+          }
           testId="notes-share-dialog"
         />
       ) : null}

@@ -34,6 +34,7 @@ import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName, actorLabel } from "@/app/actor-directory-model";
 import { recordHref } from "@/app/links";
 import { useSession } from "@/app/session";
+import { useConfirmTarget } from "@/components/cockpit/patterns";
 import { Button, Input, Label } from "@/components/cockpit/patterns/controls";
 import { Measured } from "@/components/cockpit/patterns/measure";
 import { PageHeader, TopPageHeader } from "@/components/cockpit/patterns/page-header";
@@ -363,7 +364,8 @@ export function SkillCandidatesPage() {
   const query = useCandidates(true);
   const [decided, setDecided] = useState<Map<string, DecidedCandidate>>(new Map());
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [confirm, setConfirm] = useState<"approve" | "reject" | null>(null);
+  const confirmation = useConfirmTarget<"approve" | "reject">();
+  const confirm = confirmation.target;
   const [summary, setSummary] = useState<DecisionSummary | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const open = (query.data?.items ?? []).filter(isDetectedPattern);
@@ -482,7 +484,7 @@ export function SkillCandidatesPage() {
             size="sm"
             variant="outline"
             disabled={reject.isPending}
-            onClick={() => setConfirm("reject")}
+            onClick={() => confirmation.ask("reject")}
           >
             <X className="size-4" aria-hidden />
             {t("kn.skills.drop")}
@@ -492,7 +494,7 @@ export function SkillCandidatesPage() {
               data-testid="kn-skills-bulk-accept"
               size="sm"
               disabled={approve.isPending}
-              onClick={() => setConfirm("approve")}
+              onClick={() => confirmation.ask("approve")}
             >
               <Check className="size-4" aria-hidden />
               {t("kn.skills.accept")}
@@ -594,8 +596,7 @@ export function SkillCandidatesPage() {
       />
       <ConfirmDialog
         testId="kn-skill-decision-confirm"
-        open={confirm !== null}
-        onOpenChange={(v) => !v && setConfirm(null)}
+        {...confirmation.dialog()}
         title={t(
           confirm === "approve" ? "kn.skills.cand.approveTitle" : "kn.skills.cand.rejectTitle",
           {
@@ -609,7 +610,7 @@ export function SkillCandidatesPage() {
         onConfirm={() => {
           if (confirm === "approve") approve.mutate(chosen);
           else reject.mutate(chosen);
-          setConfirm(null);
+          confirmation.close();
         }}
       />
     </div>

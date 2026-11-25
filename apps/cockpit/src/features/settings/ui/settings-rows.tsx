@@ -2,7 +2,7 @@ import { cn } from "@ui/lib/utils";
 import { IconButton } from "@ui/molecules/icon-button";
 import { SettingsRow } from "@ui/molecules/settings-row";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 import { absolute, auditHref, peopleHref, settingsHref } from "@/app/links";
 import {
   Button,
@@ -22,6 +22,7 @@ import {
   SelectValue,
   SummaryLine,
   Switch,
+  useConfirmTarget,
   useCopy,
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
@@ -238,7 +239,8 @@ export function AuthProvidersEditor({
   onChange: (value: AuthProviderSetting[]) => void;
 }) {
   const { t } = useI18n();
-  const [removing, setRemoving] = useState<number | null>(null);
+  const removingConfirm = useConfirmTarget<number>();
+  const removing = removingConfirm.target;
   const removingProvider = removing === null ? null : value[removing];
   const callbackUrl = useMemo(() => {
     try {
@@ -304,7 +306,7 @@ export function AuthProvidersEditor({
                 label={t("settings.auth.remove")}
                 data-testid={`settings-auth-provider-${index}-remove`}
                 disabled={disabled || value.length === 1}
-                onClick={() => setRemoving(index)}
+                onClick={() => removingConfirm.ask(index)}
               >
                 <Trash2 />
               </IconButton>
@@ -391,8 +393,7 @@ export function AuthProvidersEditor({
         <Plus data-icon="inline-start" /> {t("settings.auth.addOidc")}
       </Button>
       <ConfirmDialog
-        open={removing !== null}
-        onOpenChange={(open) => !open && setRemoving(null)}
+        {...removingConfirm.dialog()}
         object={
           (removingProvider && providerText(removingProvider, "label")) ||
           t("settings.auth.unnamedProvider")
@@ -402,7 +403,7 @@ export function AuthProvidersEditor({
         destructive
         onConfirm={() => {
           if (removing !== null) onChange(removeAuthProvider(value, removing));
-          setRemoving(null);
+          removingConfirm.close();
         }}
         testId="settings-auth-provider-remove-confirm"
       />

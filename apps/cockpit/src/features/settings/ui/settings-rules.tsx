@@ -3,7 +3,6 @@ import { Panel, Pill } from "@ui/atoms/pill";
 import { EmptyState } from "@ui/molecules/empty-state";
 import { ErrorNotice } from "@ui/molecules/error-notice";
 import { BookOpenCheck } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
 import {
   APPROVAL_RULES_KEY,
@@ -20,6 +19,7 @@ import {
   DataState,
   IconTile,
   SectionHeading,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { ruleName } from "@/features/chat";
 import { useConnectorNames } from "@/features/connectors";
@@ -140,17 +140,18 @@ export function RulesArea() {
     queryFn: listApprovalRules,
     retry: false,
   });
-  const [revoking, setRevoking] = useState<ApprovalRule | null>(null);
+  const revokingConfirm = useConfirmTarget<ApprovalRule>();
+  const revoking = revokingConfirm.target;
   const names = useConnectorNames();
   const refresh = () => client.invalidateQueries({ queryKey: APPROVAL_RULES_KEY });
   const revoke = useMutation({
     mutationFn: (rule: ApprovalRule) => revokeApprovalRule(rule.id),
     onSuccess: (_result, rule) => {
       toast.success(t("rules.revoked", { rule: ruleName(rule, t) }));
-      setRevoking(null);
+      revokingConfirm.close();
     },
     onError: (error) => {
-      setRevoking(null);
+      revokingConfirm.close();
       reportFailure(t("rules.revokeFailed"), error);
     },
     onSettled: refresh,
@@ -205,7 +206,7 @@ export function RulesArea() {
                 rule={rule}
                 busy={busy}
                 renewing={renew.isPending && renew.variables?.id === rule.id}
-                onRevoke={setRevoking}
+                onRevoke={revokingConfirm.ask}
                 onRenew={(target) => renew.mutate(target)}
                 onDecide={(target, accept) => decide.mutate({ rule: target, accept })}
               />
@@ -214,10 +215,7 @@ export function RulesArea() {
         </Panel>
       )}
       <ConfirmDialog
-        open={revoking !== null}
-        onOpenChange={(open) => {
-          if (!open) setRevoking(null);
-        }}
+        {...revokingConfirm.dialog()}
         object={t("rules.revokeObject", { rule: revoking ? ruleName(revoking, t) : "" })}
         verb={t("rules.revokeVerb")}
         consequence={t("rules.revokeBody")}

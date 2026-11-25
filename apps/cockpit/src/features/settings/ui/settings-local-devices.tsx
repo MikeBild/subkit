@@ -3,10 +3,14 @@ import { Panel, Pill } from "@ui/atoms/pill";
 import { StatusDot } from "@ui/atoms/status-dot";
 import { SettingsRow } from "@ui/molecules/settings-row";
 import { Laptop } from "lucide-react";
-import { useState } from "react";
 import { listDevices, revokeDevice } from "@/api/devices";
 import { useSession } from "@/app/session";
-import { Button, ConfirmDialog, SectionHeading } from "@/components/cockpit/patterns";
+import {
+  Button,
+  ConfirmDialog,
+  SectionHeading,
+  useConfirmTarget,
+} from "@/components/cockpit/patterns";
 import {
   localSettingsOpener,
   type OpenLocalSettings,
@@ -101,7 +105,8 @@ export function LocalDevicesQuestion() {
   const session = useSession();
   const client = useQueryClient();
   const scope = deviceScope(session.permissions);
-  const [target, setTarget] = useState<LocalDeviceRow | null>(null);
+  const targetConfirm = useConfirmTarget<LocalDeviceRow>();
+  const target = targetConfirm.target;
   const devices = useQuery({
     queryKey: ["devices", scope],
     queryFn: () => listDevices(scope),
@@ -112,7 +117,7 @@ export function LocalDevicesQuestion() {
     mutationFn: (row: LocalDeviceRow) => revokeDevice(row.id),
     onError: (failure) => reportFailure(t("common.actionFailed"), failure),
     onSuccess: async () => {
-      setTarget(null);
+      targetConfirm.close();
       await client.invalidateQueries({ queryKey: ["devices"] });
     },
   });
@@ -130,13 +135,14 @@ export function LocalDevicesQuestion() {
         </SectionHeading>
         <p className="text-xs text-muted-foreground">{t("settings.localDevices.help")}</p>
       </div>
-      <LocalDeviceList rows={rows} onRevoke={setTarget} onManageHere={localSettingsOpener()} />
+      <LocalDeviceList
+        rows={rows}
+        onRevoke={targetConfirm.ask}
+        onManageHere={localSettingsOpener()}
+      />
       {target ? (
         <ConfirmDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setTarget(null);
-          }}
+          {...targetConfirm.dialog()}
           object={target.name}
           verb={t("settings.devices.revoke")}
           consequence={t("settings.localDevices.consequence")}

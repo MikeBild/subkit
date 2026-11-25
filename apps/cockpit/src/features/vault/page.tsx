@@ -31,6 +31,7 @@ import {
   RecordSheet,
   SectionHeading,
   SegmentedControl,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { auditActionLabel } from "@/features/audit/model";
 import {
@@ -765,7 +766,8 @@ export function VaultArea() {
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [rotating, setRotating] = useState<VaultItem | null>(null);
-  const [deleting, setDeleting] = useState<VaultItem | null>(null);
+  const deletingConfirm = useConfirmTarget<VaultItem>();
+  const deleting = deletingConfirm.target;
   const items = useQuery({ queryKey: VAULT_KEY, queryFn: listVaultItems });
   const refresh = () => client.invalidateQueries({ queryKey: VAULT_KEY });
   const remove = useMutation({
@@ -776,7 +778,7 @@ export function VaultArea() {
     },
     onSuccess: async (_done, item) => {
       toast.success(t("vault.deleted", { name: item.name }));
-      setDeleting(null);
+      deletingConfirm.close();
       setOpenId(null);
       await refresh();
     },
@@ -857,7 +859,7 @@ export function VaultArea() {
         permissions={permissions}
         onClose={() => setOpenId(null)}
         onRotate={setRotating}
-        onDelete={setDeleting}
+        onDelete={deletingConfirm.ask}
       />
       <RotateDialog
         item={rotating}
@@ -871,10 +873,7 @@ export function VaultArea() {
       />
       {deleting ? (
         <ConfirmDialog
-          open
-          onOpenChange={(next) => {
-            if (!next) setDeleting(null);
-          }}
+          {...deletingConfirm.dialog()}
           object={deleting.name}
           verb={t("vault.delete")}
           consequence={t(deleteConsequenceKey(deleting.kind), {

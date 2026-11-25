@@ -50,6 +50,7 @@ import { apiCall } from "@/api/call";
 import type { PackageKind } from "@/api/packages";
 import { type ChatReferenceSeed, chatNewHref, routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
+import { useConfirmTarget } from "@/components/cockpit/patterns";
 import type { ActionMenuItem } from "@/components/cockpit/patterns/action-menu";
 import { Button } from "@/components/cockpit/patterns/controls";
 import { DataState } from "@/components/cockpit/patterns/data-state";
@@ -865,7 +866,8 @@ export function VersionsTab({
   const [picked, setPicked] = useSearchParamState("version", "", anyText);
   const open = picked || null;
   const setOpen = (key: string | null) => setPicked(key ?? "");
-  const [confirm, setConfirm] = useState<VersionItem | null>(null);
+  const confirmation = useConfirmTarget<VersionItem>();
+  const confirm = confirmation.target;
   const [texts, setTexts] = useState<Record<string, string>>({});
   const asked = useRef(new Set<string>());
   const sel = versions.find((x) => x.key === open);
@@ -983,7 +985,7 @@ export function VersionsTab({
                 data-testid="kn-version-restore"
                 className="mt-3 w-full"
                 disabled={busy}
-                onClick={() => setConfirm(sel)}
+                onClick={() => confirmation.ask(sel)}
               >
                 {t("kn.restore")}
               </Button>
@@ -993,14 +995,13 @@ export function VersionsTab({
       </RecordSheet>
       <ConfirmDialog
         testId="kn-restore-confirm"
-        open={!!confirm}
-        onOpenChange={(v) => !v && setConfirm(null)}
+        {...confirmation.dialog()}
         title={confirm ? t("kn.restoreTitle", { n: confirm.v }) : ""}
         consequence={t("kn.restoreBody")}
         confirmLabel={t("kn.restore")}
         onConfirm={() => {
           if (confirm) onRestore(confirm.key);
-          setConfirm(null);
+          confirmation.close();
           setOpen(null);
         }}
       />

@@ -37,6 +37,7 @@ import {
   STATUS_DOT,
   statusTone,
   TabBody,
+  useConfirmTarget,
   useSideDetailsAvailable,
 } from "@/components/cockpit/patterns";
 import { MISSING } from "@/components/cockpit/table-columns";
@@ -287,7 +288,7 @@ export function WorkflowPage({
 }) {
   const { t, tn, dateTime, locale } = useI18n();
   const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
+  const confirmation = useConfirmTarget<"disable" | "delete">();
   const [offersApproval, setOffersApproval] = useState(false);
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -439,7 +440,7 @@ export function WorkflowPage({
       toast.success(
         t(next === "archived" ? "workflowPage.disabled" : "workflowPage.enabled", { name: title }),
       );
-      setConfirming(null);
+      confirmation.close();
       automation.refresh();
     },
   });
@@ -448,7 +449,7 @@ export function WorkflowPage({
 
     onSuccess: async () => {
       toast.success(t("workflowPage.deleted", { name: title }));
-      setConfirming(null);
+      confirmation.close();
       await client.invalidateQueries({ queryKey: ["catalog"] });
       void navigate({ to: "/workflows" });
     },
@@ -489,12 +490,12 @@ export function WorkflowPage({
               }
             : {
                 label: t("workflowPage.disable"),
-                onSelect: () => setConfirming("disable"),
+                onSelect: () => confirmation.ask("disable"),
                 testId: "workflow-menu-disable",
               },
           {
             label: t("workflowPage.delete"),
-            onSelect: () => setConfirming("delete"),
+            onSelect: () => confirmation.ask("delete"),
             destructive: true,
             testId: "workflow-menu-delete",
           },
@@ -941,8 +942,7 @@ export function WorkflowPage({
         <MetadataDialog id={id} record={record} open={editing} onOpenChange={setEditing} />
       ) : null}
       <ConfirmDialog
-        open={confirming === "disable"}
-        onOpenChange={(next) => !next && setConfirming(null)}
+        {...confirmation.dialog({ only: "disable" })}
         object={title}
         verb={t("workflowPage.disable")}
         consequence={consequence("disable")}
@@ -953,8 +953,7 @@ export function WorkflowPage({
         testId="workflow-disable-confirm"
       />
       <ConfirmDialog
-        open={confirming === "delete"}
-        onOpenChange={(next) => !next && setConfirming(null)}
+        {...confirmation.dialog({ only: "delete" })}
         object={title}
         verb={t("workflowPage.delete")}
         consequence={consequence("delete")}

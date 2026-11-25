@@ -33,6 +33,7 @@ import {
   SectionHeading,
   TabBody,
   Timeline,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
@@ -498,7 +499,7 @@ export function TaskDetail({
   const navigate = useNavigate();
   const [now] = useState(() => Date.now());
   const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState<"delete" | "stop" | null>(null);
+  const confirmation = useConfirmTarget<"delete" | "stop">();
   const [reviewing, setReviewing] = useState(false);
   const [granting, setGranting] = useState(false);
   const [shownRun, setShownRun] = useSearchParamState("task_run", "");
@@ -560,7 +561,7 @@ export function TaskDetail({
     mutationFn: (runId: string) => abortTaskRun(runId),
     onSuccess: async () => {
       toast.success(t("tasks.stopped"));
-      setConfirming(null);
+      confirmation.close();
       await refresh();
     },
     onError: failed,
@@ -569,7 +570,7 @@ export function TaskDetail({
     mutationFn: () => deleteTask(task.id),
     onSuccess: async () => {
       toast.success(t("tasks.deleted", { name: task.name }));
-      setConfirming(null);
+      confirmation.close();
       await client.invalidateQueries({ queryKey: taskKeys.lists });
       void navigate({ to: TASKS_PATH });
     },
@@ -609,7 +610,7 @@ export function TaskDetail({
       ? [
           {
             label: t("tasks.menu.stop"),
-            onSelect: () => setConfirming("stop"),
+            onSelect: () => confirmation.ask("stop"),
             testId: "task-menu-stop",
           },
         ]
@@ -618,7 +619,7 @@ export function TaskDetail({
       ? [
           {
             label: t("tasks.menu.delete"),
-            onSelect: () => setConfirming("delete"),
+            onSelect: () => confirmation.ask("delete"),
             destructive: true,
             testId: "task-menu-delete",
           },
@@ -837,8 +838,7 @@ export function TaskDetail({
       />
       <StopRunDialog
         name={task.name}
-        open={confirming === "stop"}
-        onOpenChange={(next) => !next && setConfirming(null)}
+        {...confirmation.dialog({ only: "stop" })}
         pending={stop.isPending}
         onConfirm={async () => {
           if (latest) await stop.mutateAsync(latest.id).catch(() => undefined);
@@ -846,8 +846,7 @@ export function TaskDetail({
         testId="task-stop-confirm"
       />
       <ConfirmDialog
-        open={confirming === "delete"}
-        onOpenChange={(next) => !next && setConfirming(null)}
+        {...confirmation.dialog({ only: "delete" })}
         object={task.name}
         verb={t("tasks.delete.verb")}
         consequence={t("tasks.delete.consequence")}

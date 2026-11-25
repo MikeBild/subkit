@@ -19,6 +19,7 @@ import {
   SectionHeading,
   StatusBadge,
   TechnicalDetails,
+  useConfirmTarget,
   useErrorNotice,
 } from "@/components/cockpit/patterns";
 import {
@@ -379,7 +380,8 @@ export function ConnectorAccounts({
 }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
-  const [disconnect, setDisconnect] = useState<ConnectionItem | null>(null);
+  const disconnectConfirm = useConfirmTarget<ConnectionItem>();
+  const disconnect = disconnectConfirm.target;
   const query = useConnections(true);
   const rows = (query.data?.items ?? []).filter((item) =>
     item.used_by.some((user) => user.connector_id === connectorId),
@@ -389,7 +391,7 @@ export function ConnectorAccounts({
 
     onSuccess: async () => {
       const name = disconnect?.name ?? "";
-      setDisconnect(null);
+      disconnectConfirm.close();
       await client.invalidateQueries({ queryKey: ["admin", "connections"] });
       await client.invalidateQueries({ queryKey: ["connector-credential", connectorId] });
       toast.success(t("connections.disconnected", { name }));
@@ -445,7 +447,7 @@ export function ConnectorAccounts({
                     items={[
                       {
                         label: t("connections.disconnect"),
-                        onSelect: () => setDisconnect(row),
+                        onSelect: () => disconnectConfirm.ask(row),
                         destructive: true,
                         testId: `connector-account-${index}-disconnect`,
                       },
@@ -458,8 +460,7 @@ export function ConnectorAccounts({
         </ul>
       )}
       <ConfirmDialog
-        open={disconnect !== null}
-        onOpenChange={(next) => !next && !remove.isPending && setDisconnect(null)}
+        {...disconnectConfirm.dialog({ locked: remove.isPending })}
         object={t("connectorPage.accountConnection")}
         verb={t("connections.disconnect")}
         consequence={t("connectorPage.disconnectConsequence")}

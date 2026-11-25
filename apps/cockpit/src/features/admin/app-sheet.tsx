@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { workflowHref } from "@/app/links";
@@ -15,6 +14,7 @@ import {
   RecordSheet,
   Section,
   StatusBadge,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
@@ -134,7 +134,8 @@ function AppUsers({ app }: { app: AppView }) {
   const canErase = mayEraseAppUsers(session);
   const list = usePeopleList(true, app.id);
   const users = list.view.data?.items ?? [];
-  const [target, setTarget] = useState<UserItem | null>(null);
+  const targetConfirm = useConfirmTarget<UserItem>();
+  const target = targetConfirm.target;
   const erase = useMutation({
     mutationFn: (user: UserItem) =>
       apiCall("delete", "/v1/apps/{id}/users/{user_id}", {
@@ -190,7 +191,7 @@ function AppUsers({ app }: { app: AppView }) {
                     {
                       label: t("apps.users.erase"),
                       destructive: true,
-                      onSelect: () => setTarget(user),
+                      onSelect: () => targetConfirm.ask(user),
                       testId: `apps-users-${index}-erase`,
                     },
                   ]}
@@ -202,8 +203,7 @@ function AppUsers({ app }: { app: AppView }) {
       </ul>
       <InfiniteSentinel infinite={list.infinite} testId="apps-users-more" />
       <ConfirmDialog
-        open={target !== null}
-        onOpenChange={(open) => !open && setTarget(null)}
+        {...targetConfirm.dialog()}
         object={t("apps.users.erase.object", {
           person: target ? appUserLabel(target, t) : "",
           id: app.id,
@@ -217,7 +217,7 @@ function AppUsers({ app }: { app: AppView }) {
           await erase
             .mutateAsync(target)
             .then(() => {
-              setTarget(null);
+              targetConfirm.close();
               toast.success(t("apps.users.erase.done"));
             })
             .catch((error) => refusalToast(error, t));
@@ -243,11 +243,11 @@ export function AppSheet({ appId, onClose }: { appId: string | null; onClose(): 
   const bearer = appId
     ? appBearerProvider(settingValue(settings.data, PROVIDERS_PATH), appId)
     : null;
-  const [dialog, setDialog] = useState<"settings" | "signIn" | "remove" | null>(null);
+  const dialogs = useConfirmTarget<"settings" | "signIn" | "remove">();
   const remove = useAppSettingsSave();
   const client = useQueryClient();
   const close = () => {
-    setDialog(null);
+    dialogs.close();
     onClose();
   };
   const menu: ActionMenuItem[] =
@@ -255,12 +255,12 @@ export function AppSheet({ appId, onClose }: { appId: string | null; onClose(): 
       ? [
           {
             label: t(app.configured ? "apps.action.editSettings" : "apps.action.configure"),
-            onSelect: () => setDialog("settings"),
+            onSelect: () => dialogs.ask("settings"),
             testId: "apps-edit-settings",
           },
           {
             label: t(bearer ? "apps.action.editSignIn" : "apps.action.addSignIn"),
-            onSelect: () => setDialog("signIn"),
+            onSelect: () => dialogs.ask("signIn"),
             testId: "apps-edit-sign-in",
           },
           ...(app.configured
@@ -268,7 +268,7 @@ export function AppSheet({ appId, onClose }: { appId: string | null; onClose(): 
                 {
                   label: t("apps.action.remove"),
                   destructive: true,
-                  onSelect: () => setDialog("remove"),
+                  onSelect: () => dialogs.ask("remove"),
                   testId: "apps-remove",
                 },
               ]
@@ -446,19 +446,10 @@ export function AppSheet({ appId, onClose }: { appId: string | null; onClose(): 
       </RecordSheet>
       {app ? (
         <>
-          <AppSettingsDialog
-            app={app}
-            open={dialog === "settings"}
-            onOpenChange={(open) => !open && setDialog(null)}
-          />
-          <AppSignInDialog
-            app={app}
-            open={dialog === "signIn"}
-            onOpenChange={(open) => !open && setDialog(null)}
-          />
+          <AppSettingsDialog app={app} {...dialogs.dialog({ only: "settings" })} />
+          <AppSignInDialog app={app} {...dialogs.dialog({ only: "signIn" })} />
           <ConfirmDialog
-            open={dialog === "remove"}
-            onOpenChange={(open) => !open && setDialog(null)}
+            {...dialogs.dialog({ only: "remove" })}
             object={t("apps.remove.object", { id: app.id })}
             verb={t("apps.remove.verb")}
             consequence={t("apps.remove.consequence")}
@@ -475,7 +466,7 @@ export function AppSheet({ appId, onClose }: { appId: string | null; onClose(): 
                     )
                   )
                     close();
-                  else setDialog(null);
+                  else dialogs.close();
                   toast.success(
                     t(outcome === "active" ? "apps.save.removed" : "apps.save.restartRequired"),
                   );

@@ -19,6 +19,7 @@ import {
   FormDialog,
   Input,
   StatusBadge,
+  useConfirmTarget,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
@@ -39,13 +40,14 @@ export function PeopleTab({ action }: { action: ReactNode }) {
   const client = useQueryClient();
   const router = useRouter();
   const canInvite = session.permissions.includes("identity:write");
-  const [withdrawing, setWithdrawing] = useState<UserItem | null>(null);
+  const withdrawingConfirm = useConfirmTarget<UserItem>();
+  const withdrawing = withdrawingConfirm.target;
   const invite = useInviteSend();
   const withdraw = useMutation({
     mutationFn: (user: UserItem) =>
       apiCall("delete", "/v1/identity/users/{id}", { path: { id: user.id } }),
     onSuccess: async () => {
-      setWithdrawing(null);
+      withdrawingConfirm.close();
       await client.invalidateQueries({ queryKey: ["admin"] });
       toast.success(t("people.invite.withdrawn"));
     },
@@ -199,7 +201,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
                         },
                         {
                           label: t("people.invite.withdraw"),
-                          onSelect: () => setWithdrawing(row),
+                          onSelect: () => withdrawingConfirm.ask(row),
                           destructive: true,
                           testId: `people-invite-withdraw-${index}`,
                         },
@@ -289,8 +291,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
       <PersonSheet user={opened} roles={roleItems} onClose={() => setOpenedId(null)} />
       <InviteLinkDialog invite={invite.link} onClose={invite.closeLink} />
       <ConfirmDialog
-        open={withdrawing !== null}
-        onOpenChange={(open) => !open && setWithdrawing(null)}
+        {...withdrawingConfirm.dialog()}
         object={t("people.invite.withdrawObject", {
           email: withdrawing ? personEmailText(withdrawing, t) : "",
         })}
