@@ -34,6 +34,10 @@ reviewed `request_id_input` and `event_type_input` must match those exact fields
 an unsigned ID or type header cannot substitute for them. A bounded non-UUID
 signed request ID receives a deterministic opaque receipt UUID, so retries and
 new execution IDs cannot reserve a second mail attempt for that workflow.
+For a Stripe-signed trigger (`verify: "stripe-signature"`), declare
+`webhook_verifier: "stripe"` with `request_id_input: "body.id"` and
+`event_type_input: "body.type"`; the binding must subscribe to exactly the reviewed
+event type, and the signed Stripe event ID gets the same opaque receipt UUID.
 Omitting `webhook_verifier` retains the Standard Webhooks UUID contract.
 Use `max_retries: 0`, a single POST to the Gmail send endpoint with
 only `{raw}`, no pagination, fan-out or read-effect override. Bound template inputs
@@ -42,7 +46,7 @@ must strictly validate its business fields. The runtime compares actual decoded
 MIME sender, sole recipient and format to the reviewed profile and original
 admitted input. CC/BCC and recipient overrides are refused.
 
-Provision the actual Standard Webhooks or body-bound HMAC binding securely, with its
+Provision the actual Standard Webhooks, body-bound HMAC or Stripe binding securely, with its
 own secret, same tenant/workflow and exactly the reviewed event type. Never use
 `verify: "none"`, never expose a signing key in browser code, and never fabricate
 a signed event or execution caller in a preview. A signature authenticates an

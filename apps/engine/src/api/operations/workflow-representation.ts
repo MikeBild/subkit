@@ -7,10 +7,14 @@ import {
   WorkflowScheduleBindingSchema,
   workflowTriggerView,
 } from "../../scheduler/trigger-bindings.ts";
-import type * as svc from "../../workflows/index.ts";
+import * as svc from "../../workflows/index.ts";
 import { loadWorkflowBinding, type WorkflowListEntry } from "../../workflows/read-model.ts";
-import { checkRecipeOrigin, pinnedRecipeDefinition } from "../../workflows/recipe-origin.ts";
-import { TriggerSchema } from "../../workflows/types.ts";
+import {
+  checkRecipeOrigin,
+  pinnedRecipeDefinition,
+  recipeDeliveryBinding,
+} from "../../workflows/recipe-origin.ts";
+import { TriggerSchema, type WorkflowDef } from "../../workflows/types.ts";
 import { CatalogSourceSchema } from "../catalog-metadata.ts";
 import { type Rejection, reject } from "./index.ts";
 
@@ -194,15 +198,40 @@ export function recipeOriginRejection(
 export function pinRecipeInputs<T>(
   origin: { vertical: string; slug: string; inputs?: Record<string, unknown> | undefined },
   definition: T,
-): { definition: T; rejection?: never } | { rejection: Rejection } {
+):
+  | { definition: T; binding_id?: string; rejection?: never }
+  | { rejection: Rejection; definition?: never; binding_id?: never } {
   const pinned = pinnedRecipeDefinition(origin, definition);
-  return pinned.ok
-    ? { definition: pinned.definition as T }
-    : {
-        rejection: reject.unprocessable(
-          pinned.message,
-          { reason: pinned.reason },
-          "unprocessable_entity",
-        ),
-      };
+  if (!pinned.ok)
+    return {
+      rejection: reject.unprocessable(
+        pinned.message,
+        { reason: pinned.reason },
+        "unprocessable_entity",
+      ),
+    };
+  const delivery = recipeDeliveryBinding(pinned.definition as T);
+  return delivery ?? { definition: pinned.definition as T };
+}
+
+export async function bindRecipeDelivery(
+  exec: Executor,
+  draft: { workflow_id: string; definition: { name: string; slug?: string | undefined } },
+  binding_id: string,
+  actor: {
+    tenant_id: string;
+    actor_id: string;
+    actor_type: Parameters<typeof svc.applyTriggerBindings>[6];
+  },
+): Promise<void> {
+  await svc.applyTriggerBindings(
+    exec,
+    actor.tenant_id,
+    draft.workflow_id,
+    draft.definition.slug ?? draft.definition.name,
+    draft.definition as WorkflowDef,
+    actor.actor_id,
+    actor.actor_type,
+    binding_id,
+  );
 }

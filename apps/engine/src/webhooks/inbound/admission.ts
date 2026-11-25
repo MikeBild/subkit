@@ -140,6 +140,7 @@ export async function admitWebhookExecution(
       tx,
       !(binding.native_verifier_config as { skip?: boolean } | null)?.skip &&
         (binding.verifier === "standard" ||
+          binding.verifier === "stripe" ||
           (binding.verifier === "hmac" &&
             z.object({ hmac: HmacVerifierConfig }).safeParse(binding.native_verifier_config)
               .success))

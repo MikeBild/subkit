@@ -400,7 +400,8 @@
       "Stripe webhook for checkout.session.completed pointed at this workflow, with its signing secret",
       "HTTP connector for your own access API that accepts POST /access/grants",
       "Gmail connector signed in to the sending mailbox",
-      "Checkout sessions carry metadata.access_group with the group to grant"
+      "Checkout sessions carry metadata.access_group with the group to grant",
+      "At install: the address of the sending Gmail mailbox as install input sender; the welcome mail is bound to this workflow's own Stripe webhook binding"
     ],
     "sample_input": {
       "id": "evt_example_0001",
@@ -437,13 +438,15 @@
         "template": "google-gmail"
       }
     ],
-    "version": "1.0.0",
+    "install_inputs": ["sender"],
+    "version": "1.1.0",
     "author": "subkit-builtin",
     "last_validated_at": null,
     "deprecated": null,
     "workflow": {
       "name": "payment-grants-access",
       "description": "Stripe checkout.session.completed → payment confirmed with Stripe → access granted → welcome mail.",
+      "execution_privacy": "sensitive",
       "trigger": {
         "kind": "webhook",
         "source": "stripe",
@@ -455,13 +458,13 @@
           "kind": "transform",
           "id": "settings",
           "language": "javascript",
-          "expression": "return { sender: 'team@example.com', welcome_subject: 'Welcome aboard' };"
+          "expression": "return { sender: 'sender@install-input.invalid', welcome_subject: 'Welcome aboard' };"
         },
         {
           "kind": "transform",
           "id": "parse_event",
           "language": "javascript",
-          "expression": "const raw = input.input; let parsed = raw; if (typeof raw === 'string') { try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; } } parsed = parsed && typeof parsed === 'object' ? parsed : {}; const evt = parsed.body && typeof parsed.body === 'object' ? parsed.body : parsed; if (evt.type !== 'checkout.session.completed') return { skip: true, event_type: evt.type || 'unknown' }; const session = (evt.data && evt.data.object) || {}; const email = String((session.customer_details && session.customer_details.email) || session.customer_email || '').trim(); const group = String((session.metadata && session.metadata.access_group) || '').trim(); const missing = []; if (!session.id) missing.push('session id'); if (!email) missing.push('customer email'); if (!group) missing.push('metadata.access_group'); if (missing.length) throw new Error('stripe event ' + (evt.id || 'unknown') + ' is missing: ' + missing.join(', ')); return { skip: false, event_id: evt.id || null, session_id: session.id, email, group };"
+          "expression": "const raw = input.input; let parsed = raw; if (typeof raw === 'string') { try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; } } parsed = parsed && typeof parsed === 'object' ? parsed : {}; const evt = parsed.body && typeof parsed.body === 'object' ? parsed.body : parsed; if (evt.type !== 'checkout.session.completed') return { skip: true, event_type: evt.type || 'unknown' }; const session = (evt.data && evt.data.object) || {}; const email = String((session.customer_details && session.customer_details.email) || '').trim(); const group = String((session.metadata && session.metadata.access_group) || '').trim(); const missing = []; if (!session.id) missing.push('session id'); if (!email) missing.push('customer email'); if (!group) missing.push('metadata.access_group'); if (missing.length) throw new Error('stripe event ' + (evt.id || 'unknown') + ' is missing: ' + missing.join(', ')); return { skip: false, event_id: evt.id || null, session_id: session.id, email, group };"
         },
         {
           "kind": "branch",
@@ -476,7 +479,16 @@
           "method": "GET",
           "connector_id": "53000000-0000-4000-8000-000000000001",
           "path": "/checkout/sessions/${scope.parse_event.data.session_id}",
-          "side_effects": "read"
+          "side_effects": "read",
+          "boundary": {
+            "variables": {
+              "scope.parse_event.data.session_id": {
+                "class": "identifier"
+              }
+            },
+            "max_body_bytes": 0,
+            "max_calls": 1
+          }
         },
         {
           "kind": "transform",
@@ -504,6 +516,11 @@
             "email": "${scope.parse_event.data.email}",
             "group": "${scope.parse_event.data.group}",
             "reference": "${scope.parse_event.data.session_id}"
+          },
+          "boundary": {
+            "variables": {},
+            "max_body_bytes": 2048,
+            "max_calls": 1
           }
         },
         {
@@ -523,6 +540,19 @@
           },
           "body": {
             "raw": "${scope.build_welcome.data.raw}"
+          },
+          "max_retries": 0,
+          "transactional_delivery": {
+            "kind": "gmail_transactional",
+            "webhook_verifier": "stripe",
+            "webhook_id": "53000000-0000-4000-8000-0000000000a1",
+            "event_type": "checkout.session.completed",
+            "event_type_input": "body.type",
+            "request_id_input": "body.id",
+            "recipient_input": "body.data.object.customer_details.email",
+            "from": "sender@install-input.invalid",
+            "content_type": "text/plain",
+            "max_body_bytes": 8192
           }
         },
         {

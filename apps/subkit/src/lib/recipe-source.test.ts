@@ -97,6 +97,49 @@ describe("subkit workflows create --from-recipe", () => {
     });
   });
 
+  test("a solution whose delivery needs a sender refuses to install without it (#590)", () => {
+    const mailer = {
+      ...entry(SLACK),
+      install_inputs: ["sender"],
+      workflow: {
+        name: "webhook-to-slack",
+        steps: [
+          {
+            id: "post",
+            kind: "request",
+            connector_id: SLACK,
+            transactional_delivery: { from: "sender@install-input.invalid" },
+          },
+        ],
+      },
+    } as unknown as RecipePackEntry;
+    const source = recipeWorkflowSource(
+      { recipes: [mailer] as unknown as Record<string, unknown>[] },
+      "webhook-to-slack",
+    );
+    for (const input of [undefined, {}, { property_id: "1" }])
+      expect(() => createBodyFor(source, input)).toThrow(
+        `solution "webhook-to-slack" needs install input "sender", the address of the sending mailbox; add --input '{"sender":"<mailbox address>"}' and run this again`,
+      );
+    expect(() => createBodyFor(source, { sender: "not a mailbox" })).toThrow(
+      "install input sender must be one plain email address of the sending mailbox",
+    );
+    const body = createBodyFor(source, { sender: "team@example.com" });
+    expect(body.recipe).toEqual({
+      vertical: "solutions",
+      slug: "webhook-to-slack",
+      inputs: { sender: "team@example.com" },
+    });
+    expect(body.steps).toEqual([
+      {
+        id: "post",
+        kind: "request",
+        connector_id: SLACK,
+        transactional_delivery: { from: "team@example.com" },
+      },
+    ]);
+  });
+
   test("an explicit install input travels with the origin so the engine pins it (#519)", () => {
     const source = recipeWorkflowSource(
       pack("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),

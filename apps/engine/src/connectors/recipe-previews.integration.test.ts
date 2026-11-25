@@ -67,6 +67,7 @@ async function preview(
   recipe: ConnectorRecipe,
   reply: Reply,
   ownApi?: string,
+  heldOnly = false,
 ): Promise<{ output: unknown; calls: Call[] }> {
   const needed = recipe.required_connectors.map((r) => r.template);
   const available = await listTemplateConnectors(ctx.tenantId, needed, ctx.testDb.db);
@@ -107,6 +108,7 @@ async function preview(
     );
   const held = await run(true);
   expect({ held: held.status, error: held.error }).toEqual({ held: "succeeded", error: null });
+  if (heldOnly) return { output: held.output, calls };
   calls.length = 0;
   const result = await run(false);
   expect({ status: result.status, error: result.error }).toEqual({
@@ -233,29 +235,19 @@ describe.skipIf(skip)("solution recipes preview against their expected output", 
     expect(JSON.parse(mail?.body ?? "{}").raw).toEqual(expect.any(String));
   });
 
-  test("a paid checkout grants access in the bound own system and welcomes the buyer", async () => {
+  test("a paid checkout preview reads the payment and holds the grant and the welcome", async () => {
     const { calls } = await preview(
       solution("payment-grants-access"),
-      (call) => {
-        const { method, url } = call;
-        if (url.pathname === "/v1/checkout/sessions/cs_example_0001") {
-          return { id: "cs_example_0001", payment_status: "paid" };
-        }
-        if (method === "POST" && url.pathname === "/access/grants") return { granted: true };
-        if (method === "POST" && url.pathname.endsWith("/users/me/messages/send")) {
-          return sent("msg-0003");
-        }
-        return unexpected(call);
-      },
+      (call) =>
+        call.url.pathname === "/v1/checkout/sessions/cs_example_0001"
+          ? { id: "cs_example_0001", payment_status: "paid" }
+          : unexpected(call),
       ownApis.access,
+      true,
     );
-    const grant = calls.find((c) => c.url.pathname === "/access/grants");
-    expect(grant?.url.hostname).toBe("access.example.com");
-    expect(JSON.parse(grant?.body ?? "{}")).toEqual({
-      email: "buyer@example.com",
-      group: "members",
-      reference: "cs_example_0001",
-    });
+    expect(calls.map((c) => `${c.method} ${c.url.hostname}${c.url.pathname}`)).toEqual([
+      "GET api.stripe.com/v1/checkout/sessions/cs_example_0001",
+    ]);
   });
 
   test("an important event becomes one Slack message in the configured channel", async () => {

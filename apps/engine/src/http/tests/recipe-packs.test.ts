@@ -259,3 +259,123 @@ describe("install inputs a recipe pins into its request paths (#519)", () => {
     );
   });
 });
+
+describe("the paid checkout solution asks for its sender at install (#590)", () => {
+  const paidRecipe = { vertical: "solutions", slug: "payment-grants-access" };
+  const paidCheckout = async () => {
+    const { createConnector } = await import("../../connectors/service.ts");
+    const entry = (await solutions()).find((e) => e.recipe_slug === "payment-grants-access");
+    if (!entry) throw new Error("payment-grants-access missing from the solutions pack");
+    const mapping = new Map<string, string>();
+    for (const binding of entry.connectors) {
+      const connector = await createConnector(
+        {
+          tenant_id: ctx.tenantId,
+          actor_id: null,
+          input: {
+            name: binding.template,
+            slug: `paid-${binding.template}-${mapping.size}`,
+            driver: "http",
+            environment: "prod",
+            auth_type: "none",
+            template_slug: binding.template,
+            base_url: "https://access.example.com",
+          },
+        },
+        ctx.db,
+      );
+      mapping.set(binding.connector_id ?? binding.placeholder, connector.id);
+    }
+    const text = [...mapping].reduce(
+      (json, [from, to]) => json.replaceAll(from, to),
+      JSON.stringify(entry.workflow),
+    );
+    return { entry, definition: JSON.parse(text) as Record<string, unknown> };
+  };
+  const ownBinding = async (workflowId: string) => {
+    const { webhooksInbound } = await import("../../db/schema/index.ts");
+    const [hook] = await ctx.db
+      .select()
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, ctx.tenantId),
+          eq(webhooksInbound.workflow_id, workflowId),
+        ),
+      );
+    return hook;
+  };
+  const welcomeDelivery = (definition: { steps: Array<Record<string, unknown>> }) =>
+    definition.steps.find((step) => step.id === "send_welcome")?.transactional_delivery;
+  const post = (path: string, body: unknown) =>
+    fetch(`${ctx.baseUrl}${path}`, { method: "POST", headers: auth(), body: JSON.stringify(body) });
+
+  test("the pack lists the sender as the install input", async () => {
+    const { entry } = await paidCheckout();
+    expect(entry.install_inputs).toEqual(["sender"]);
+  });
+
+  test("an install without the sender is refused for workflows and drafts", async () => {
+    const { definition } = await paidCheckout();
+    const refusals = [
+      await post("/v1/workflows", { ...definition, slug: "paid-no-sender", recipe: paidRecipe }),
+      await post("/v1/workflows/drafts", {
+        definition: { ...definition, slug: "paid-no-sender-draft" },
+        recipe: paidRecipe,
+      }),
+    ];
+    for (const res of refusals) {
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { details?: { reason?: string } }).details?.reason).toBe(
+        "recipe_input_missing",
+      );
+    }
+  });
+
+  test("an install with the sender pins it and binds the welcome mail to its own Stripe binding", async () => {
+    const { definition } = await paidCheckout();
+    const res = await post("/v1/workflows", {
+      ...definition,
+      slug: "paid-installed",
+      recipe: { ...paidRecipe, inputs: { sender: "owner@example.com" } },
+    });
+    expect(res.status).toBe(201);
+    const workflow = (await res.json()) as {
+      id: string;
+      definition: { steps: Array<Record<string, unknown>> };
+    };
+    const hook = await ownBinding(workflow.id);
+    expect({ verifier: hook?.verifier, config: hook?.native_verifier_config }).toEqual({
+      verifier: "stripe",
+      config: { source: "stripe", events: ["checkout.session.completed"] },
+    });
+    expect(welcomeDelivery(workflow.definition)).toMatchObject({
+      webhook_id: hook?.id,
+      from: "owner@example.com",
+    });
+    expect(JSON.stringify(workflow.definition)).not.toContain("install-input.invalid");
+  });
+
+  test("a draft install binds its own Stripe binding before review", async () => {
+    const { definition } = await paidCheckout();
+    const res = await post("/v1/workflows/drafts", {
+      definition: { ...definition, slug: "paid-installed-draft" },
+      recipe: { ...paidRecipe, inputs: { sender: "owner@example.com" } },
+    });
+    expect(res.status).toBe(201);
+    const draft = (await res.json()) as {
+      workflow_id: string;
+      current_version_id: string | null;
+      definition: { steps: Array<Record<string, unknown>> };
+    };
+    const hook = await ownBinding(draft.workflow_id);
+    expect({ verifier: hook?.verifier, current: draft.current_version_id }).toEqual({
+      verifier: "stripe",
+      current: null,
+    });
+    expect(welcomeDelivery(draft.definition)).toMatchObject({
+      webhook_id: hook?.id,
+      from: "owner@example.com",
+    });
+  });
+});

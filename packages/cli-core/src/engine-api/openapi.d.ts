@@ -11611,7 +11611,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description The recipe origin names no shipped recipe, or the definition was not built from it */
+                /** @description The recipe origin names no shipped recipe, the definition was not built from it, or an install input is missing or invalid */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -12133,7 +12133,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description The recipe origin names no shipped recipe, or the definition was not built from it */
+                /** @description The recipe origin names no shipped recipe, the definition was not built from it, or an install input is missing or invalid */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -31171,10 +31171,10 @@ export interface components {
                     /** @enum {string} */
                     kind: "gmail_transactional";
                     /** @enum {string} */
-                    webhook_verifier?: "standard" | "hmac";
+                    webhook_verifier?: "standard" | "hmac" | "stripe";
                     /**
                      * Format: uuid
-                     * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                     * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                      */
                     webhook_id: string;
                     /** @description The single allowed event type configured on the signed binding */
@@ -31183,7 +31183,7 @@ export interface components {
                     event_type_input: string;
                     /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                     recipient_input: string;
-                    /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                    /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                     request_id_input: string;
                     from: string;
                     /** @enum {string} */
@@ -32032,10 +32032,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -32044,7 +32044,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -32181,10 +32181,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -32193,7 +32193,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -32499,10 +32499,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -32511,7 +32511,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -32669,10 +32669,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -32681,7 +32681,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -32839,10 +32839,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -32851,7 +32851,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -33004,10 +33004,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -33016,7 +33016,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -33169,10 +33169,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -33181,7 +33181,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -33339,10 +33339,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -33351,7 +33351,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -33509,10 +33509,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -33521,7 +33521,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -33660,10 +33660,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -33672,7 +33672,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -33811,10 +33811,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -33823,7 +33823,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -33994,10 +33994,10 @@ export interface components {
                 /** @enum {string} */
                 kind: "gmail_transactional";
                 /** @enum {string} */
-                webhook_verifier?: "standard" | "hmac";
+                webhook_verifier?: "standard" | "hmac" | "stripe";
                 /**
                  * Format: uuid
-                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 * @description Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden
                  */
                 webhook_id: string;
                 /** @description The single allowed event type configured on the signed binding */
@@ -34006,7 +34006,7 @@ export interface components {
                 event_type_input: string;
                 /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
                 recipient_input: string;
-                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID. */
                 request_id_input: string;
                 from: string;
                 /** @enum {string} */
@@ -34681,7 +34681,7 @@ export interface components {
         RecipeOrigin: {
             vertical: string;
             slug: string;
-            /** @description Install-time input values. Each value of a key the recipe lists in install_inputs is written into the request paths before the workflow is saved, so its reviewed boundary stays literal; other keys are ignored. */
+            /** @description Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored. */
             inputs?: {
                 [key: string]: unknown;
             };
@@ -36293,7 +36293,7 @@ export interface components {
             prerequisites?: string[];
             sample_input?: unknown;
             /**
-             * @description Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal.
+             * @description Input keys whose install-time values are written into the workflow, so the reviewed boundary stays literal: ${input.<key>} in a request path takes one path segment; <key>@install-input.invalid as a transactional delivery sender takes one email address and must be given at install.
              * @default []
              */
             install_inputs?: string[];
@@ -36346,7 +36346,7 @@ export interface components {
             prerequisites: string[];
             sample_input?: unknown;
             /**
-             * @description Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal.
+             * @description Input keys whose install-time values are written into the workflow, so the reviewed boundary stays literal: ${input.<key>} in a request path takes one path segment; <key>@install-input.invalid as a transactional delivery sender takes one email address and must be given at install.
              * @default []
              */
             install_inputs: string[];
