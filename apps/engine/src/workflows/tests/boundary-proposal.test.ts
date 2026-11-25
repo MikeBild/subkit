@@ -153,7 +153,13 @@ test("a step that sends content gets no invented size ceiling", async () => {
 for (const method of ["POST", "GET", "HEAD"]) {
   for (const bytes of [undefined, 2048]) {
     test(`${method} form content derives its body ceiling from ${bytes ?? "unknown"} bytes`, async () => {
-      await record([{ step: "send", url: "https://api.example.test/v1/pages/example", bytes }]);
+      await record([
+        {
+          step: "send",
+          url: "https://api.example.test/v1/pages/example",
+          ...(bytes === undefined ? {} : { bytes }),
+        },
+      ]);
       const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
         tenant_id,
         workflow_id,
