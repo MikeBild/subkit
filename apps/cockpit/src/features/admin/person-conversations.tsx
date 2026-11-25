@@ -1,7 +1,3 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { apiCall } from "@/api/call";
-import { ApiError, deleteConversation } from "@/api/client";
 import {
   Button,
   ConfirmDialog,
@@ -9,46 +5,16 @@ import {
   Section,
   useConfirmTarget,
 } from "@/components/cockpit/patterns";
-import { reportFailure } from "@/lib/action-failure";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { type PersonConversationRow, personConversationRow } from "./model/person-conversations";
-
-const PERSON_CONVERSATION_LIMIT = 50;
+import { useDeletePersonConversation, usePersonConversations } from "./use-person-conversations";
 
 export function PersonConversations({ personId, name }: { personId: string; name: string }) {
   const { t, locale } = useI18n();
-  const client = useQueryClient();
   const confirmation = useConfirmTarget<PersonConversationRow>();
-  const queryKey = ["conversations", "person", personId] as const;
-  const list = useQuery({
-    queryKey,
-    queryFn: () =>
-      apiCall("get", "/v1/conversations", {
-        query: {
-          owner_id: personId,
-          owner_kind: "user",
-          sort: "updated_at",
-          order: "desc",
-          limit: PERSON_CONVERSATION_LIMIT,
-        },
-      }),
-  });
-  const remove = useMutation({
-    mutationFn: (row: PersonConversationRow) => deleteConversation(row.id),
-    onSuccess: async () => {
-      confirmation.close();
-      toast.success(t("people.conversations.deleted"));
-      await client.invalidateQueries({ queryKey: ["conversations"] });
-    },
-    onError: (error) =>
-      reportFailure(
-        error instanceof ApiError && error.status === 409
-          ? t("chat.delete.running")
-          : t("common.actionFailed"),
-        error,
-      ),
-  });
+  const list = usePersonConversations(personId);
+  const remove = useDeletePersonConversation(() => confirmation.close());
   const labels = {
     hidden: t("chat.visibility.hiddenTitle"),
     untitled: t("chat.untitled"),
