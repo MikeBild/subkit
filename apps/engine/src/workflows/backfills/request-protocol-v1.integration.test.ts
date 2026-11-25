@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
 import {
+  connectors,
   dataMigrations,
   tenants,
   users,
@@ -19,6 +20,7 @@ import {
 let ctx: TestDb;
 let tenantId: string;
 let userId: string;
+let graphqlConnectorId: string;
 
 beforeAll(async () => {
   ctx = await createTestDb("request_protocol_backfill");
@@ -38,23 +40,42 @@ beforeAll(async () => {
     .returning();
   if (!user) throw new Error("seed user failed");
   userId = user.id;
+  const [connector] = await ctx.db
+    .insert(connectors)
+    .values({
+      tenant_id: tenantId,
+      slug: "rows-graphql",
+      display_name: "Rows GraphQL",
+      driver: "graphql",
+      environment: "dev",
+      auth_type: "none",
+      base_url: "https://example.test/graphql",
+    })
+    .returning();
+  if (!connector) throw new Error("seed connector failed");
+  graphqlConnectorId = connector.id;
 }, 60_000);
 
 afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-const storedGraphql = (name: string) => ({
+const storedGraphql = (name: string, address: Record<string, unknown>) => ({
   name,
   steps: [
     {
       id: "rows",
       kind: "request",
       method: "POST",
-      url: "https://example.test/graphql",
+      ...address,
       graphql: { query: "query { rows { id } }" },
     },
-    { id: "read", kind: "request", method: "GET", url: "https://example.test/items" },
+    {
+      id: "read",
+      kind: "request",
+      method: "GET",
+      url: "https://example.test/items",
+    },
   ],
 });
 
@@ -98,16 +119,30 @@ async function versionsOf(workflow_id: string) {
 }
 
 test("stored request steps gain their protocol; approved versions are replaced, never edited", async () => {
-  const plain = await seed("protocol-plain", storedGraphql("plain"));
-  const approved = await seed("protocol-approved", storedGraphql("approved"), true);
+  const bound = { connector_id: graphqlConnectorId };
+  const plain = await seed("protocol-plain", storedGraphql("plain", bound));
+  const approved = await seed("protocol-approved", storedGraphql("approved", bound), true);
+  const unbound = await seed(
+    "protocol-unbound",
+    storedGraphql("unbound", { url: "https://example.test/graphql" }),
+    true,
+  );
   const http = await seed("protocol-http", {
     name: "http",
-    steps: [{ id: "read", kind: "request", method: "GET", url: "https://example.test/items" }],
+    steps: [
+      {
+        id: "read",
+        kind: "request",
+        method: "GET",
+        url: "https://example.test/items",
+      },
+    ],
   });
   const before = {
     plain: await versionsOf(plain),
     approved: await versionsOf(approved),
     http: await versionsOf(http),
+    unbound: await versionsOf(unbound),
   };
   expect(() => executableDefinition(before.plain[0]?.dag)).toThrow('`protocol: "graphql"`');
   await ctx.db
@@ -115,7 +150,12 @@ test("stored request steps gain their protocol; approved versions are replaced, 
     .where(eq(dataMigrations.name, REQUEST_PROTOCOL_V1_BACKFILL_NAME));
 
   const report = await runRequestProtocolV1Backfill(ctx.db);
-  expect(report).toEqual({ skipped: false, rewritten: 1, rotated: 1, left_in_old_format: 0 });
+  expect(report).toEqual({
+    skipped: false,
+    rewritten: 1,
+    rotated: 1,
+    left_in_old_format: 1,
+  });
 
   const plainAfter = await versionsOf(plain);
   expect(plainAfter).toHaveLength(1);
@@ -124,11 +164,16 @@ test("stored request steps gain their protocol; approved versions are replaced, 
       id: "rows",
       kind: "request",
       method: "POST",
-      url: "https://example.test/graphql",
+      connector_id: graphqlConnectorId,
       graphql: { query: "query { rows { id } }" },
       protocol: "graphql",
     },
-    { id: "read", kind: "request", method: "GET", url: "https://example.test/items" },
+    {
+      id: "read",
+      kind: "request",
+      method: "GET",
+      url: "https://example.test/items",
+    },
   ]);
   expect(executableDefinition(plainAfter[0]?.dag).steps).toHaveLength(2);
 
@@ -144,6 +189,7 @@ test("stored request steps gain their protocol; approved versions are replaced, 
   expect(approvedRow?.current_version_id).toBe(approvedAfter[1]?.id ?? "");
 
   expect(await versionsOf(http)).toEqual(before.http);
+  expect(await versionsOf(unbound)).toEqual(before.unbound);
   expect(await runRequestProtocolV1Backfill(ctx.db)).toEqual({
     skipped: true,
     rewritten: 0,
