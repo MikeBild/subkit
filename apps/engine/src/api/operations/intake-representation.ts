@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { CategorySchema } from "../catalog-metadata.ts";
 import {
+  CapturedAtInputSchema,
   IntakeAttachmentSchema,
   IntakeItemSnapshotSchema,
   IntakeProposalTargetSchema,
@@ -13,7 +14,7 @@ const SnapshotSchema = z
     source_url: z.string().url().optional(),
     source_author: z.string().min(1).max(1_000).optional(),
     published_at: z.string().min(1).max(1_000).optional(),
-    captured_at: z.string().datetime().optional(),
+    captured_at: CapturedAtInputSchema.optional(),
     body: z.string().min(1).max(2_000_000).optional(),
     origin: z.enum(["capture", "restored_draft"]).optional(),
   })
@@ -130,7 +131,7 @@ export const CreateItemSchema = z
       .describe("Address of the collected source. Leave it out to collect a note."),
     source_author: z.string().trim().min(1).max(1_000).optional(),
     published_at: z.string().min(1).max(1_000).optional(),
-    captured_at: z.string().datetime(),
+    captured_at: CapturedAtInputSchema,
     body: z.string().min(1).max(2_000_000),
     note: z.string().max(20_000).optional(),
     original_snapshot: SnapshotSchema.optional(),
