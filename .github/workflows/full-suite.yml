@@ -85,17 +85,23 @@ jobs:
           path: failed
       - name: Open or update the nightly full-suite issue
         env:
+          SUITE_RESULT: ${{ needs.suite.result }}
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          files=$(cat failed/*/failed-*.txt 2>/dev/null | sort -u)
+          files=$(cat failed/*/failed-*.txt 2>/dev/null | sort -u || true)
+          missing=""
+          for shard in 1 2 3 4 5 6 7 8; do
+            [ -f "failed/failed-$shard/failed-$shard.txt" ] || missing="$missing $shard"
+          done
           title="Full test suite fails on main"
           existing=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
-          if [ -z "$files" ]; then
+          if [ -z "$files" ] && [ -z "$missing" ] && [ "$SUITE_RESULT" = success ]; then
             [ -n "$existing" ] && gh issue close -R "$GITHUB_REPOSITORY" "$existing" --comment "The full suite passed on main ($RUN_URL)."
             exit 0
           fi
-          body=$(printf 'The nightly full test suite found failing files on main.\n\nRun: %s\n\n%s\n' "$RUN_URL" "$(echo "$files" | sed 's/^/- `/; s/$/`/')")
+          body=$(printf 'The nightly full test suite failed or did not complete on main.\n\nRun: %s\n\n%s\n' "$RUN_URL" "$(echo "$files" | sed 's/^/- `/; s/$/`/')")
+          body=$(printf '%s\n\nSuite execution: %s\nMissing shard results:%s\n' "$body" "$SUITE_RESULT" "${missing:- none}")
           if [ -n "$existing" ]; then
             gh issue comment -R "$GITHUB_REPOSITORY" "$existing" --body "$body"
           else
