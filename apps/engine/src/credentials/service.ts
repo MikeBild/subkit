@@ -774,11 +774,11 @@ export async function resolveDryRunEnvironment(p: {
   const authRequiringIds = connectorIds.filter((id) => !keyless.has(id));
   if (authRequiringIds.length === 0) return "dev";
 
-  const envResults = await Promise.all(
-    authRequiringIds.map((id) =>
-      resolveDefaultEnvironmentForConnector(p.tenant_id, id, p.exec).catch(() => null),
-    ),
-  );
+  const envResults: Array<"dev" | "prod" | null> = [];
+  for (const id of authRequiringIds)
+    envResults.push(
+      await resolveDefaultEnvironmentForConnector(p.tenant_id, id, p.exec).catch(() => null),
+    );
   const resolvedEnvs = envResults.filter((e): e is "dev" | "prod" => e !== null);
   if (resolvedEnvs.length === 0) {
     logger.warn({
