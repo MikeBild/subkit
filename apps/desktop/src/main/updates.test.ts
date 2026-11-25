@@ -7,12 +7,14 @@ class FakeUpdater {
   private readonly listeners = new Map<string, Listener>();
   checks = 0;
   installs = 0;
+  trail: string[] = [];
   on(name: string, listener: Listener) {
     this.listeners.set(name, listener);
     return this;
   }
   emit(name: string, value: { version?: string; percent?: number } = {}) {
     this.listeners.get(name)?.(value);
+    if (name === "update-downloaded") this.trail.push("native-check");
   }
   async checkForUpdates() {
     this.checks += 1;
@@ -24,12 +26,19 @@ class FakeUpdater {
 }
 
 const updater = new FakeUpdater();
+const prompts: { parent: unknown }[] = [];
 
 Object.assign(globalThis, { SUBKIT_DESKTOP_UPDATES: true });
 
 mock.module("electron", () => ({
   app: { isPackaged: true, getVersion: () => "0.1.0" },
-  dialog: { showMessageBox: async () => ({ response: 1 }) },
+  dialog: {
+    showMessageBox: async (...args: unknown[]) => {
+      prompts.push({ parent: args.length > 1 ? args[0] : null });
+      updater.trail.push("prompt");
+      return { response: 1 };
+    },
+  },
   shell: { trashItem: async () => {} },
   utilityProcess: { fork: () => null },
 }));
@@ -123,5 +132,32 @@ describe("the update flow keeps one queued restart", () => {
     await flow.runAction();
     expect(calls).toEqual({ confirm: 1, beforeQuit: 1, cancelQuit: 0 });
     expect(updater.installs).toBe(installs + 1);
+  });
+});
+
+describe("the update flow offers the restart after the native hand-off", () => {
+  test("opens the ready prompt only after the downloaded event returns, attached to a window", async () => {
+    const parent = { id: "connect" };
+    const flow = new UpdateFlow({
+      locale: () => "de",
+      announce: () => {},
+      render: () => {},
+      showSettings: () => {},
+      confirmRestart: async () => false,
+      beforeQuit: () => {},
+      cancelQuit: () => {},
+      onError: () => {},
+      dialogParent: () => parent as never,
+    });
+    await flow.start();
+    await new Promise((resolve) => setImmediate(resolve));
+    prompts.length = 0;
+    updater.trail = [];
+    updater.emit("update-downloaded", { version: "0.4.0" });
+    expect(prompts).toHaveLength(0);
+    expect(updater.trail).toEqual(["native-check"]);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(updater.trail).toEqual(["native-check", "prompt"]);
+    expect(prompts).toEqual([{ parent }]);
   });
 });

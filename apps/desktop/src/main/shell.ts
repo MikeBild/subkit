@@ -97,6 +97,7 @@ export class Shell implements ShellCore {
       this.quitting = false;
     },
     onError: this.onError,
+    dialogParent: () => this.windows.all().find((window) => window.isVisible()) ?? null,
   });
   readonly settings = new SettingsFlow({
     data: () => this.store.data,
