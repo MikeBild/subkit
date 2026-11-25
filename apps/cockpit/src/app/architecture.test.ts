@@ -60,8 +60,8 @@ const FORBIDDEN: Record<string, readonly Layer[]> = {
   app: [],
   pages: [],
   features: ["pages"],
-  "components/cockpit": ["pages", "features"],
-  "components/cockpit/patterns": ["pages", "features", "api"],
+  "components/cockpit": ["pages", "features", "api"],
+  "components/cockpit/patterns": ["pages", "features", "api", "app"],
   components: ["pages", "features"],
   lib: ["pages", "features", "cockpit", "patterns", "components", "ds"],
   api: ["pages", "features", "cockpit", "patterns", "components", "ds"],
@@ -85,8 +85,7 @@ function featureInternals(): string[] {
     const own = relative(COCKPIT, file).match(/^features\/([^/]+)\//)?.[1];
     for (const spec of imports(file)) {
       const target = spec.match(/^@\/features\/([^/]+)\/(.+)$/);
-      if (target && target[1] !== own && target[2] !== "model")
-        out.add(`${relative(COCKPIT, file)} -> ${spec}`);
+      if (target && target[1] !== own) out.add(`${relative(COCKPIT, file)} -> ${spec}`);
     }
   }
   return [...out].sort();
@@ -103,12 +102,90 @@ function unclassified(): string[] {
   return [...out].sort();
 }
 
-const DEBT = new Set<string>([]);
+// Patterns that still reach into app/, and cockpit components that still import the API.
+const DEBT = new Set<string>([
+  "components/cockpit/create-refusal.ts -> @/api/client",
+  "components/cockpit/patterns/action-failure.tsx -> @/app/links",
+  "components/cockpit/patterns/action-failure.tsx -> @/app/login-href",
+  "components/cockpit/patterns/data-table.tsx -> @/app/links",
+  "components/cockpit/patterns/detail-page.tsx -> @/app/side-panel-model",
+  "components/cockpit/patterns/page-header.tsx -> @/app/links",
+  "components/cockpit/patterns/standalone-page.tsx -> @/app/standalone-controls",
+  "components/cockpit/patterns/template-card.tsx -> @/app/links",
+  "components/cockpit/patterns/use-error-detail.ts -> @/app/links",
+  "components/cockpit/patterns/workspace-changed.tsx -> @/app/links",
+]);
 
-const INTERNAL_DEBT = new Set<string>([]);
+// Imports of another feature's internals (its model/ included) that bypass its index.ts.
+const INTERNAL_DEBT = new Set<string>([
+  "app/actor-directory-model.ts -> @/features/admin/model",
+  "app/actor-directory.ts -> @/features/audit/model",
+  "app/side-panel.tsx -> @/features/audit/model",
+  "features/catalog/api/catalog-metadata-api.ts -> @/features/workflows/model",
+  "features/catalog/model/catalog-metadata-model.ts -> @/features/workflows/model",
+  "features/catalog/ui/catalog-categories.tsx -> @/features/workflows/model",
+  "features/catalog/ui/catalog-grouping.tsx -> @/features/workflows/model",
+  "features/catalog/ui/catalog-metadata.tsx -> @/features/workflows/model",
+  "features/catalog/ui/metadata-dialog.tsx -> @/features/workflows/model",
+  "features/chat/hooks/questions.ts -> @/features/tasks/model",
+  "features/chat/ui/task-run-line.tsx -> @/features/tasks/model",
+  "features/connectors/connectors-page.tsx -> @/features/workflows/model",
+  "features/connectors/model/connector-detail-model.ts -> @/features/usage/model",
+  "features/connectors/model/connector-view-model.ts -> @/features/grants/model",
+  "features/connectors/ui/connector-detail.tsx -> @/features/grants/model",
+  "features/connectors/ui/connector-edit.tsx -> @/features/workflows/model",
+  "features/decisions/ui/decision-card.tsx -> @/features/grants/model",
+  "features/decisions/ui/skill-proposal-sheet.tsx -> @/features/knowledge/model",
+  "features/grants/model/task-grant-model.ts -> @/features/workflows/model",
+  "features/grants/ui/approval-expiry-note.tsx -> @/features/tasks/model",
+  "features/grants/ui/grant-environment.tsx -> @/features/workflows/model",
+  "features/grants/ui/grant-task-authority.tsx -> @/features/tasks/model",
+  "features/grants/ui/task-permissions.tsx -> @/features/tasks/model",
+  "features/knowledge/files.tsx -> @/features/workflows/model",
+  "features/knowledge/hooks/use-source-list.ts -> @/features/workflows/model",
+  "features/knowledge/inbox.tsx -> @/features/workflows/model",
+  "features/knowledge/intake-dialogs.tsx -> @/features/workflows/model",
+  "features/knowledge/shell.tsx -> @/features/workflows/model",
+  "features/knowledge/skills.tsx -> @/features/workflows/model",
+  "features/knowledge/ui/source-facts.tsx -> @/features/workflows/model",
+  "features/knowledge/ui/sources-list.tsx -> @/features/workflows/model",
+  "features/operations/schedule-model.ts -> @/features/workflows/model",
+  "features/operations/ui/operations-bar.tsx -> @/features/usage/model",
+  "features/operations/use-operations.ts -> @/features/workflows/model",
+  "features/overview/model/overview-model.ts -> @/features/grants/model",
+  "features/overview/model/overview-model.ts -> @/features/workflows/model",
+  "features/pwa/ui/installation-import-dialog.tsx -> @/features/workflows/model",
+  "features/runs/ui/runs-detail.tsx -> @/features/connectors/model",
+  "features/runs/ui/runs-detail.tsx -> @/features/workflows/model",
+  "features/settings/ui/package-dialogs.tsx -> @/features/workflows/model",
+  "features/setup/invitation.tsx -> @/features/admin/model",
+  "features/tasks/model/tasks-history.ts -> @/features/audit/model",
+  "features/tasks/model/tasks-model.ts -> @/features/audit/model",
+  "features/tasks/model/tasks-model.ts -> @/features/workflows/model",
+  "features/tasks/ui/tasks-detail.tsx -> @/features/workflows/model",
+  "features/tasks/ui/tasks-form.tsx -> @/features/workflows/model",
+  "features/tasks/ui/tasks-list.tsx -> @/features/workflows/model",
+  "features/usage/breakdown.tsx -> @/features/tasks/model",
+  "features/usage/dialogs.tsx -> @/features/settings/model",
+  "features/vault/page.tsx -> @/features/audit/model",
+  "features/workflows/model/automation-panel-model.ts -> @/features/connectors/model",
+  "features/workflows/model/automation-panel-model.ts -> @/features/grants/model",
+  "features/workflows/ui/automation-panel.tsx -> @/features/grants/model",
+  "features/workflows/ui/workflow-diagnosis.tsx -> @/features/grants/model",
+  "features/workflows/ui/workflow-grants.tsx -> @/features/grants/model",
+  "pages/catalog.tsx -> @/features/workflows/model",
+  "pages/chat.tsx -> @/features/usage/model",
+  "pages/invite.tsx -> @/features/setup/model",
+  "pages/overview.tsx -> @/features/usage/model",
+]);
 
-const DEBT_CEILING = 0;
-const INTERNAL_DEBT_CEILING = 0;
+const DEBT_CEILING = 10;
+const INTERNAL_DEBT_CEILING = 59;
+
+// R3.1 ratchet: queries and mutations written inline in .tsx components. Lower it as they move
+// into feature api/ hooks; never raise it.
+const INLINE_QUERY = /\buse(?:Query|Mutation)\s*\(/g;
+const INLINE_QUERY_CEILING = 302;
 
 describe("architecture: dependencies point downward", () => {
   test("packages/ui imports nothing from an app, an API or a domain module", () => {
@@ -211,6 +288,13 @@ describe("architecture: dependencies point downward", () => {
     expect(existsSync(join(COCKPIT, "components/ui"))).toBe(false);
     expect(existsSync(join(COCKPIT, "hooks"))).toBe(false);
     expect(existsSync(join(COCKPIT, "queries"))).toBe(false);
+  });
+
+  test("inline useQuery/useMutation in components only shrink (data loading moves to hooks)", () => {
+    const inline = sources(COCKPIT)
+      .filter((file) => file.endsWith(".tsx"))
+      .reduce((n, file) => n + [...readFileSync(file, "utf8").matchAll(INLINE_QUERY)].length, 0);
+    expect(inline).toBeLessThanOrEqual(INLINE_QUERY_CEILING);
   });
 
   test("every classified area still has files to check", () => {
