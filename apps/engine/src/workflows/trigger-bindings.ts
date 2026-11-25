@@ -25,6 +25,7 @@ export async function applyTriggerBindings(
   def: WorkflowDef,
   actor_id: string | null,
   actor_type?: AuditActorType,
+  binding_id?: string,
 ): Promise<void> {
   const trigger = triggerOf(def);
   recordWorkflowTriggerKind({ tenant_id, kind: trigger.kind });
@@ -37,6 +38,7 @@ export async function applyTriggerBindings(
         trigger,
         actor_id,
         ...(actor_type !== undefined ? { actor_type } : {}),
+        ...(binding_id ? { binding_id } : {}),
       },
       exec,
     );

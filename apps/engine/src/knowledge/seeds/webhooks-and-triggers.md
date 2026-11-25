@@ -188,7 +188,8 @@ To run a workflow on demand over MCP use `run_workflow` (or the per-workflow `wf
 `transactional_delivery` is an explicit Gmail execution-authority profile for one
 reply per unique request to the email in a reviewed original input path. Its
 `webhook_id` must identify an active same-tenant, same-workflow Standard Webhooks
-binding with exactly its reviewed `event_type`; skip verification is refused.
+binding with exactly its reviewed `event_type` (or, with `webhook_verifier`, a
+body-bound HMAC or Stripe-signed binding); skip verification is refused.
 The trusted webhook admission stores verified source provenance independently of
 visitor input. An authenticated on-demand invocation that merely labels its
 input as a webhook cannot use this profile. The existing fixed `gmail_report`

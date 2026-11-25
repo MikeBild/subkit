@@ -8669,13 +8669,14 @@
                       "type": "string",
                       "enum": [
                         "standard",
-                        "hmac"
+                        "hmac",
+                        "stripe"
                       ]
                     },
                     "webhook_id": {
                       "type": "string",
                       "format": "uuid",
-                      "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                      "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
                     },
                     "event_type": {
                       "type": "string",
@@ -8699,7 +8700,7 @@
                       "type": "string",
                       "maxLength": 128,
                       "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                      "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                      "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
                     },
                     "from": {
                       "type": "string",
@@ -12230,13 +12231,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -12260,7 +12262,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -12773,13 +12775,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -12803,7 +12806,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -13970,13 +13973,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -14000,7 +14004,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -14596,13 +14600,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -14626,7 +14631,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -15225,13 +15230,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -15255,7 +15261,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -15838,13 +15844,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -15868,7 +15875,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -16456,13 +16463,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -16486,7 +16494,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -17072,13 +17080,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -17102,7 +17111,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -17693,13 +17702,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -17723,7 +17733,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -18240,13 +18250,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -18270,7 +18281,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -18798,13 +18809,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -18828,7 +18840,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -19483,13 +19495,14 @@
                 "type": "string",
                 "enum": [
                   "standard",
-                  "hmac"
+                  "hmac",
+                  "stripe"
                 ]
               },
               "webhook_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+                "description": "Reviewed active Standard Webhooks, signed-body HMAC or Stripe-signed binding in the same tenant and workflow; unsigned ingress is forbidden"
               },
               "event_type": {
                 "type": "string",
@@ -19513,7 +19526,7 @@
                 "type": "string",
                 "maxLength": 128,
                 "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
-                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC and Stripe (body.id). One persistent dispatch attempt per workflow and identity; HMAC and Stripe identities use an opaque deterministic receipt UUID."
               },
               "from": {
                 "type": "string",
@@ -21844,7 +21857,7 @@
           "inputs": {
             "type": "object",
             "additionalProperties": {},
-            "description": "Install-time input values. Each value of a key the recipe lists in install_inputs is written into the request paths before the workflow is saved, so its reviewed boundary stays literal; other keys are ignored."
+            "description": "Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored."
           }
         },
         "required": [
@@ -28174,7 +28187,7 @@
               "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
             },
             "default": [],
-            "description": "Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal."
+            "description": "Input keys whose install-time values are written into the workflow, so the reviewed boundary stays literal: ${input.<key>} in a request path takes one path segment; <key>@install-input.invalid as a transactional delivery sender takes one email address and must be given at install."
           },
           "expected_output_preview": {},
           "required_connectors": {
@@ -28332,7 +28345,7 @@
               "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
             },
             "default": [],
-            "description": "Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal."
+            "description": "Input keys whose install-time values are written into the workflow, so the reviewed boundary stays literal: ${input.<key>} in a request path takes one path segment; <key>@install-input.invalid as a transactional delivery sender takes one email address and must be given at install."
           },
           "expected_output_preview": {},
           "required_connectors": {
@@ -65992,7 +66005,7 @@
             }
           },
           "422": {
-            "description": "The recipe origin names no shipped recipe, or the definition was not built from it",
+            "description": "The recipe origin names no shipped recipe, the definition was not built from it, or an install input is missing or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -66711,7 +66724,7 @@
             }
           },
           "422": {
-            "description": "The recipe origin names no shipped recipe, or the definition was not built from it",
+            "description": "The recipe origin names no shipped recipe, the definition was not built from it, or an install input is missing or invalid",
             "content": {
               "application/json": {
                 "schema": {

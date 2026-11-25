@@ -69,6 +69,37 @@ describe("transactional mail is bound to the reviewed signed event", () => {
     expect(() => assertTransactionalMessage(boundary, input, request())).toThrow();
     expect(assertTransactionalMessage(boundary, event, request()).request_id).toBe(id);
   });
+  test("Stripe-signed events use the signed event id as an opaque receipt", () => {
+    const profile = {
+      ...boundary,
+      webhook_verifier: "stripe" as const,
+      event_type: "checkout.session.completed",
+      event_type_input: "body.type",
+      request_id_input: "body.id",
+      recipient_input: "body.data.object.customer_details.email",
+    };
+    const input = {
+      id: "evt_signed_0001",
+      type: "checkout.session.completed",
+      body: {
+        id: "evt_signed_0001",
+        type: "checkout.session.completed",
+        data: { object: { customer_details: { email: "applicant@example.test" } } },
+      },
+    };
+    const first = assertTransactionalMessage(profile, input, request());
+    expect(first.email).toBe("applicant@example.test");
+    expect(first.request_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(
+      assertTransactionalMessage({ ...profile, webhook_verifier: "hmac" }, input, request())
+        .request_id,
+    ).not.toBe(first.request_id);
+    expect(() =>
+      assertTransactionalMessage(profile, { ...input, id: "stripe-1790755200" }, request()),
+    ).toThrow();
+  });
   test("supports arbitrary reviewed field names and event types", () => {
     expect(assertTransactionalMessage(boundary, event, request())).toEqual({
       request_id: id,

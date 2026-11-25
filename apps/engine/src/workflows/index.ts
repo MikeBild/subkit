@@ -96,6 +96,7 @@ export * from "./service.ts";
 export * from "./stored-definition.ts";
 export { readStoredSpec } from "./stored-spec.ts";
 export * from "./tenant-validator.ts";
+export { applyTriggerBindings } from "./trigger-bindings.ts";
 export * from "./types.ts";
 export * from "./validator.ts";
 export { type VersionActor, versionAuthorColumns } from "./version-author.ts";

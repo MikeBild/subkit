@@ -88,6 +88,7 @@ interface CreateWorkflowInput extends VersionActor {
   tenant_id: string;
   def: unknown;
   workflow_id?: string;
+  trigger_binding_id?: string;
   actor_id: string | null;
   metadata?: CatalogMetadataPatch;
   audit_metadata?: Record<string, unknown>;
@@ -193,6 +194,7 @@ export async function createWorkflow(
         def,
         input.actor_id,
         input.actor_type,
+        input.trigger_binding_id,
       );
       return wf.id;
     });

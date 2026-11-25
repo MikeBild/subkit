@@ -18,7 +18,11 @@ import {
 } from "../../workflows/drafts.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
-import { pinRecipeInputs, recipeOriginRejection } from "./workflow-representation.ts";
+import {
+  bindRecipeDelivery,
+  pinRecipeInputs,
+  recipeOriginRejection,
+} from "./workflow-representation.ts";
 
 const draftFailures = {
   400: "Invalid draft",
@@ -164,21 +168,29 @@ export const createWorkflowDraftOperation = defineOperation<CreateDraft, Draft>(
       ? pinRecipeInputs(body.recipe, body.definition)
       : { definition: body.definition };
     if (pinned.rejection) return pinned.rejection;
-    const result = await saveWorkflowDraft(
-      {
+    const draft = unwrap(
+      await saveWorkflowDraft(
+        {
+          tenant_id: scope.tenant_id,
+          actor_id: principal.id,
+          actor_type: principal.kind,
+          def: pinned.definition,
+          ...(body.spec !== undefined ? { spec: body.spec } : {}),
+          spec_authority: principal,
+          request_source: scope.request_source ?? "api",
+          ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
+          ...(body.recipe ? { audit_metadata: recipeAuditMetadata(body.recipe) } : {}),
+        },
+        scope.db,
+      ),
+    );
+    if (!isRejection(draft) && pinned.binding_id)
+      await bindRecipeDelivery(scope.db, draft, pinned.binding_id, {
         tenant_id: scope.tenant_id,
         actor_id: principal.id,
         actor_type: principal.kind,
-        def: pinned.definition,
-        ...(body.spec !== undefined ? { spec: body.spec } : {}),
-        spec_authority: principal,
-        request_source: scope.request_source ?? "api",
-        ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
-        ...(body.recipe ? { audit_metadata: recipeAuditMetadata(body.recipe) } : {}),
-      },
-      scope.db,
-    );
-    return unwrap(result);
+      });
+    return draft;
   },
   http: {
     method: "post",
@@ -189,7 +201,7 @@ export const createWorkflowDraftOperation = defineOperation<CreateDraft, Draft>(
     success: { status: 201, description: DRAFT_DESCRIPTION },
     errors: {
       ...draftFailures,
-      422: "The recipe origin names no shipped recipe, or the definition was not built from it",
+      422: "The recipe origin names no shipped recipe, the definition was not built from it, or an install input is missing or invalid",
     },
     toInput: ({ json }) => json as CreateDraft,
     toBody: (draft) => draft,

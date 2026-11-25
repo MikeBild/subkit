@@ -1,5 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
-import { pinInstallInputs } from "@shared/recipe-install-inputs.ts";
+import { mailboxInstallInputs, pinInstallInputs } from "@shared/recipe-install-inputs.ts";
 
 export type RecipePackEntry = components["schemas"]["RecipePackEntry"];
 
@@ -103,12 +103,19 @@ export function recipeWorkflowSource(
 const isInputObject = (input: unknown): input is Record<string, unknown> =>
   input !== null && typeof input === "object" && !Array.isArray(input);
 
+const missingInputsMessage = (slug: string, keys: readonly string[]) =>
+  `solution "${slug}" needs install input ${keys.map((key) => `"${key}"`).join(", ")}, the address of the sending mailbox; add --input '${JSON.stringify(Object.fromEntries(keys.map((key) => [key, "<mailbox address>"])))}' and run this again`;
+
 export function createBodyFor(source: WorkflowSource, input?: unknown): Record<string, unknown> {
   if (!source.recipe) return source.body;
   const recipe = isInputObject(input) ? { ...source.recipe, inputs: input } : source.recipe;
-  const pinned = isInputObject(input)
-    ? pinInstallInputs(source.body, source.installInputs ?? [], input)
-    : { ok: true as const, definition: source.body };
+  const keys = source.installInputs ?? [];
+  const given = isInputObject(input) ? input : {};
+  const missing = mailboxInstallInputs(source.body, keys).filter(
+    (key) => !Object.hasOwn(given, key),
+  );
+  if (missing.length > 0) throw new Error(missingInputsMessage(source.recipe.slug, missing));
+  const pinned = pinInstallInputs(source.body, keys, given);
   if (!pinned.ok) throw new Error(pinned.message);
   return { ...(pinned.definition as Record<string, unknown>), recipe };
 }

@@ -291,6 +291,7 @@ interface BindFromWorkflowInput {
   workflow_id: string;
   workflow_slug: string;
   trigger: WebhookTrigger;
+  binding_id?: string;
   actor_id: string | null;
   actor?: Actor | null;
   actor_type?: import("../../audit/types.ts").AuditActorType;
@@ -392,6 +393,7 @@ export async function bindFromWorkflow(
         const inserted = await tx
           .insert(webhooksInbound)
           .values({
+            ...(input.binding_id ? { id: input.binding_id } : {}),
             tenant_id: input.tenant_id,
             slug: nextSlug,
             workflow_id: input.workflow_id,

@@ -324,7 +324,7 @@ export const ConnectorRecipeSchema = z
       .array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/))
       .default([])
       .describe(
-        "Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal.",
+        "Input keys whose install-time values are written into the workflow, so the reviewed boundary stays literal: ${input.<key>} in a request path takes one path segment; <key>@install-input.invalid as a transactional delivery sender takes one email address and must be given at install.",
       ),
     expected_output_preview: z.unknown().nullable().default(null),
     required_connectors: z.array(RecipeRequiredConnectorSchema).default([]),

@@ -102,6 +102,7 @@ export const createWorkflowOperation = defineOperation<CreateRequest, WorkflowSa
         tenant_id: scope.tenant_id,
         def,
         ...(chosenId ? { workflow_id: chosenId } : {}),
+        ...(pinned.binding_id ? { trigger_binding_id: pinned.binding_id } : {}),
         actor_id: principal.id,
         actor_type: principal.kind,
         ...(category !== undefined ? { metadata: { category } } : {}),
@@ -129,7 +130,7 @@ export const createWorkflowOperation = defineOperation<CreateRequest, WorkflowSa
     success: { status: 201, description: "Created" },
     errors: {
       400: "Bad request",
-      422: "The recipe origin names no shipped recipe, or the definition was not built from it",
+      422: "The recipe origin names no shipped recipe, the definition was not built from it, or an install input is missing or invalid",
     },
     toInput: ({ json }) => json as CreateRequest,
     toBody: async ({ workflow, readiness }, scope) => ({

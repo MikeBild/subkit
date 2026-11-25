@@ -85,7 +85,7 @@ export const RecipeOriginSchema = z
       .record(z.string().min(1).max(64), z.unknown())
       .optional()
       .describe(
-        "Install-time input values. Each value of a key the recipe lists in install_inputs is written into the request paths before the workflow is saved, so its reviewed boundary stays literal; other keys are ignored.",
+        "Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored.",
       ),
   })
   .strict()

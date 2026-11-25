@@ -40,6 +40,12 @@ export async function transactionalWebhookAvailable(
     config.events[0] !== boundary.event_type
   )
     return false;
+  if (boundary.webhook_verifier === "stripe")
+    return (
+      hook.verifier === "stripe" &&
+      boundary.request_id_input === "body.id" &&
+      boundary.event_type_input === "body.type"
+    );
   if (boundary.webhook_verifier !== "hmac") return hook.verifier === "standard";
   if (hook.verifier !== "hmac") return false;
   const { HmacVerifierConfig } = await import("../webhooks/index.ts");

@@ -2,9 +2,75 @@ import { describe, expect, test } from "bun:test";
 import { getSolutionRecipe } from "../connectors/solutions.ts";
 import { getBuiltinTemplate } from "../connectors/templates.ts";
 import { gateRequestBoundary } from "./effect-resolution.ts";
-import { pinInstallInputs } from "./recipe-install-inputs.ts";
-import { pinnedRecipeDefinition } from "./recipe-origin.ts";
-import type { RequestStep, WorkflowDef } from "./types.ts";
+import { mailboxInstallInputs, pinInstallInputs } from "./recipe-install-inputs.ts";
+import { pinnedRecipeDefinition, recipeDeliveryBinding } from "./recipe-origin.ts";
+import { type RequestStep, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+
+const paidCheckout = () => {
+  const recipe = getSolutionRecipe("payment-grants-access");
+  if (!recipe) throw new Error("payment-grants-access missing");
+  return recipe;
+};
+
+const paidOrigin = { vertical: "solutions", slug: "payment-grants-access" };
+
+describe("install-time sender of the paid checkout solution (#590)", () => {
+  test("the engine accepts a sender already pinned by the CLI", () => {
+    const inputs = { sender: "team@example.com" };
+    const cli = pinInstallInputs(paidCheckout().workflow, paidCheckout().install_inputs, inputs);
+    if (!cli.ok) throw new Error(cli.message);
+    expect(pinnedRecipeDefinition({ ...paidOrigin, inputs }, cli.definition)).toEqual(cli);
+  });
+
+  test("the solution declares its sender as an install input of the mailbox class", () => {
+    expect(paidCheckout().install_inputs).toEqual(["sender"]);
+    expect(mailboxInstallInputs(paidCheckout().workflow, ["sender"])).toEqual(["sender"]);
+    expect(mailboxInstallInputs(analytics().workflow, analytics().install_inputs)).toEqual([]);
+  });
+
+  test("the sender lands literally in the delivery profile and the mail builder", () => {
+    const pinned = pinnedRecipeDefinition(
+      { ...paidOrigin, inputs: { sender: "team@example.com" } },
+      paidCheckout().workflow,
+    );
+    if (!pinned.ok) throw new Error(pinned.message);
+    const parsed = WorkflowDefSchema.parse(pinned.definition);
+    const send = parsed.steps.find((step) => step.id === "send_welcome") as RequestStep;
+    expect(send.transactional_delivery?.from).toBe("team@example.com");
+    const settings = parsed.steps.find((step) => step.id === "settings");
+    expect(settings && "expression" in settings ? settings.expression : null).toContain(
+      "sender: 'team@example.com'",
+    );
+    expect(JSON.stringify(pinned.definition)).not.toContain("install-input.invalid");
+  });
+
+  test("a missing or malformed sender is refused and never spliced", () => {
+    expect(pinnedRecipeDefinition(paidOrigin, paidCheckout().workflow)).toMatchObject({
+      ok: false,
+      reason: "recipe_input_missing",
+    });
+    for (const sender of ["o'hara@example.com", "team@example.com\nBcc: x@example.com", "", 42])
+      expect(
+        pinnedRecipeDefinition({ ...paidOrigin, inputs: { sender } }, paidCheckout().workflow),
+      ).toEqual({
+        ok: false,
+        reason: "recipe_input_invalid",
+        message:
+          "install input sender of recipe solutions/payment-grants-access must be one plain email address of the sending mailbox",
+      });
+  });
+
+  test("a recipe install binds every transactional delivery to one new binding of its own", () => {
+    const delivery = recipeDeliveryBinding(paidCheckout().workflow);
+    if (!delivery) throw new Error("the paid checkout has no transactional delivery");
+    const send = (delivery.definition as WorkflowDef).steps.find(
+      (step) => step.id === "send_welcome",
+    ) as RequestStep;
+    expect(send.transactional_delivery?.webhook_id).toBe(delivery.binding_id);
+    expect(JSON.stringify(paidCheckout().workflow)).not.toContain(delivery.binding_id);
+    expect(recipeDeliveryBinding(analytics().workflow)).toBeNull();
+  });
+});
 
 const analytics = () => {
   const recipe = getSolutionRecipe("daily-analytics-report");
