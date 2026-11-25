@@ -1,15 +1,21 @@
 import { expect, mock, test } from "bun:test";
 import { waitFor } from "../../engine/src/test-helpers/determinism/wait.ts";
 import { createDraft, listDrafts } from "./clipper.ts";
+import { type MessageResponse, unwrapResponse } from "./messaging.ts";
 import type { CapturedClip, Draft } from "./types.ts";
 
 type Sender = { id?: string; url?: string; tab?: { id?: number; url?: string } };
-type Listener = (message: unknown, sender: Sender) => unknown;
+type Listener = (
+  message: unknown,
+  sender: Sender,
+  sendResponse: (response: MessageResponse) => void,
+) => unknown;
 
 type FixtureState = {
   activeTabId: number;
   capture: CapturedClip;
   captureError?: Error;
+  captureResponse?: { value: unknown };
   executed: number[];
   extensionOrigin: string;
   onCapture?: (values: Record<string, unknown>, tabUrls: Map<number, string>) => void;
@@ -73,6 +79,7 @@ const chromeBridge = {
       if (!current) throw new Error("No worker fixture is active.");
       current.onCapture?.(current.values, current.tabUrls);
       if (current.captureError) throw current.captureError;
+      if (current.captureResponse) return current.captureResponse.value;
       return current.capture;
     },
   },
@@ -107,6 +114,7 @@ async function workerFixture(options: {
   activeTabId?: number;
   capture: CapturedClip;
   captureError?: Error;
+  captureResponse?: { value: unknown };
   settings?: { engineUrl?: string; language?: string };
   tabUrls?: Record<number, string>;
   onCapture?: (values: Record<string, unknown>, tabUrls: Map<number, string>) => void;
@@ -115,6 +123,7 @@ async function workerFixture(options: {
     activeTabId: options.activeTabId || 99,
     capture: options.capture,
     ...(options.captureError ? { captureError: options.captureError } : {}),
+    ...(options.captureResponse ? { captureResponse: options.captureResponse } : {}),
     executed: [],
     extensionOrigin: "chrome-extension://clipper",
     ...(options.onCapture ? { onCapture: options.onCapture } : {}),
@@ -125,11 +134,19 @@ async function workerFixture(options: {
   current = fixture;
   workerLoaded ||= import("./service-worker.ts");
   await workerLoaded;
-  const send = async (message: unknown, sender: Sender) => {
+  const deliver = (message: unknown, sender: Sender) => {
     if (!listener) throw new Error("Worker listener was not installed.");
-    return await listener(message, sender);
+    const installed = listener;
+    return new Promise<{ keptOpen: unknown; response: MessageResponse }>((resolve) => {
+      const keptOpen = installed(message, sender, (response) => resolve({ keptOpen, response }));
+    });
   };
-  return { ...fixture, send, storage: chromeBridge.storage.local };
+  const send = async (message: unknown, sender: Sender) => {
+    const { keptOpen, response } = await deliver(message, sender);
+    expect(keptOpen).toBe(true);
+    return unwrapResponse(response);
+  };
+  return { ...fixture, deliver, send, storage: chromeBridge.storage.local };
 }
 
 test("captures from the current sender tab instead of an unrelated active tab", async () => {
@@ -498,4 +515,60 @@ test("recapturing a navigated source preserves the old page draft", async () => 
     "https://example.test/new",
     "https://example.test/old",
   ]);
+});
+
+test("a capture response without a clip stores the translated capture message", async () => {
+  const fixture = await workerFixture({
+    capture: captured("https://example.test/legacy"),
+    captureResponse: { value: undefined },
+    settings: { engineUrl: "https://engine.test", language: "en" },
+    tabUrls: { 7: "https://example.test/legacy" },
+  });
+  if (!contextMenuListener) throw new Error("Context menu listener was not installed.");
+  contextMenuListener({ menuItemId: "clip-page" }, { id: 7 });
+  await waitFor(() => fixture.opened.length > 0);
+  expect(fixture.values.captureError).toEqual({ message: "The page could not be captured." });
+});
+
+test("a wrapped capture response from the content script is unwrapped", async () => {
+  const clip = captured("https://example.test/wrapped", "Wrapped");
+  const fixture = await workerFixture({
+    capture: clip,
+    captureResponse: { value: { ok: true, value: clip } },
+    tabUrls: { 7: "https://example.test/wrapped" },
+  });
+  const result = await fixture.send(
+    { type: "start-capture", mode: "article" },
+    { id: "clipper", url: `${fixture.extensionOrigin}/popup.html?tab=7` },
+  );
+  expect(result).toMatchObject({ captureUrl: "https://example.test/wrapped" });
+});
+
+test("a failed content script capture response reports the translated failure", async () => {
+  const fixture = await workerFixture({
+    capture: captured("https://example.test/failed"),
+    captureResponse: { value: { ok: false, error: "Cannot read the page." } },
+    settings: { engineUrl: "https://engine.test", language: "en" },
+    tabUrls: { 7: "https://example.test/failed" },
+  });
+  await expect(
+    fixture.send(
+      { type: "start-capture", mode: "article" },
+      { id: "clipper", url: `${fixture.extensionOrigin}/popup.html?tab=7` },
+    ),
+  ).rejects.toThrow("The page could not be captured.");
+});
+
+test("a rejected worker handler answers through sendResponse with an error", async () => {
+  const fixture = await workerFixture({
+    capture: captured("https://example.test/page"),
+    settings: { engineUrl: "https://engine.test", language: "en" },
+  });
+  const { keptOpen, response } = await fixture.deliver(
+    { type: "save-draft", draft: { id: "broken" } },
+    { id: "clipper", url: `${fixture.extensionOrigin}/popup.html` },
+  );
+  expect(keptOpen).toBe(true);
+  expect(response).toEqual({ ok: false, error: "The draft is invalid." });
+  expect(() => unwrapResponse(response)).toThrow("The draft is invalid.");
 });

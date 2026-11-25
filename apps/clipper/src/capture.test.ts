@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { JSDOM } from "jsdom";
-import { capture, composeCaptureBody } from "./capture.ts";
+import { capture, composeCaptureBody, handleCaptureMessage } from "./capture.ts";
+import type { MessageResponse } from "./messaging.ts";
 
 test("capture keeps article content and excludes page navigation", async () => {
   const dom = new JSDOM(
@@ -108,6 +109,56 @@ test("youtube metadata and description come from the matching player data", asyn
     expect(clip.sections?.description).toBe("Only the actual description.");
     expect(clip.sections?.transcriptLanguage).toBe("en");
     expect(clip.body).not.toContain("Unrelated panel contents");
+  } finally {
+    for (const [key, value] of previous) Reflect.set(globalThis, key, value);
+    dom.window.close();
+  }
+});
+
+test("the content script answers a capture request through sendResponse", async () => {
+  const dom = new JSDOM(
+    "<!doctype html><html><head><title>Listener article</title></head><body><article><h1>Listener article</h1><p>Listener body text that is long enough to be the main content.</p></article></body></html>",
+    { url: "https://example.test/listener" },
+  );
+  const globals = [
+    "window",
+    "document",
+    "location",
+    "Node",
+    "Element",
+    "HTMLElement",
+    "HTMLImageElement",
+    "DOMParser",
+    "NodeFilter",
+    "getComputedStyle",
+  ] as const;
+  const previous = new Map(globals.map((key) => [key, globalThis[key]]));
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    location: dom.window.location,
+    Node: dom.window.Node,
+    Element: dom.window.Element,
+    HTMLElement: dom.window.HTMLElement,
+    HTMLImageElement: dom.window.HTMLImageElement,
+    DOMParser: dom.window.DOMParser,
+    NodeFilter: dom.window.NodeFilter,
+    getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  });
+  try {
+    const response = await new Promise<{ keptOpen: unknown; response: MessageResponse }>(
+      (resolve) => {
+        const keptOpen = handleCaptureMessage({ type: "capture", mode: "article" }, (next) =>
+          resolve({ keptOpen, response: next }),
+        );
+      },
+    );
+    expect(response.keptOpen).toBe(true);
+    expect(response.response).toMatchObject({
+      ok: true,
+      value: { metadata: { sourceUrl: "https://example.test/listener" } },
+    });
+    expect(handleCaptureMessage({ type: "other" }, () => {})).toBeUndefined();
   } finally {
     for (const [key, value] of previous) Reflect.set(globalThis, key, value);
     dom.window.close();

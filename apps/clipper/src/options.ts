@@ -1,5 +1,5 @@
 import { connectionErrorMessage, IntakeApi } from "./api.ts";
-import { chromeApi } from "./chrome-api.ts";
+import { chromeApi, sendRuntimeMessage } from "./chrome-api.ts";
 import { loadSettings, normalizeEngineUrl, parseInstallConfig, saveSettings } from "./clipper.ts";
 import type { Copy } from "./ui.ts";
 import { applyText, copy, language as resolveLanguage, showHelpLink } from "./ui.ts";
@@ -96,7 +96,7 @@ form?.addEventListener("submit", async (event) => {
     applyLanguage(language?.value === "en" ? "en" : "de");
     showHelpLink(help, nextUrl);
     void showUpdateNotice(nextUrl, text);
-    await chromeApi.runtime.sendMessage({ type: "settings-updated" });
+    await sendRuntimeMessage({ type: "settings-updated" });
     await verifyConnection(nextUrl, enteredKey || oldSettings.apiKey || "");
   } catch (error) {
     setStatus(error instanceof Error ? error.message : text.invalidEngine, true);
@@ -112,7 +112,7 @@ clearKey?.addEventListener("click", async () => {
   const { apiKey: _, ...withoutKey } = settings;
   await saveSettings(chromeApi.storage, withoutKey);
   if (apiKey) apiKey.value = "";
-  await chromeApi.runtime.sendMessage({ type: "settings-updated" });
+  await sendRuntimeMessage({ type: "settings-updated" });
   setStatus(text.keyCleared);
 });
 

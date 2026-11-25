@@ -9,6 +9,7 @@ import {
   normalizeSourceUrl,
   saveDraft,
 } from "./clipper.ts";
+import { respondWith, unwrapResponse } from "./messaging.ts";
 import type { CapturedClip, CaptureError, CaptureMode, Draft } from "./types.ts";
 import { type WorkerCopy, workerCopy } from "./ui.ts";
 
@@ -113,11 +114,23 @@ async function tabUrl(tabId: number): Promise<string | undefined> {
   }
 }
 
+function isCapturedClip(value: unknown): value is CapturedClip {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as CapturedClip).body === "string" &&
+    Boolean((value as CapturedClip).metadata) &&
+    typeof (value as CapturedClip).metadata.sourceUrl === "string"
+  );
+}
+
 async function capturePage(tabId: number, mode: CaptureMode): Promise<CapturedClip> {
   const urlAtStart = await tabUrl(tabId);
   try {
     await chromeApi.scripting.executeScript({ target: { tabId }, files: ["capture.js"] });
-    return (await chromeApi.tabs.sendMessage(tabId, { type: "capture", mode })) as CapturedClip;
+    const clip = unwrapResponse(await chromeApi.tabs.sendMessage(tabId, { type: "capture", mode }));
+    if (!isCapturedClip(clip)) throw new Error((await workerText()).captureFailed);
+    return clip;
   } catch {
     const text = await workerText();
     const urlAfter = await tabUrl(tabId);
@@ -251,7 +264,10 @@ chromeApi.commands.onCommand.addListener((command) => {
   void activeTabId().then((tabId) => runBackgroundCapture(tabId, "auto"));
 });
 
-chromeApi.runtime.onMessage.addListener((message: unknown, sender) => {
+function handleWorkerMessage(
+  message: unknown,
+  sender: { id?: string; url?: string; tab?: { id?: number; url?: string } },
+): Promise<unknown> | undefined {
   if (!isExtensionUi(sender) || !message || typeof message !== "object") return undefined;
   const request = message as {
     type?: string;
@@ -303,4 +319,9 @@ chromeApi.runtime.onMessage.addListener((message: unknown, sender) => {
   if (request.type === "list-drafts")
     return draftWrites.then(() => listDrafts(chromeApi.storage.local));
   return undefined;
+}
+
+chromeApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const result = handleWorkerMessage(message, sender);
+  return result ? respondWith(result, sendResponse) : undefined;
 });

@@ -1,3 +1,4 @@
+import { type SendResponse, unwrapResponse } from "./messaging.ts";
 import type { CaptureMode, Draft } from "./types.ts";
 import type { InstallType } from "./update.ts";
 
@@ -26,6 +27,7 @@ interface ChromeApi {
         listener: (
           message: unknown,
           sender: { id?: string; url?: string; tab?: { id?: number } },
+          sendResponse: SendResponse,
         ) => unknown,
       ): void;
     };
@@ -82,3 +84,7 @@ export type RuntimeMessage =
   | { type: "save-draft"; draft: Draft }
   | { type: "clear-draft"; draftId: string }
   | { type: "settings-updated" };
+
+export async function sendRuntimeMessage<Value = unknown>(message: RuntimeMessage): Promise<Value> {
+  return unwrapResponse<Value>(await chromeApi.runtime.sendMessage(message));
+}
