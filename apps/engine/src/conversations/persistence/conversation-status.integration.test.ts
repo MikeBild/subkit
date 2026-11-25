@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { CONVERSATION_TRANSITIONS } from "../core/conversation-status.ts";
 import { cancelConversation } from "../service/lifecycle.ts";
@@ -71,7 +72,7 @@ describe("transitionConversation", () => {
       tenant_id,
       conversation_id: id,
       to: "active",
-      set: { updated_at: new Date() },
+      set: { updated_at: new Date(FROZEN_NOW) },
     });
     expect(row).toBeNull();
     expect(await statusOf(tenant_id, id)).toBe("abandoned");
