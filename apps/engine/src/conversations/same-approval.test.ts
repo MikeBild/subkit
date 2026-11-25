@@ -69,6 +69,29 @@ describe("conversations/same-approval", () => {
     expect(asksForSameApproval(card("first"), card("second"))).toBe(false);
   });
 
+  test("connector saves without a draft binding require a new approval", () => {
+    const card = (question: string) => ({
+      tool_name: "ask_user_confirm",
+      input: {
+        question,
+        kind: "save_connector_draft",
+        commit_intent: { kind: "save_connector_draft", payload: {} },
+      },
+    });
+    const open = card("Save the connector for https://first.test?");
+    const next = card("Save the connector for https://second.test?");
+    expect(asksForSameApproval(open, next)).toBe(false);
+    expect(
+      asksForSameApproval(open, {
+        tool_name: "ask_user_confirm",
+        input: {
+          kind: "external_write",
+          target: { tool: "save_connector_draft", args: {} },
+        },
+      }),
+    ).toBe(false);
+  });
+
   test("changed or missing verification and effects require a new approval", () => {
     for (const field of ["verification", "effect"] as const) {
       const card = (value?: string) => ({

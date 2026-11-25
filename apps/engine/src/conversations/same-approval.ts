@@ -76,6 +76,7 @@ export function asksForSameApproval(open: OpenQuestion, next: OpenQuestion): boo
   const openAction = approvalAction(open.input);
   const nextAction = approvalAction(next.input);
   if (!openAction || !nextAction || openAction.name !== nextAction.name) return false;
+  if (openAction.name === "save_connector_draft") return false;
   return (
     agrees(openAction.targetArgs, nextAction.targetArgs) &&
     agrees(openAction.intent, nextAction.intent) &&
