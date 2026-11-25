@@ -164,6 +164,7 @@ A run waits for you in these cases:
 - It asks a question or needs your approval for a write.
 - Two rounds in a row brought no real progress. Progress means that a step gets ready, new evidence or a new result is recorded, a bound workflow or connector runs, you write or answer, or the run schedules its next check. Rewriting notes in the plan does not count.
 - You selected **Stop** at the message field while a round was running.
+- A round was cut off, for example because the Engine restarted while it worked. The run does not fail: it keeps its conversation and goes on when you write to it.
 - The monthly AI budget is reached, or the workspace has no AI provider at the moment. In these two cases you do not have to do anything in the run: it continues on its own as soon as the budget allows it again or a provider is set up.
 
 A run sleeps when it set itself a next check, when the AI provider asks SubKit to slow down, or while the task is paused. A next check lies at most 31 days ahead and never beyond the time limit of the run.

@@ -385,7 +385,10 @@ describe("tasks/service starting runs", () => {
       {
         tenant_id: w.tenant_id,
         task_run_id: result.run.id,
-        observation: observed({ turn_id: nextTurn(), turn_interrupted: true }),
+        observation: observed({
+          turn_id: nextTurn(),
+          turn_failure: { code: "turn_failed", retry_at: null },
+        }),
       },
       ctx.db,
       deps,

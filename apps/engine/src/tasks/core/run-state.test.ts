@@ -160,7 +160,7 @@ describe("decideTaskRunState", () => {
     expect(outcome(decide({ turn_seq: 3, turn_interrupted: true }))).toEqual(
       settled("running", { enqueue: true }),
     );
-    expect(decide({ turn_seq: 4, turn_interrupted: true }).failure_code).toBe("turn_interrupted");
+    expect(decide({ turn_seq: 4, turn_interrupted: true }).waiting_reason).toBe("turn_stopped");
   });
 
   test("a rejected result is worked on again and is not offered again until the plan changed", () => {
@@ -210,14 +210,21 @@ describe("decideTaskRunState", () => {
     ).toBe(4);
   });
 
-  test("a turn somebody stopped waits for the person instead of failing the run", () => {
-    expect(outcome(decide({ turn_failure: failure(TASK_TURN_STOPPED) }))).toEqual(
-      settled("waiting", { waiting_reason: "turn_stopped" }),
-    );
+  test("a stopped or interrupted turn waits for the person, unless the run reached its limit", () => {
+    const turns = settled("failed", { failure_code: "turn_limit_reached" });
+    const deadline = settled("failed", { failure_code: "deadline_exceeded" });
+    const held = settled("waiting", { waiting_reason: "turn_stopped" });
+    for (const cut of [{ turn_interrupted: true }, { turn_failure: failure(TASK_TURN_STOPPED) }]) {
+      expect(outcome(decide(cut))).toEqual(held);
+      expect(outcome(decide(cut, { turns_used: 19 }))).toEqual(turns);
+      expect(outcome(decide(cut, { deadline_at: NOW }))).toEqual(deadline);
+      expect(outcome(decide(cut, { deadline_at: at(-1) }))).toEqual(deadline);
+      expect(outcome(decide(cut, { turns_used: 18, deadline_at: at(1) }))).toEqual(held);
+    }
+    expect(outcome(decide({ turn_id: null, turn_interrupted: true }))).toEqual(held);
+    expect(outcome(decide({ turn_interrupted: true, requested_check_at: at(1) }))).toEqual(held);
     expect(TASK_TURN_STOPPED).toBe("turn_stopped");
-    expect(outcome(decide({ turn_failure: failure("turn_cancelled") }))).toEqual(
-      settled("failed", { failure_code: "turn_failed" }),
-    );
+    expect(decide({ turn_failure: failure("turn_cancelled") }).failure_code).toBe("turn_failed");
   });
 
   test("an expired question keeps the run waiting under its own reason", () => {
@@ -324,12 +331,6 @@ describe("decideTaskRunState", () => {
         ),
       ),
     ).toEqual(settled("failed", { failure_code: "turn_failed" }));
-  });
-
-  test("an interrupted turn fails the run", () => {
-    expect(outcome(decide({ turn_interrupted: true, requested_check_at: at(1) }, stuck))).toEqual(
-      settled("failed", { failure_code: "turn_interrupted" }),
-    );
   });
 
   test("the turn limit and the deadline end a run that would otherwise sleep, each under its own code", () => {

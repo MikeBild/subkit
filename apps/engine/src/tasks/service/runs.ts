@@ -333,6 +333,8 @@ export async function recordRunObservation(
       { max_turns: task.max_turns },
       at,
     );
+    const waitsAfterStop = run.state === "waiting" && run.waiting_reason === "turn_stopped";
+    if (waitsAfterStop && observation.turn_id !== null && !decided.turn_seen) return unchanged;
     if (settled && decided.state !== "completed") {
       if (observation.result_rejected)
         return await reopenRejectedResult(tx, deps, run, task, effects, {
@@ -394,7 +396,9 @@ export async function recordRunObservation(
           ? (observation.turn_id ?? run.last_seen_turn_id)
           : run.last_seen_turn_id,
         last_seen_turn_seq: decision.last_seen_turn_seq,
-        ...(decided.turn_seen ? { turn_job_failures: 0 } : {}),
+        ...(decided.turn_seen || decision.waiting_reason === "turn_stopped"
+          ? { turn_job_failures: 0 }
+          : {}),
         ...(run.rejected_playbook_revision !== null &&
         decision.last_playbook_revision !== run.rejected_playbook_revision
           ? { rejected_playbook_revision: null }
