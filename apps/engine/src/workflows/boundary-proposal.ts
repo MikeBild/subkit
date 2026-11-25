@@ -345,7 +345,8 @@ function deriveRequest(
     if (!rule) return refused("values_not_describable");
     variables[name] = rule;
   }
-  const sendsContent = step.body !== undefined && method !== "GET" && method !== "HEAD";
+  const sendsContent =
+    (step.body !== undefined || step.form !== undefined) && method !== "GET" && method !== "HEAD";
   const sizes = sizesSeen(seen);
   if (sendsContent && sizes.length === 0) return refused("body_size_unknown");
   const cap = needsPageCeiling(step) ? pageCeiling(pagesSeen(seen)) : undefined;
