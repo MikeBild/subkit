@@ -1857,6 +1857,234 @@
               "failed"
             ],
             "description": "Task runs that started in the window, and how many of them are confirmed as completed or have failed by now."
+          },
+          "confirmations": {
+            "type": "object",
+            "properties": {
+              "asked": {
+                "type": "integer",
+                "description": "Confirmation questions a person was asked in the window."
+              },
+              "covered": {
+                "type": "integer",
+                "description": "Calls that would have asked but ran without asking, covered by a rule, the person's own words or a standing authority."
+              },
+              "kinds": {
+                "type": "object",
+                "properties": {
+                  "policy_gate": {
+                    "type": "integer"
+                  },
+                  "ask_user": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "policy_gate",
+                  "ask_user"
+                ],
+                "description": "policy_gate: the engine held a tool call for approval; ask_user: the assistant asked by itself."
+              },
+              "outcomes": {
+                "type": "object",
+                "properties": {
+                  "granted": {
+                    "type": "integer"
+                  },
+                  "declined": {
+                    "type": "integer"
+                  },
+                  "expired": {
+                    "type": "integer"
+                  },
+                  "superseded": {
+                    "type": "integer"
+                  },
+                  "cancelled": {
+                    "type": "integer"
+                  },
+                  "open": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "granted",
+                  "declined",
+                  "expired",
+                  "superseded",
+                  "cancelled",
+                  "open"
+                ],
+                "description": "How each ask ended: granted, declined, expired, superseded by a newer question, cancelled, or still open."
+              },
+              "covered_by": {
+                "type": "object",
+                "properties": {
+                  "rule": {
+                    "type": "integer"
+                  },
+                  "instruction": {
+                    "type": "integer"
+                  },
+                  "authority": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "rule",
+                  "instruction",
+                  "authority"
+                ],
+                "description": "Covered calls by what covered them: an approval rule, the person's instruction, or a standing authority."
+              },
+              "per_turn": {
+                "type": "object",
+                "properties": {
+                  "turns": {
+                    "type": "integer",
+                    "description": "Conversation turns started in the window."
+                  },
+                  "turns_with_ask": {
+                    "type": "integer",
+                    "description": "Turns in which at least one question was asked."
+                  },
+                  "asked_per_turn": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "Questions per turn, two decimals; null without turns."
+                  }
+                },
+                "required": [
+                  "turns",
+                  "turns_with_ask",
+                  "asked_per_turn"
+                ]
+              },
+              "per_task_run": {
+                "type": "object",
+                "properties": {
+                  "runs": {
+                    "type": "integer",
+                    "description": "Task runs started in the window."
+                  },
+                  "runs_with_ask": {
+                    "type": "integer"
+                  },
+                  "asked": {
+                    "type": "integer",
+                    "description": "Questions asked inside those runs."
+                  },
+                  "asked_per_run": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "median_per_run": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "Median questions per run, counting runs without a question as 0."
+                  }
+                },
+                "required": [
+                  "runs",
+                  "runs_with_ask",
+                  "asked",
+                  "asked_per_run",
+                  "median_per_run"
+                ]
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool": {
+                      "type": "string"
+                    },
+                    "asked": {
+                      "type": "integer"
+                    },
+                    "asked_in_task_runs": {
+                      "type": "integer"
+                    },
+                    "outcomes": {
+                      "type": "object",
+                      "properties": {
+                        "granted": {
+                          "type": "integer"
+                        },
+                        "declined": {
+                          "type": "integer"
+                        },
+                        "expired": {
+                          "type": "integer"
+                        },
+                        "superseded": {
+                          "type": "integer"
+                        },
+                        "cancelled": {
+                          "type": "integer"
+                        },
+                        "open": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "granted",
+                        "declined",
+                        "expired",
+                        "superseded",
+                        "cancelled",
+                        "open"
+                      ]
+                    },
+                    "covered": {
+                      "type": "object",
+                      "properties": {
+                        "rule": {
+                          "type": "integer"
+                        },
+                        "instruction": {
+                          "type": "integer"
+                        },
+                        "authority": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "rule",
+                        "instruction",
+                        "authority"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "tool",
+                    "asked",
+                    "asked_in_task_runs",
+                    "outcomes",
+                    "covered"
+                  ]
+                },
+                "description": "The same figures per tool, most asked first."
+              }
+            },
+            "required": [
+              "asked",
+              "covered",
+              "kinds",
+              "outcomes",
+              "covered_by",
+              "per_turn",
+              "per_task_run",
+              "tools"
+            ],
+            "description": "How often people were asked to confirm in the window, per turn, per task run and per tool, read from the stored questions and the audit trail."
           }
         },
         "required": [
@@ -1866,7 +2094,8 @@
           "connectors",
           "repairs",
           "prompt_cache",
-          "task_runs"
+          "task_runs",
+          "confirmations"
         ]
       },
       "StatsQualityResponse": {
@@ -52395,7 +52624,7 @@
           "Stats"
         ],
         "summary": "The Overview's operations figures over one window",
-        "description": "Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, and per LLM flow the share of prompt tokens read from the prompt cache — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
+        "description": "Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, per LLM flow the share of prompt tokens read from the prompt cache, and how often people were asked to confirm per turn, per task run and per tool — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.",
         "security": [
           {
             "bearerAuth": []

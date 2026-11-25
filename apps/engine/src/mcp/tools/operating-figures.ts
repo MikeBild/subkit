@@ -17,7 +17,7 @@ const WINDOW_NAMES = Object.keys(OPERATING_WINDOWS) as [OperatingWindow, ...Oper
 export const operatingFiguresMcpTool: Tool = {
   name: OPERATING_FIGURES_TOOL_NAME,
   description:
-    "The Overview's operations figures over one window, as GET /v1/stats/operating-figures reads them: runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, and per LLM flow the share of prompt tokens read from the prompt cache. Pass window (24h, 7d, 30d) or from/to; pass the returned window's bounds to list_executions as started_from/started_to to list the runs counted.",
+    "The Overview's operations figures over one window, as GET /v1/stats/operating-figures reads them: runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, per LLM flow the share of prompt tokens read from the prompt cache, and confirmations (asks per turn and per task run, per tool, by outcome, and calls covered without asking). Pass window (24h, 7d, 30d) or from/to; pass the returned window's bounds to list_executions as started_from/started_to to list the runs counted.",
   inputSchema: {
     type: "object",
     properties: {
