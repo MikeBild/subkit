@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { CREDENTIAL_MISSING_HINT } from "../commands/connector-credential-file-model.ts";
 import {
   docsIngestBody,
   importConnectorBody,
@@ -347,7 +348,7 @@ describe("probe result mapping reads the contract fields", () => {
   test("the failure detail prefers detail, then error_code, then the status", () => {
     expect(probeFailureDetail(failedProbe)).toBe("token rejected by upstream");
     expect(probeFailureDetail({ ok: false, latency_ms: 1, error_code: "credential_missing" })).toBe(
-      "credential_missing",
+      CREDENTIAL_MISSING_HINT,
     );
     expect(probeFailureDetail({ ok: false, latency_ms: 1, status: 500 })).toBe("status=500");
     expect(probeFailureDetail({ ok: false, latency_ms: 1 })).toBe("status=?");
