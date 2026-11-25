@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CATALOGS } from "@/lib/i18n";
 import {
   occurrenceCursor,
   occurrenceLabel,
@@ -96,5 +97,19 @@ describe("the cursor for older occurrences", () => {
       occurrenceCursor({ next_before: "2026-11-20T07:00:00.000Z", next_before_id: "o2" }),
     ).toEqual({ before: "2026-11-20T07:00:00.000Z", before_id: "o2" });
     expect(occurrenceCursor({ next_before: null, next_before_id: null })).toBeNull();
+  });
+});
+
+describe("timely run label", () => {
+  test("a timely succeeded run reads as on time, matching the guide and the older history label", () => {
+    const label = occurrenceLabel(
+      toOccurrence({ ...base, state: "ran", run_outcome: "succeeded" }),
+    );
+    expect(label).toBe("ran");
+    expect(CATALOGS.en[`ops.sched.state.${label}`]).toBe("On time");
+    for (const locale of ["en", "de"] as const)
+      expect(CATALOGS[locale][`ops.sched.state.${label}`]).toBe(
+        CATALOGS[locale]["scheduleHistory.state.ran"],
+      );
   });
 });
