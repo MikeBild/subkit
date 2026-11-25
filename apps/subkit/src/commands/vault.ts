@@ -327,7 +327,10 @@ const rotateCommand = defineCommand({
   },
   args: {
     id: { type: "positional", required: true, description: "Vault item id" },
-    username: { type: "string", description: "login: a new username" },
+    username: {
+      type: "string",
+      description: "login: a new username (keeps the current one when omitted)",
+    },
   },
   async run({ args }) {
     const client = makeClient();

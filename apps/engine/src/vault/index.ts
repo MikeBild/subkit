@@ -9,6 +9,7 @@ export {
   connectorItemName,
   normalizeItemName,
   templateClientItemName,
+  vaultRotationOf,
   vaultValueOf,
   withNameSuffix,
 } from "./core/vault-item.ts";

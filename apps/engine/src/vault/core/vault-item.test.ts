@@ -3,12 +3,14 @@ import {
   connectorItemName,
   handleMatches,
   isEditableKind,
+  mergedLoginValue,
   normalizeItemName,
   templateClientItemName,
   VAULT_PERMISSION,
   type VaultItemKind,
   vaultAccess,
   vaultFieldValue,
+  vaultRotationOf,
   vaultScopeOf,
   vaultSecretsOf,
   vaultValueOf,
@@ -126,6 +128,37 @@ describe("values", () => {
       "a login needs a username and a password",
     );
     expect(vaultValueOf("login", { password: "p" })).toBe(
+      "a login needs a username and a password",
+    );
+  });
+
+  test("a login rotation may change one field and keeps the stored other", () => {
+    expect(vaultRotationOf("login", { password: "p2" })).toEqual({
+      kind: "login_patch",
+      password: "p2",
+    });
+    expect(vaultRotationOf("login", { username: "u2" })).toEqual({
+      kind: "login_patch",
+      username: "u2",
+    });
+    expect(vaultRotationOf("login", { password: "" })).toBe("a login needs a password");
+    expect(vaultRotationOf("login", { username: "" })).toBe("a login needs a username");
+    expect(vaultRotationOf("login", { username: "u", password: "" })).toBe(
+      "a login needs a username and a password",
+    );
+    expect(vaultRotationOf("secret", { username: "u" })).toBe("a secret needs a token");
+    const stored = { username: "u", password: "p" };
+    expect(mergedLoginValue(stored, { kind: "login_patch", password: "p2" })).toEqual({
+      kind: "login",
+      username: "u",
+      password: "p2",
+    });
+    expect(mergedLoginValue(stored, { kind: "login_patch", username: "u2" })).toEqual({
+      kind: "login",
+      username: "u2",
+      password: "p",
+    });
+    expect(mergedLoginValue({}, { kind: "login_patch", password: "p2" })).toBe(
       "a login needs a username and a password",
     );
   });

@@ -8264,7 +8264,7 @@ Delete a vault item and its value
 Replace the value of a secret or login. The new value is read from stdin.
 
 - `<id>` (positional, required) — Vault item id
-- `--username` (string) — login: a new username
+- `--username` (string) — login: a new username (keeps the current one when omitted)
 
 #### `subkit vault show`
 

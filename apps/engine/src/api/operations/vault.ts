@@ -13,6 +13,7 @@ import {
   VaultError,
   type VaultItemView,
   vaultItemActivity,
+  vaultRotationOf,
   vaultValueOf,
   vaultViewer,
 } from "../../vault/index.ts";
@@ -231,12 +232,12 @@ export const updateVaultItemOperation = defineOperation<UpdateInput, VaultItemVi
       const current = await getVaultItem(scope.db, scope.tenant_id, body.id, viewer);
       const rotates =
         body.token !== undefined || body.username !== undefined || body.password !== undefined;
-      let value: ReturnType<typeof vaultValueOf> | undefined;
+      let value: ReturnType<typeof vaultRotationOf> | undefined;
       if (rotates) {
         if (current.kind !== "secret" && current.kind !== "login") {
           throw new VaultError("forbidden", "change this item on its connector");
         }
-        value = vaultValueOf(current.kind, body);
+        value = vaultRotationOf(current.kind, body);
         if (typeof value === "string") throw new VaultError("invalid", value);
       }
       return updateVaultItem(scope.db, {
