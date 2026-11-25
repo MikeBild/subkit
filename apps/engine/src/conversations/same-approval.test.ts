@@ -90,6 +90,42 @@ describe("conversations/same-approval", () => {
     expect(asksForSameApproval(oauthCard("a", link), oauthCard("a", link))).toBe(false);
   });
 
+  test("local confirmations remain bound to their own tool call", () => {
+    const localCard = (command_id: string | null) => ({
+      tool_name: "ask_user_confirm",
+      input: {
+        kind: "local_confirmation",
+        target: { tool: "device_command", args: { command: "open" } },
+        device: {
+          device_id: "device-1",
+          capability: "browser",
+          target: "Open example.test",
+          command_id,
+          binding_hash: null,
+          deadline_at: "2026-11-25T12:00:00.000Z",
+        },
+      },
+    });
+    expect(asksForSameApproval(localCard("command-1"), localCard("command-2"))).toBe(false);
+    expect(asksForSameApproval(localCard(null), localCard(null))).toBe(false);
+    expect(asksForSameApproval(localCard("command-1"), localCard("command-1"))).toBe(false);
+    expect(
+      asksForSameApproval(localCard("command-1"), {
+        tool_name: "ask_user_confirm",
+        input: { kind: "external_write", target: localCard("command-1").input.target },
+      }),
+    ).toBe(false);
+    expect(
+      asksForSameApproval(
+        {
+          tool_name: "ask_user_confirm",
+          input: { kind: "external_write", target: localCard("command-1").input.target },
+        },
+        localCard("command-1"),
+      ),
+    ).toBe(false);
+  });
+
   test("a typed question is never treated as the same approval", () => {
     const typed = { tool_name: "ask_user_confirm", input: { question: "Continue?" } };
     expect(asksForSameApproval(typed, typed)).toBe(false);

@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { LOCAL_CONFIRMATION_KIND } from "@shared/device/confirmation.ts";
 import { OAUTH_AUTHORIZATION_URL_FIELD } from "@shared/elicitation-constants.ts";
 import { type OpenQuestion, questionClass } from "@shared/typed-reply.ts";
 import { APPROVAL_HANDLE_KEY } from "./tools/ask-user/commit-intent.ts";
@@ -65,6 +66,11 @@ const agrees = (left: unknown, right: unknown): boolean =>
   left === undefined || right === undefined || isDeepStrictEqual(left, right);
 
 export function asksForSameApproval(open: OpenQuestion, next: OpenQuestion): boolean {
+  if (
+    record(open.input)?.kind === LOCAL_CONFIRMATION_KIND ||
+    record(next.input)?.kind === LOCAL_CONFIRMATION_KIND
+  )
+    return false;
   if (opensLink(open.input) || opensLink(next.input)) return false;
   if (questionClass(open) !== "button_only" || questionClass(next) !== "button_only") return false;
   const openAction = approvalAction(open.input);
