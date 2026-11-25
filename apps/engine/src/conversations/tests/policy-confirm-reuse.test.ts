@@ -1,11 +1,20 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { conversationElicitations, conversations, toolApprovals } from "../../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversations,
+  conversationToolCalls,
+  toolApprovals,
+} from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { requestApproval } from "../../tools/approval.ts";
-import { createElicitation } from "../elicitations.ts";
+import {
+  createElicitation,
+  expireElicitationAndReactivate,
+  resolveElicitation,
+} from "../elicitations.ts";
 import { saveVerificationEvidence } from "../handoff-summary.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
@@ -264,3 +273,68 @@ test("an ask-user save card never reuses the open card", async () => {
   expect(second.id).not.toBe(first.id);
   expect(await pendingIds(conversationId)).toEqual([second.id]);
 });
+
+for (const decision of ["approved", "declined", "expired"] as const) {
+  test(`all calls attached to a reused save card settle when ${decision}`, async () => {
+    const conversationId = await seedConversation();
+    const calls = await ctx.testDb.db
+      .insert(conversationToolCalls)
+      .values(
+        Array.from({ length: 3 }, () => ({
+          tenant_id: ctx.tenant_id,
+          conversation_id: conversationId,
+          tool: "save_workflow_draft",
+          input: SAVE_ARGS,
+          outcome: "pending" as const,
+        })),
+      )
+      .returning();
+    const cards = [];
+    for (const call of calls) {
+      const card = await ask(
+        conversationId,
+        "Save inactive draft",
+        saveGateInput(null),
+        true,
+        call.id,
+      );
+      cards.push(card);
+      await ctx.testDb.db
+        .update(conversationToolCalls)
+        .set({
+          output: { pending: true, status: "awaiting_confirmation", elicitation_id: card.id },
+        })
+        .where(eq(conversationToolCalls.id, call.id));
+    }
+    expect(new Set(cards.map((card) => card.id)).size).toBe(1);
+    const id = cards[0]!.id;
+    if (decision === "expired") {
+      await expireElicitationAndReactivate(
+        { tenant_id: ctx.tenant_id, conversation_id: conversationId, id },
+        ctx.testDb.db,
+      );
+    } else {
+      await resolveElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          id,
+          output: { confirmed: decision === "approved" },
+          decided_by: null,
+        },
+        ctx.testDb.db,
+      );
+    }
+    const settled = await ctx.testDb.db
+      .select()
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.conversation_id, conversationId));
+    expect(settled.map((call) => call.outcome)).toEqual(
+      calls.map(() =>
+        decision === "expired" ? "expired" : decision === "approved" ? "ok" : "denied",
+      ),
+    );
+    if (decision === "expired") {
+      for (const call of settled) expect(call.confirmation_state).toBe("expired");
+    }
+  });
+}

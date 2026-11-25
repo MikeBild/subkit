@@ -57,6 +57,22 @@ async function transitionElicitations(exec: Executor, transition: ElicitationTra
     .returning();
 }
 
+function attachedToolCalls(row: {
+  id: string;
+  tenant_id: string;
+  conversation_id: string;
+  tool_call_id: string | null;
+}) {
+  return and(
+    eq(conversationToolCalls.tenant_id, row.tenant_id),
+    eq(conversationToolCalls.conversation_id, row.conversation_id),
+    or(
+      row.tool_call_id ? eq(conversationToolCalls.id, row.tool_call_id) : undefined,
+      sql`${conversationToolCalls.output} ->> 'elicitation_id' = ${row.id}`,
+    ),
+  );
+}
+
 export interface ElicitationRecord {
   id: string;
   conversation_id: string;
@@ -742,23 +758,14 @@ async function resolveElicitationWithin(
     if (!existing) return { kind: "not_found" };
     return { kind: "already_resolved", existing: rowToRecord(existing) };
   }
-  if (
-    (row.tool_name === "ask_user_confirm" || row.tool_name === "ask_user_choice") &&
-    row.tool_call_id
-  ) {
+  if (row.tool_name === "ask_user_confirm" || row.tool_name === "ask_user_choice") {
     const accepted =
       status === "resolved" &&
       (row.tool_name === "ask_user_choice" || interpretConfirmDecision(p.output) === "confirmed");
     await exec
       .update(conversationToolCalls)
       .set({ outcome: accepted ? "ok" : "denied" })
-      .where(
-        and(
-          eq(conversationToolCalls.tenant_id, p.tenant_id),
-          eq(conversationToolCalls.id, row.tool_call_id),
-          eq(conversationToolCalls.outcome, "pending"),
-        ),
-      );
+      .where(and(attachedToolCalls(row), eq(conversationToolCalls.outcome, "pending")));
   }
   if (row.tool_name === "ask_user_choice" && status === "resolved") {
     const input =
@@ -937,13 +944,10 @@ export async function expireElicitationAndReactivate(
       from: ["awaiting_input"],
       set: { updated_at: new Date() },
     });
-    const toolCallId = resolution.record.tool_call_id;
-    if (toolCallId) {
-      await tx
-        .update(conversationToolCalls)
-        .set(expiredToolCallUpdate(reason))
-        .where(eq(conversationToolCalls.id, toolCallId));
-    }
+    await tx
+      .update(conversationToolCalls)
+      .set(expiredToolCallUpdate(reason))
+      .where(attachedToolCalls({ ...resolution.record, tenant_id: p.tenant_id }));
   });
   return resolution;
 }
