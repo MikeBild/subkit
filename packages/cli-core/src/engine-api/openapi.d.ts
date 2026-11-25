@@ -128,6 +128,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/install.ps1": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public subkit CLI installer for Windows PowerShell, pinned to this engine's version
+         * @description Returns the Windows PowerShell installer with the CLI version pinned to this engine's version. It downloads subkit-windows-x64.exe from this engine's /install files or the GitHub release of the same version, verifies the checksums and installs subkit.exe into the user's local programs folder.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description PowerShell script (text/plain) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/install/skill": {
         parameters: {
             query?: never;

@@ -51076,6 +51076,27 @@
         }
       }
     },
+    "/install.ps1": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "Public subkit CLI installer for Windows PowerShell, pinned to this engine's version",
+        "description": "Returns the Windows PowerShell installer with the CLI version pinned to this engine's version. It downloads subkit-windows-x64.exe from this engine's /install files or the GitHub release of the same version, verifies the checksums and installs subkit.exe into the user's local programs folder.",
+        "responses": {
+          "200": {
+            "description": "PowerShell script (text/plain)",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/install/skill": {
       "get": {
         "tags": [

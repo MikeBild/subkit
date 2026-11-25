@@ -18,7 +18,7 @@ Ein npm-Paket gibt es nicht. Builds gibt es für macOS mit Apple-Chip, Linux (x6
 
 - Die Adresse deiner Engine, ohne Pfad. Die Beispiele nutzen `http://localhost:3000`.
   Für SubKit Cloud siehe „SubKit Cloud nutzen“.
-- Bash und curl.
+- Auf macOS und Linux: Bash und curl. Unter Windows: PowerShell 7.
 - Für die Anmeldung mit API-Schlüssel auf einer selbst betriebenen Engine: Zugriff auf den Engine-Host.
 
 ### Installieren und anmelden
@@ -37,6 +37,20 @@ Ein npm-Paket gibt es nicht. Builds gibt es für macOS mit Apple-Chip, Linux (x6
    ```
 
    Beide legen `subkit` in `~/.local/bin` ab. Mit `SUBKIT_INSTALL_DIR` wählst du einen anderen Ordner, mit `SUBKIT_VERSION` legst du eine Version fest.
+
+   Unter Windows führst du das in PowerShell 7 als du selbst aus, nicht als Administrator:
+
+   ```powershell
+   irm http://localhost:3000/install.ps1 | iex
+   ```
+
+   Hast du keine Engine zur Hand, nimmst du das neueste Release:
+
+   ```powershell
+   irm https://github.com/MikeBild/subkit/releases/latest/download/install.ps1 | iex
+   ```
+
+   Er legt `subkit.exe` in `%LOCALAPPDATA%\Programs\subkit` ab und nimmt den Ordner in deinen Benutzer-`PATH` auf. Öffne danach ein neues Terminal.
 
 2. Melde dich an:
 

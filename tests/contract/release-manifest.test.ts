@@ -100,6 +100,7 @@ describe("release manifest workflow", () => {
       "docker-compose.yml",
       "subkit.config.example.json",
       "install.sh",
+      "install.ps1",
       "subkit-clipper.zip",
       "LICENSE",
       "THIRD_PARTY_NOTICES.txt",
@@ -108,10 +109,10 @@ describe("release manifest workflow", () => {
     }
     const checksumsStep = steps[checksums]?.run ?? "";
     expect(checksumsStep).toContain(
-      "sha256sum engine_* subkit-darwin-arm64 subkit-linux-arm64 subkit-linux-x64 subkit-windows-x64.exe docker-compose.yml subkit.config.example.json install.sh subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt quality-evidence.tar.gz quality-evidence.json > SHA256SUMS",
+      "sha256sum engine_* subkit-darwin-arm64 subkit-linux-arm64 subkit-linux-x64 subkit-windows-x64.exe docker-compose.yml subkit.config.example.json install.sh install.ps1 subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt quality-evidence.tar.gz quality-evidence.json > SHA256SUMS",
     );
     expect(steps[draft]?.run ?? "").toContain(
-      "assets/docker-compose.yml assets/subkit.config.example.json assets/install.sh assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt",
+      "assets/docker-compose.yml assets/subkit.config.example.json assets/install.sh assets/install.ps1 assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt",
     );
     expect(steps[draft]?.run ?? "").toContain(
       "assets/quality-evidence.tar.gz assets/quality-evidence.json",
@@ -144,6 +145,7 @@ describe("stable download links", () => {
     ["docker-compose.yml", ["README.md", ...docs("run-the-engine")]],
     ["subkit.config.example.json", docs("run-the-engine")],
     ["install.sh", docs("use-the-subkit-cli-on-your-machine")],
+    ["install.ps1", docs("use-the-subkit-cli-on-your-machine")],
     ["subkit-clipper.zip", docs("web-clipper")],
   ];
 
