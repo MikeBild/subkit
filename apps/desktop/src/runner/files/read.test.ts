@@ -19,7 +19,7 @@ import {
   snapshotFor,
   type Tree,
 } from "./files.fixture.ts";
-import { DEFAULT_POLICY } from "./resolve.ts";
+import { DEFAULT_POLICY, probeCaseSensitive } from "./resolve.ts";
 
 let tree: Tree;
 beforeEach(() => {
@@ -103,12 +103,17 @@ describe("files.read_text in workflow mode", () => {
     });
   });
 
-  test("resolves another case on a case-insensitive volume to the canonical path", async () => {
+  test("resolves another case to the canonical path only on a case-insensitive volume", async () => {
     tree.file(join(tree.docs, "Sub", "a.txt"), "case");
+    const caseSensitive = await probeCaseSensitive(tree.docs);
     const { docs, boundary, h } = workflow();
     expect(
       await h.run("files.read_text", { target: inFolder(docs, "SUB/A.TXT"), boundary }),
-    ).toMatchObject({ status: "done", output: { text: "case" } });
+    ).toMatchObject(
+      caseSensitive
+        ? { status: "failed", code: "not_found" }
+        : { status: "done", output: { text: "case" } },
+    );
   });
 
   test("refuses a file with a second hard link", async () => {
