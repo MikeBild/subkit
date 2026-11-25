@@ -6,6 +6,84 @@ import { isCronDue } from "./reconciler.ts";
 const created = new Date("2026-01-01T00:00:00.000Z");
 
 describe("nextScheduleFire", () => {
+  test.each([
+    {
+      timezone: "UTC",
+      input: { business_days_only: true },
+      last: "2026-03-14T00:00:00.000Z",
+      now: "2026-03-14T00:00:01.000Z",
+      expected: "2026-03-16T00:00:00.000Z",
+    },
+    {
+      timezone: "Europe/Berlin",
+      input: { business_days_only: true },
+      last: "2026-03-27T23:00:00.000Z",
+      now: "2026-03-27T23:00:01.000Z",
+      expected: "2026-03-29T22:00:00.000Z",
+    },
+    {
+      timezone: "Asia/Kathmandu",
+      input: { skip_dates: ["2026-03-14", "2026-03-15"] },
+      last: "2026-03-13T18:15:00.000Z",
+      now: "2026-03-13T18:15:01.000Z",
+      expected: "2026-03-15T18:15:00.000Z",
+    },
+  ])(
+    "a second-resolution schedule crosses blocked dates in $timezone",
+    ({ timezone, input, last, now, expected }) => {
+      expect(
+        nextScheduleFire(
+          {
+            cron: "* * * * * *",
+            timezone,
+            input,
+            last_enqueued_at: new Date(last),
+            created_at: created,
+          },
+          new Date(now),
+        ),
+      ).toBe(expected);
+    },
+  );
+
+  test.each<{ input: Parameters<typeof calendarGateSkipReason>[2] }>([
+    { input: { business_days_only: true } },
+    { input: { skip_dates: ["2026-03-14"] } },
+  ])("a missed open Friday run still catches up on a blocked Saturday: $input", ({ input }) => {
+    const now = new Date("2026-03-14T09:00:00.000Z");
+    const last = new Date("2026-03-12T18:00:00.000Z");
+    const fridayDue = new Date("2026-03-13T18:00:00.000Z");
+    const next = nextScheduleFire(
+      {
+        cron: "0 19 * * *",
+        timezone: "Europe/Berlin",
+        input,
+        last_enqueued_at: last,
+        created_at: created,
+      },
+      now,
+    );
+    expect(next).toBe(now.toISOString());
+    expect(calendarGateSkipReason(fridayDue, "Europe/Berlin", input)).toBeNull();
+    expect(isCronDue("0 19 * * *", last, now, "Europe/Berlin")).toBe(true);
+  });
+
+  test("a missed excluded Friday run waits for the next open occurrence", () => {
+    const input = { business_days_only: true, skip_dates: ["2026-03-13"] };
+    const next = nextScheduleFire(
+      {
+        cron: "0 19 * * *",
+        timezone: "Europe/Berlin",
+        input,
+        last_enqueued_at: new Date("2026-03-12T18:00:00.000Z"),
+        created_at: created,
+      },
+      new Date("2026-03-14T09:00:00.000Z"),
+    );
+    expect(next).toBe("2026-03-16T18:00:00.000Z");
+    expect(calendarGateSkipReason(new Date(next ?? ""), "Europe/Berlin", input)).toBeNull();
+  });
+
   test("a cron schedule fires when the reconciler's due check first turns true", () => {
     const now = new Date("2026-03-10T10:20:00.000Z");
     const last = new Date("2026-03-10T10:07:00.000Z");
@@ -53,26 +131,44 @@ describe("nextScheduleFire", () => {
     ).toBe("2026-03-10T10:00:30.000Z");
   });
 
-  test("a business-days schedule on Friday evening next fires when Monday opens, not Saturday", () => {
+  test("a business-days schedule on Friday evening next fires at Monday's cron slot, not Saturday", () => {
     const now = new Date("2026-03-13T19:00:00.000Z");
+    const last = new Date("2026-03-13T18:00:00.000Z");
     const next = nextScheduleFire(
       {
         cron: "0 19 * * *",
         timezone: "Europe/Berlin",
         input: { business_days_only: true },
-        last_enqueued_at: new Date("2026-03-13T18:00:00.000Z"),
+        last_enqueued_at: last,
         created_at: created,
       },
       now,
     );
-    expect(next).toBe("2026-03-15T23:00:00.000Z");
+    expect(next).toBe("2026-03-16T18:00:00.000Z");
     const at = new Date(next ?? "");
     expect(calendarGateSkipReason(at, "Europe/Berlin", { business_days_only: true })).toBeNull();
+    expect(isCronDue("0 19 * * *", last, at, "Europe/Berlin")).toBe(true);
+  });
+
+  test("a skipped date moves the next fire to the next cron occurrence on an open date, not local midnight", () => {
+    const now = new Date("2026-11-24T07:42:00.000Z");
+    const next = nextScheduleFire(
+      {
+        cron: "26,28 13 * * *",
+        timezone: "Asia/Kathmandu",
+        input: { skip_dates: ["2026-11-24"] },
+        last_enqueued_at: new Date("2026-11-24T07:41:00.000Z"),
+        created_at: created,
+      },
+      now,
+    );
+    expect(next).toBe("2026-11-25T07:41:00.000Z");
+    const at = new Date(next ?? "");
+    const dayBefore = new Date("2026-11-24T07:43:00.000Z");
+    expect(isCronDue("26,28 13 * * *", dayBefore, at, "Asia/Kathmandu")).toBe(true);
     expect(
-      calendarGateSkipReason(new Date(at.getTime() - 60_000), "Europe/Berlin", {
-        business_days_only: true,
-      }),
-    ).toBe("weekend");
+      isCronDue("26,28 13 * * *", dayBefore, new Date(at.getTime() - 60_000), "Asia/Kathmandu"),
+    ).toBe(false);
   });
 
   test("gates closed beyond the search bound → null rather than a guess", () => {
