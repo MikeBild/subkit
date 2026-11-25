@@ -1,6 +1,6 @@
 {
-  "id": "982b2492-989f-4750-aa29-701a3589670b",
-  "prevId": "5f3d2c1a-7e4b-4c8d-9a10-2b6e8f0c4d13",
+  "id": "2d8ec565-765c-4dc0-8179-c4f4b5961f17",
+  "prevId": "982b2492-989f-4750-aa29-701a3589670b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -13740,6 +13740,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "cache_reported": {
+          "name": "cache_reported",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
         },
         "latency_ms": {
           "name": "latency_ms",

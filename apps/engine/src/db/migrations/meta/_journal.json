@@ -85,6 +85,13 @@
       "when": 1795598783475,
       "tag": "0011_task_run_conversation_abandoned",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795598783476,
+      "tag": "0012_llm_usage_cache_reported",
+      "breakpoints": true
     }
   ]
 }
