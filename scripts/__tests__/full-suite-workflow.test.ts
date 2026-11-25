@@ -40,7 +40,7 @@ for (const scenario of [
         .split("        run: |\n")[1]
         .split("      - name:")[0]
         .replace(/^ {10}/gm, "");
-      const result = spawnSync("bash", ["-eo", "pipefail", "-c", shardScript], {
+      const result = spawnSync("bash", ["-e", "-c", shardScript], {
         cwd: dir,
         env: {
           ...process.env,

@@ -55,6 +55,7 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
         run: |
+          set -o pipefail
           bun scripts/test-files-isolated.ts --list --shard "$SHARD/8" apps packages scripts | grep -E '\.test\.tsx?$' > shard.txt
           [ -s shard.txt ]
           echo "$(wc -l < shard.txt) test files in shard $SHARD"
