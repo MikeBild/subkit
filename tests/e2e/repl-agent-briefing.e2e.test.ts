@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { conversations } from "../../apps/engine/src/db/schema/conversations.ts";
-import type { ExpectStep } from "./_helpers/pty.ts";
-import { runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
+import { ptyFailureDiagnostic, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
+import { quickStartReady, sendLine } from "./_helpers/pty-steps.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
@@ -15,14 +15,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await shutdown(env);
 }, 30_000);
-
-function typeLine(text: string): ExpectStep[] {
-  return [
-    { kind: "send", text },
-    { kind: "sleep", ms: 100 },
-    { kind: "send", text: "\r" },
-  ];
-}
 
 describe("subkit interactive REPL briefing", () => {
   test.skipIf(SKIP_PTY)(
@@ -38,15 +30,30 @@ describe("subkit interactive REPL briefing", () => {
       try {
         const result = await runPtyScenario(
           [
+            quickStartReady(),
             { kind: "ready" },
-            { kind: "sleep", ms: 1000 },
-            ...typeLine("Please summarize what SubKit can help with."),
-            { kind: "sleep", ms: 1500 },
-            ...typeLine("/clear"),
-            { kind: "sleep", ms: 500 },
-            ...typeLine("Summarize the SubKit context again."),
-            { kind: "sleep", ms: 1500 },
-            ...typeLine("/exit"),
+            sendLine("Please summarize what SubKit can help with."),
+            {
+              kind: "wait-file",
+              file: debugFile,
+              pattern: '"kind":"dialog.turn_end"[^\n]*"input_kind":"prompt"',
+              count: 1,
+            },
+            sendLine("/clear"),
+            {
+              kind: "wait-file",
+              file: debugFile,
+              pattern: '"kind":"dialog.turn_end"[^\n]*"name":"clear"',
+              count: 1,
+            },
+            sendLine("Summarize the SubKit context again."),
+            {
+              kind: "wait-file",
+              file: debugFile,
+              pattern: '"kind":"dialog.turn_end"[^\n]*"input_kind":"prompt"',
+              count: 2,
+            },
+            sendLine("/exit"),
           ],
           {
             persona: env.personas.admin,
@@ -55,7 +62,7 @@ describe("subkit interactive REPL briefing", () => {
             env: { SUBKIT_DEBUG: "1", SUBKIT_DEBUG_FILE: debugFile },
           },
         );
-        expect(result.exitCode).toBe(0);
+        expect(result.exitCode, ptyFailureDiagnostic(result)).toBe(0);
         expect(result.visible).not.toContain("HTTP 500");
         const records = readFileSync(debugFile, "utf8")
           .trim()

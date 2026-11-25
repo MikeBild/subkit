@@ -413,7 +413,7 @@ export function createApp(opts: CreateAppOptions): OpenAPIHono<AppEnv> {
   registerSubscriptionRoutes(app);
   registerToolApprovalRoutes(app);
   registerApprovalRuleRoutes(app);
-  registerNotificationRoutes(app);
+  registerNotificationRoutes(app, { chatRegistry });
   registerEventRoutes(app);
   registerCockpitEventRoutes(app);
   registerRbacRoutes(app);

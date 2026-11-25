@@ -42,6 +42,7 @@ export type ExpectStep =
   | ExpectWaitStep
   | ExpectSendStep
   | ExpectSleepStep
+  | { kind: "wait-file"; file: string; pattern: string; count: number }
   | { kind: "ready" }
   | { kind: "terminate" };
 
@@ -96,6 +97,26 @@ export function buildExpectScript(
       lines.push(`  timeout { error ${tclQuote(`Timed out waiting for ${step.pattern}`)} }`);
       lines.push(`  eof { error ${tclQuote(`Process exited while waiting for ${step.pattern}`)} }`);
       lines.push("}");
+      continue;
+    }
+    if (step.kind === "wait-file") {
+      lines.push(`set eventFile ${tclQuote(step.file)}`);
+      lines.push("set deadline [expr {[clock milliseconds] + 20000}]");
+      lines.push("set matched 0");
+      lines.push("while {[clock milliseconds] < $deadline} {");
+      lines.push("  if {[file exists $eventFile]} {");
+      lines.push("    set channel [open $eventFile r]");
+      lines.push("    set events [read $channel]");
+      lines.push("    close $channel");
+      lines.push(
+        `    if {[regexp -all -- ${tclRegex(step.pattern)} $events] >= ${step.count}} {set matched 1; break}`,
+      );
+      lines.push("  }");
+      lines.push(
+        '  expect -timeout 1 {\n -re {.+} {}\n timeout {}\n eof {error "Unexpected EOF before file event"}\n }',
+      );
+      lines.push("}");
+      lines.push('if {!$matched} {error "Timed out waiting for file event"}');
       continue;
     }
     if (step.kind === "send") {
