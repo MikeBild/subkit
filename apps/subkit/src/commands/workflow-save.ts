@@ -58,7 +58,7 @@ export async function saveWorkflow(
   try {
     {
       const source = await loadWorkflowSource(client, args);
-      const body = workflowDefinition(source.body);
+      let body = workflowDefinition(source.body);
       const skip = Boolean(args["skip-checks"]);
       const intent = intentFromBody(body);
       intent.action = target.kind === "create" ? "Create" : "Update";
@@ -73,6 +73,10 @@ export async function saveWorkflow(
           process.stderr.write("invalid JSON for --input\n");
           process.exit(1);
         }
+      }
+
+      if (target.kind === "create") {
+        body = workflowDefinition(createBodyFor(source, explicitInput));
       }
 
       if (!skip) {
@@ -151,7 +155,7 @@ export async function saveWorkflow(
       }
 
       const created = await (target.kind === "create"
-        ? client.createWorkflow(workflowDefinition(createBodyFor(source, explicitInput)))
+        ? client.createWorkflow(body)
         : client.updateWorkflow(target.id, body));
       printJson(created);
 
