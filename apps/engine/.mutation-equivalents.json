@@ -517,7 +517,7 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
+      "source_sha256": "c02bb85d623c021136896f98167052f33374a242c081ab0e0677a78f01c0b3ca",
       "location": {
         "end": {
           "column": 97,
@@ -538,7 +538,7 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
+      "source_sha256": "c02bb85d623c021136896f98167052f33374a242c081ab0e0677a78f01c0b3ca",
       "location": {
         "end": {
           "column": 22,
@@ -559,7 +559,7 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
+      "source_sha256": "c02bb85d623c021136896f98167052f33374a242c081ab0e0677a78f01c0b3ca",
       "location": {
         "end": {
           "column": 40,
@@ -580,7 +580,7 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
+      "source_sha256": "c02bb85d623c021136896f98167052f33374a242c081ab0e0677a78f01c0b3ca",
       "location": {
         "end": {
           "column": 47,
@@ -601,7 +601,7 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
+      "source_sha256": "c02bb85d623c021136896f98167052f33374a242c081ab0e0677a78f01c0b3ca",
       "location": {
         "end": {
           "column": 48,
@@ -1819,7 +1819,7 @@
     },
     {
       "file": "apps/engine/src/tasks/core/run-state.ts",
-      "source_sha256": "3ef7458e5a3a85eda451242c5424b4e3cc8d083532667e0734f782bb61a99636",
+      "source_sha256": "3b7400ae1fd4403d5cb0e6dae4c115233b07fa8a4ffc667ae079f3c757695125",
       "location": {
         "start": {
           "line": 57,
@@ -1840,7 +1840,7 @@
     },
     {
       "file": "apps/engine/src/tasks/core/run-state.ts",
-      "source_sha256": "3ef7458e5a3a85eda451242c5424b4e3cc8d083532667e0734f782bb61a99636",
+      "source_sha256": "3b7400ae1fd4403d5cb0e6dae4c115233b07fa8a4ffc667ae079f3c757695125",
       "location": {
         "start": {
           "line": 58,
@@ -1861,14 +1861,14 @@
     },
     {
       "file": "apps/engine/src/tasks/core/schedule.ts",
-      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "source_sha256": "7a5f35eed5b4f7898864e53d80805678f98155c219bbf3d56c33c820b9e5804c",
       "location": {
         "start": {
-          "line": 26,
+          "line": 37,
           "column": 11
         },
         "end": {
-          "line": 28,
+          "line": 39,
           "column": 4
         }
       },
@@ -1882,35 +1882,14 @@
     },
     {
       "file": "apps/engine/src/tasks/core/schedule.ts",
-      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "source_sha256": "7a5f35eed5b4f7898864e53d80805678f98155c219bbf3d56c33c820b9e5804c",
       "location": {
         "start": {
-          "line": 42,
-          "column": 30
-        },
-        "end": {
-          "line": 42,
-          "column": 44
-        }
-      },
-      "mutatorName": "EqualityOperator",
-      "replacement": "gap <= smallest",
-      "original": "gap < smallest",
-      "statusReason": "",
-      "reason": "When gap equals smallest the mutant assigns the same number again. A NaN gap makes both comparisons false.",
-      "independent_review": "Independently reviewed by a separate reviewer agent on 2026-11-20 that was given only the mutant text and asked to disprove equivalence. Verdict: equivalent, by reading.",
-      "status": "Survived"
-    },
-    {
-      "file": "apps/engine/src/tasks/core/schedule.ts",
-      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
-      "location": {
-        "start": {
-          "line": 116,
+          "line": 239,
           "column": 7
         },
         "end": {
-          "line": 116,
+          "line": 239,
           "column": 17
         }
       },
@@ -1924,14 +1903,14 @@
     },
     {
       "file": "apps/engine/src/tasks/core/schedule.ts",
-      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "source_sha256": "7a5f35eed5b4f7898864e53d80805678f98155c219bbf3d56c33c820b9e5804c",
       "location": {
         "start": {
-          "line": 116,
+          "line": 239,
           "column": 7
         },
         "end": {
-          "line": 116,
+          "line": 239,
           "column": 31
         }
       },
@@ -1945,14 +1924,14 @@
     },
     {
       "file": "apps/engine/src/tasks/core/schedule.ts",
-      "source_sha256": "571d4287ddcbd234c4ed81595badadaa39acd13d4e573edc346b84388a1f4919",
+      "source_sha256": "7a5f35eed5b4f7898864e53d80805678f98155c219bbf3d56c33c820b9e5804c",
       "location": {
         "start": {
-          "line": 116,
+          "line": 239,
           "column": 21
         },
         "end": {
-          "line": 116,
+          "line": 239,
           "column": 31
         }
       },
