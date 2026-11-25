@@ -29,7 +29,14 @@ import {
   updateNote,
 } from "../../personal-notes/index.ts";
 import { now } from "../../utils/index.ts";
-import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
+import { requireBrowserSession } from "./browser-session.ts";
+import {
+  defineOperation,
+  isRejection,
+  type OperationScope,
+  type Rejection,
+  reject,
+} from "./index.ts";
 import { INTAKE_WRITE } from "./intake.ts";
 
 const TAGS = ["identity"] as const;
@@ -202,18 +209,12 @@ function reader(scope: OperationScope): NoteOwnerScope | Rejection {
 
 function writer(scope: OperationScope): NoteOwnerScope | Rejection {
   const owner = reader(scope);
-  if (isRejected(owner)) return owner;
-  if (scope.principal?.auth_source?.kind !== "browser_session")
-    return reject.status(
-      403,
-      "human_confirmation_required",
-      "Only the person, signed in to the Cockpit, changes their notes.",
-    );
-  return owner;
-}
-
-function isRejected<T extends object>(value: T | Rejection): value is Rejection {
-  return (value as Rejection).rejected === true;
+  if (isRejection(owner) || !scope.principal) return owner;
+  const signedIn = requireBrowserSession(
+    scope.principal,
+    "Only the person, signed in to the Cockpit, changes their notes.",
+  );
+  return isRejection(signedIn) ? signedIn : owner;
 }
 
 const FAILURES: Record<NoteFailure, () => Rejection> = {
@@ -301,7 +302,7 @@ export const listPersonalNotesOperation = defineOperation<ListInput, NoteView[]>
   effect: "read",
   async handler(scope, input) {
     const owner = reader(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return listNotes(scope.db, owner, input);
   },
   http: {
@@ -328,7 +329,7 @@ export const getPersonalNoteOperation = defineOperation<string, NoteDetail>({
   effect: "read",
   async handler(scope, id) {
     const owner = reader(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return (await getNote(scope.db, owner, id)) ?? reject.notFound("note");
   },
   http: {
@@ -354,7 +355,7 @@ export const updatePersonalNoteOperation = defineOperation<UpdateInput, NoteView
   audit: AuditAction.PERSONAL_NOTE_UPDATED,
   async handler(scope, input) {
     const owner = writer(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return settle(await updateNote(scope.db, owner, input.id, input, new Date(now())));
   },
   http: {
@@ -387,7 +388,7 @@ export const confirmPersonalNoteOperation = defineOperation<string, NoteView>({
   audit: AuditAction.PERSONAL_NOTE_CONFIRMED,
   async handler(scope, id) {
     const owner = writer(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return settle(await confirmNote(scope.db, owner, id, new Date(now())));
   },
   http: {
@@ -410,7 +411,7 @@ export const archivePersonalNoteOperation = defineOperation<string, NoteView>({
   audit: AuditAction.PERSONAL_NOTE_ARCHIVED,
   async handler(scope, id) {
     const owner = writer(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return settle(await archiveNote(scope.db, owner, id, new Date(now())));
   },
   http: {
@@ -433,7 +434,7 @@ export const restorePersonalNoteOperation = defineOperation<string, NoteView>({
   audit: AuditAction.PERSONAL_NOTE_RESTORED,
   async handler(scope, id) {
     const owner = writer(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return settle(await restoreNote(scope.db, owner, id, new Date(now())));
   },
   http: {
@@ -459,7 +460,7 @@ export const forgetPersonalNoteOperation = defineOperation<string, { forgotten: 
   audit: AuditAction.PERSONAL_NOTE_FORGOTTEN,
   async handler(scope, id) {
     const owner = writer(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return settle(await forgetNote(scope.db, owner, id));
   },
   http: {
@@ -492,7 +493,7 @@ export const sharePersonalNoteOperation = defineOperation<
   audit: AuditAction.PERSONAL_NOTE_SHARED,
   async handler(scope, id) {
     const owner = writer(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     const ensurePermission = scope.ensurePermission;
     if (!ensurePermission) return reject.unauthorized();
     await ensurePermission(INTAKE_WRITE);
@@ -546,7 +547,7 @@ export const exportPersonalNotesOperation = defineOperation<
   audit: AuditAction.PERSONAL_NOTE_EXPORTED,
   async handler(scope, labels) {
     const owner = writer(scope);
-    if (isRejected(owner)) return owner;
+    if (isRejection(owner)) return owner;
     return exportNotes(scope.db, owner, labels);
   },
   http: {

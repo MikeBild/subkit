@@ -13,7 +13,7 @@ import { beginTenantWork } from "../../execution/tenant-work.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/self-service.ts";
 import { withContext } from "../../logging/context.ts";
 import { buildServiceMetadata } from "../../observability/service-metadata.ts";
-import { HttpError, UnauthorizedError } from "../errors.ts";
+import { UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 import { cockpitInstallationRefusalFor } from "./cockpit-installation.ts";
 
@@ -133,9 +133,4 @@ export function requireAuth(c: {
     throw new UnauthorizedError();
   }
   return principal;
-}
-
-export function requireSignedInPerson(principal: ResolvedPrincipal, message: string): void {
-  if (principal.kind !== "user" || principal.auth_source?.kind !== "browser_session")
-    throw new HttpError(403, "human_confirmation_required", message);
 }

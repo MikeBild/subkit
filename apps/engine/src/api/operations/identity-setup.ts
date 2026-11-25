@@ -27,7 +27,13 @@ import { writeSpendLimit } from "../../llm/accounting/spend-settings.ts";
 import { invalidateAttention } from "../../operator/attention.ts";
 import { SPEND_ADMIN_PERMISSION } from "../../operator/spend-attention.ts";
 import { principalHolds } from "../../rbac/evaluator.ts";
-import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
+import {
+  defineOperation,
+  isRejection,
+  type OperationScope,
+  type Rejection,
+  reject,
+} from "./index.ts";
 import { spendView } from "./spend-limit.ts";
 
 const TAGS = ["identity"] as const;
@@ -247,10 +253,6 @@ function person(scope: OperationScope): ResolvedPrincipal | Rejection {
   return principal;
 }
 
-function isRejected(value: ResolvedPrincipal | Rejection): value is Rejection {
-  return (value as Rejection).rejected === true;
-}
-
 export async function missingApproverPermissions(
   scope: Pick<OperationScope, "db" | "tenant_id">,
   user_id: string,
@@ -381,7 +383,7 @@ export const getSetupOperation = defineOperation<null, SetupResult>({
   effect: "read",
   async handler(scope) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     const setup = await readSetupPreferences(scope.db, {
       tenant_id: scope.tenant_id,
       user_id: principal.id,
@@ -483,7 +485,7 @@ export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
   audit: AuditAction.USER_SETUP_UPDATED,
   async handler(scope, input) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     const prepared = input.approver
       ? await prepareApprover(scope, principal, input.approver)
       : null;

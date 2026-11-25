@@ -3,7 +3,13 @@ import { snoozeAttention, unsnoozeAttention } from "../../attention-snoozes/inde
 import { AuditAction } from "../../audit/index.ts";
 import { ATTENTION_KEY_MAX, SNOOZE_MAX_MS } from "../../operator/index.ts";
 import { now } from "../../utils/index.ts";
-import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
+import {
+  defineOperation,
+  isRejection,
+  type OperationScope,
+  type Rejection,
+  reject,
+} from "./index.ts";
 
 const TAGS = ["operator"] as const;
 export const ATTENTION_SNOOZE_PATH = "/v1/attention/snooze";
@@ -52,10 +58,6 @@ function person(scope: OperationScope): Person | Rejection {
   return principal;
 }
 
-function isRejected(value: Person | Rejection): value is Rejection {
-  return (value as Rejection).rejected === true;
-}
-
 const ERRORS = {
   401: "Unauthorized",
   403: "person_required — only a person snoozes an attention item",
@@ -69,7 +71,7 @@ export const snoozeAttentionOperation = defineOperation<SnoozeInput, SnoozeResul
   audit: AuditAction.ATTENTION_SNOOZED,
   async handler(scope, input) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     const plan = await snoozeAttention(
       scope.db,
       { tenant_id: scope.tenant_id, user_id: principal.id },
@@ -115,7 +117,7 @@ export const unsnoozeAttentionOperation = defineOperation<UnsnoozeInput, SnoozeR
   audit: AuditAction.ATTENTION_UNSNOOZED,
   async handler(scope, input) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     await unsnoozeAttention(
       scope.db,
       { tenant_id: scope.tenant_id, user_id: principal.id },

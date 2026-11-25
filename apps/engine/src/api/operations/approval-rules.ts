@@ -12,9 +12,15 @@ import {
   TOOL_APPROVAL_RULE_STATES,
   type ToolApprovalRuleRow,
 } from "../../db/schema/index.ts";
-import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import { IdParam } from "../common-schemas.ts";
-import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
+import { requireBrowserSession } from "./browser-session.ts";
+import {
+  defineOperation,
+  isRejection,
+  type OperationScope,
+  type Rejection,
+  reject,
+} from "./index.ts";
 
 const TAGS = ["approval-rules"] as const;
 
@@ -122,10 +128,6 @@ function person(scope: OperationScope): ResolvedPrincipal | Rejection {
   return principal;
 }
 
-function isRejected(value: ResolvedPrincipal | Rejection): value is Rejection {
-  return (value as Rejection).rejected === true;
-}
-
 interface ListInput {
   readonly state?: z.infer<typeof RuleStateSchema>;
 }
@@ -137,7 +139,7 @@ export const listApprovalRulesOperation = defineOperation<ListInput, ToolApprova
   effect: "read",
   async handler(scope, { state }) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     return listRules(
       scope.db,
       { tenant_id: scope.tenant_id, user_id: principal.id },
@@ -178,12 +180,13 @@ function decisionOperation(p: {
     audit: p.audit,
     async handler(scope, { id }) {
       const principal = person(scope);
-      if (isRejected(principal)) return principal;
+      if (isRejection(principal)) return principal;
       if (p.decision === "accept" || p.signedIn === true) {
-        requireSignedInPerson(
+        const signedIn = requireBrowserSession(
           principal,
           "a signed-in browser session is required to store an approval rule",
         );
+        if (isRejection(signedIn)) return signedIn;
       }
       const result = await decideRule(
         scope.db,

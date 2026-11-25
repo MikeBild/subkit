@@ -11,7 +11,13 @@ import {
   planPause,
 } from "../../notifications/notification-pause.ts";
 import { now } from "../../utils/clock.ts";
-import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
+import {
+  defineOperation,
+  isRejection,
+  type OperationScope,
+  type Rejection,
+  reject,
+} from "./index.ts";
 
 const TAGS = ["identity"] as const;
 export const NOTIFICATION_PAUSE_PATH = "/v1/identity/me/notification-pause";
@@ -54,10 +60,6 @@ function person(scope: OperationScope): ResolvedPrincipal | Rejection {
   return principal;
 }
 
-function isRejected(value: ResolvedPrincipal | Rejection): value is Rejection {
-  return (value as Rejection).rejected === true;
-}
-
 function body(view: PauseView) {
   return {
     paused: view.paused,
@@ -80,7 +82,7 @@ export const getNotificationPauseOperation = defineOperation<null, PauseView>({
   effect: "read",
   async handler(scope) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     return readNotificationPause(
       scope.db,
       { tenant_id: scope.tenant_id, user_id: principal.id },
@@ -106,7 +108,7 @@ export const pauseNotificationsOperation = defineOperation<PauseInput, PauseView
   audit: AuditAction.USER_NOTIFICATIONS_PAUSED,
   async handler(scope, input) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     const at = new Date(now());
     const plan = planPause(
       input.mode === "until" ? { mode: "until", until: new Date(input.until) } : input,
@@ -154,7 +156,7 @@ export const resumeNotificationsOperation = defineOperation<null, PauseView>({
   audit: AuditAction.USER_NOTIFICATIONS_RESUMED,
   async handler(scope) {
     const principal = person(scope);
-    if (isRejected(principal)) return principal;
+    if (isRejection(principal)) return principal;
     const view = await writeNotificationPause(
       scope.db,
       { tenant_id: scope.tenant_id, user_id: principal.id },

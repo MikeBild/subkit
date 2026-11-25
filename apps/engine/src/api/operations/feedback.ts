@@ -18,10 +18,10 @@ import {
   type SubmittedFeedback,
   submitFeedback,
 } from "../../feedback/index.ts";
-import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import { now } from "../../utils/clock.ts";
 import { ErrorSchema } from "../common-schemas.ts";
-import { defineOperation, type Rejection, reject } from "./index.ts";
+import { requireBrowserSession } from "./browser-session.ts";
+import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
 
 export const FEEDBACK_PATH = "/v1/feedback";
 export const FEEDBACK_TAGS = ["feedback"] as const;
@@ -200,7 +200,11 @@ export const submitFeedbackOperation = defineOperation<SubmitFeedbackInput, Subm
   async handler(scope, body) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    requireSignedInPerson(principal, "a signed-in person is required to send feedback");
+    const signedIn = requireBrowserSession(
+      principal,
+      "a signed-in person is required to send feedback",
+    );
+    if (isRejection(signedIn)) return signedIn;
     const actor = actorOf(principal);
     if (body.client_request_id) {
       try {

@@ -1,7 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import {
   approvalFailureOf,
   approveSkillCandidate,
@@ -19,7 +18,8 @@ import {
   SkillCandidateStatusSchema,
 } from "../../skill-candidates/types.ts";
 import { IdParam } from "../common-schemas.ts";
-import { defineOperation, reject } from "./index.ts";
+import { requireBrowserSession } from "./browser-session.ts";
+import { defineOperation, isRejection, reject } from "./index.ts";
 
 const SkillCandidateListResponse = z
   .object({
@@ -281,7 +281,11 @@ export const approveSkillCandidatesOperation = defineOperation<BatchInput, Appro
   async handler(scope, { candidates }) {
     const ensurePermission = scope.ensurePermission;
     if (!scope.principal || !ensurePermission) return reject.unauthorized();
-    requireSignedInPerson(scope.principal, "a signed-in person must approve skill candidates");
+    const signedIn = requireBrowserSession(
+      scope.principal,
+      "a signed-in person must approve skill candidates",
+    );
+    if (isRejection(signedIn)) return signedIn;
     for (const candidate of candidates)
       await ensurePermission("skill:write", { type: "skill_candidate", id: candidate.id });
     const results: ApprovalResult[] = [];

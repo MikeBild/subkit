@@ -4,7 +4,6 @@ import { type Actor, actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolContext, ToolResult } from "../../conversations/tools/index.ts";
-import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import {
   createIntakeItem,
   deleteDiscardedIntakeItem,
@@ -31,6 +30,7 @@ import type {
 import { principalHolds } from "../../rbac/evaluator.ts";
 import { CategorySchema } from "../catalog-metadata.ts";
 import { IdParam } from "../common-schemas.ts";
+import { requireBrowserSession } from "./browser-session.ts";
 import {
   defineOperation,
   isRejection,
@@ -824,10 +824,11 @@ export const deleteIntakeItemOperation = defineOperation<
   async handler(scope, { id, body }) {
     const caller = intakeCaller(scope);
     if (isRejection(caller)) return caller;
-    requireSignedInPerson(
+    const signedIn = requireBrowserSession(
       caller.principal,
       "a signed-in person must permanently delete discarded intake items",
     );
+    if (isRejection(signedIn)) return signedIn;
     try {
       const deleted = await deleteDiscardedIntakeItem(
         { tenant_id: scope.tenant_id, actor: caller.actor, id, ...body },

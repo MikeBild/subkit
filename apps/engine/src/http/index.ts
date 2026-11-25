@@ -14,7 +14,7 @@ export {
   slackDecisionCopy,
 } from "./i18n/slack-decisions.ts";
 export { engineServeOptions } from "./listen-hostname.ts";
-export { requireAuth, requireSignedInPerson } from "./middleware/auth.ts";
+export { requireAuth } from "./middleware/auth.ts";
 export { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
 export { enforce } from "./middleware/policy.ts";
 export {

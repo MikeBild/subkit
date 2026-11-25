@@ -2,7 +2,6 @@ import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { ToolContext, ToolResult } from "../../conversations/tools/index.ts";
-import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import { getKnowledgeSource } from "../../knowledge/catalog.ts";
 import {
   confirmIntakeProposal,
@@ -17,6 +16,7 @@ import { IntakeNotFoundError } from "../../knowledge/intake-errors.ts";
 import type { IntakeProposalView } from "../../knowledge/intake-types.ts";
 import { IdParam } from "../common-schemas.ts";
 import { IntakeProposalTargetSchema } from "../intake-schemas.ts";
+import { requireBrowserSession } from "./browser-session.ts";
 import { defineOperation, isRejection, type Rejection, reject } from "./index.ts";
 import {
   INTAKE_READ,
@@ -454,10 +454,11 @@ export const confirmIntakeProposalOperation = defineOperation<
   async handler(scope, { id, body }) {
     const caller = intakeCaller(scope);
     if (isRejection(caller)) return caller;
-    requireSignedInPerson(
+    const signedIn = requireBrowserSession(
       caller.principal,
       "a signed-in person must confirm the admission in the review",
     );
+    if (isRejection(signedIn)) return signedIn;
     const ensure = scope.ensurePermission;
     if (!ensure) throw new Error("intake.confirm_proposal needs a permission check in its scope");
     try {

@@ -9,14 +9,15 @@ import {
   WorkflowReviewError,
 } from "../../conversations/public/tool-contract.ts";
 import { HttpError } from "../../http/errors.ts";
-import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import {
   FinalizeWorkflowReviewSchema,
   PrepareWorkflowReviewSchema,
   WorkflowReviewReceiptSchema,
 } from "../../workflows/review-receipt.ts";
+import { requireBrowserSession } from "./browser-session.ts";
 import {
   defineOperation,
+  isRejection,
   type OperationScope,
   type Rejection,
   type RejectionStatus,
@@ -65,7 +66,11 @@ async function browserHuman(
   const principal = scope.principal;
   const request = scope.request;
   if (!principal || !request) return reject.unauthorized();
-  requireSignedInPerson(principal, "a signed-in browser session is required to review a workflow");
+  const signedIn = requireBrowserSession(
+    principal,
+    "a signed-in browser session is required to review a workflow",
+  );
+  if (isRejection(signedIn)) return signedIn;
   const session = await browserSessionForPrincipal(request, principal);
   if (!session) return reject.status(403, "human_session_required", "human session required");
   if (

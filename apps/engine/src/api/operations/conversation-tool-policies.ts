@@ -2,13 +2,13 @@ import type { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import type { ConversationDetail } from "../../conversations/types.ts";
 import type { Db } from "../../db/client.ts";
-import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import {
   ToolPoliciesResponse,
   ToolPoliciesSchema,
 } from "../../http/routes/conversations/schemas.ts";
 import { IdParam } from "../common-schemas.ts";
-import { defineOperation, reject } from "./index.ts";
+import { requireBrowserSession } from "./browser-session.ts";
+import { defineOperation, isRejection, reject } from "./index.ts";
 
 type ToolPolicyMode = "no_confirm" | "confirm_before_execution" | "confirm_after_execution";
 type PoliciesBody = z.infer<typeof ToolPoliciesSchema>;
@@ -109,10 +109,11 @@ export function conversationToolPolicyOperations(svc: ConversationToolPolicyServ
         }
       }
       if (Object.values(body.policies).some((mode) => mode === "no_confirm")) {
-        requireSignedInPerson(
+        const signedIn = requireBrowserSession(
           principal,
           "a signed-in browser session is required to skip confirmation in a conversation",
         );
+        if (isRejection(signedIn)) return signedIn;
       }
       await svc.setToolPolicies(scope.db, scope.tenant_id, id, body.policies, {
         actor_type: principal.kind,
