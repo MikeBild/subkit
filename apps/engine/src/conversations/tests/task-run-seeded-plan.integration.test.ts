@@ -277,6 +277,16 @@ describe("the opt-in check for result questions in other words", () => {
     expect(prompts[0]).toContain(`Goal of the task: ${JSON.stringify(GOAL)}`);
   });
 
+  test("the classifier system requests its own verdict instead of a workflow judgment", async () => {
+    await setConfigKey("llm.result_question_check", true, { tenantId: tenant_id });
+    getMockProvider().generateOverrides.judge = () => ({ asks_for_result: true });
+    await askConfirm(paraphrase);
+    const call = getMockProvider().calls.find((entry) => entry.flow === "judge");
+    expect(call?.system).toContain("asks_for_result");
+    expect(call?.system).not.toContain("{ reason, missing, verdict }");
+    expect(call?.system).not.toContain("workflow output");
+  });
+
   test("switched on, a failing model lets the question through and warns", async () => {
     await setConfigKey("llm.result_question_check", true, { tenantId: tenant_id });
     getMockProvider().generateOverrides.judge = () => {
