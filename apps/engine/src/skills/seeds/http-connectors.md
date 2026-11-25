@@ -302,6 +302,9 @@ below live in the workflow version and can be changed without an engine deploy.
 }
 ```
 
+Cursor paging ends when `cursor_response_path` selects nothing, or when the
+page reports `has_more: false` at its top level (Stripe-style lists).
+
 ### Link (GitHub-style `Link: <…>; rel="next"`)
 
 Use this for APIs that announce the next page in a `Link` response header,
