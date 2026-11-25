@@ -24,13 +24,6 @@ let portalKey: string;
 beforeAll(async () => {
   srv = await createHttpTestServer("conv-attach-perm-asym");
 
-  const [conv] = await srv.db
-    .insert(conversations)
-    .values({ tenant_id: srv.tenantId, status: "active" })
-    .returning();
-  if (!conv) throw new Error("seed conversation");
-  conversation_id = conv.id;
-
   const [portalRole] = await srv.db
     .select({ id: roles.id })
     .from(roles)
@@ -47,6 +40,13 @@ beforeAll(async () => {
     })
     .returning();
   if (!portalUser) throw new Error("seed portal user");
+
+  const [conv] = await srv.db
+    .insert(conversations)
+    .values({ tenant_id: srv.tenantId, status: "active", owner_id: portalUser.id })
+    .returning();
+  if (!conv) throw new Error("seed conversation");
+  conversation_id = conv.id;
 
   const pk = genKey();
   await srv.db.insert(apiKeys).values({
