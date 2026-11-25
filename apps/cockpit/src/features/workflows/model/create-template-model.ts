@@ -1,4 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
+import { pinnableInstallInput } from "@shared/recipe-install-inputs.ts";
 import type { ConnectorSignIn } from "@/features/connectors";
 import {
   definitionKind,
@@ -267,19 +268,54 @@ export function planSolution(
   };
 }
 
+export interface InstallInputField {
+  key: string;
+  label: string;
+}
+
+export function installInputFields(entry: SolutionEntry): InstallInputField[] {
+  const properties = record(record(record(entry.workflow).input_schema).properties);
+  return (entry.install_inputs ?? []).map((key) => {
+    const field = record(properties[key]);
+    const label = [field.title, field.description].find(
+      (text): text is string => typeof text === "string" && text.trim().length > 0,
+    );
+    return { key, label: label ?? key };
+  });
+}
+
+export function installInputProblem(
+  entry: SolutionEntry,
+  values: Readonly<Record<string, string>>,
+): TranslationKey | null {
+  const texts = (entry.install_inputs ?? []).map((key) => (values[key] ?? "").trim());
+  if (texts.some((text) => !text)) return "create.solution.inputMissing";
+  return texts.every((text) => pinnableInstallInput(text) !== null)
+    ? null
+    : "create.solution.inputInvalid";
+}
+
 export function solutionDraftBody(
   entry: SolutionEntry,
   plan: Pick<SolutionPlan, "slug" | "name">,
   mapping: Readonly<Record<string, string>>,
+  values: Readonly<Record<string, string>> = {},
 ): CreateWorkflowDraft {
+  const declared = entry.install_inputs ?? [];
+  const inputs = Object.fromEntries(
+    declared.flatMap((key) => (values[key]?.trim() ? [[key, values[key].trim()]] : [])),
+  );
   return {
     definition: {
       ...record(swapConnectorIds(entry.workflow, mapping)),
       name: plan.name,
       slug: plan.slug,
     } as WorkflowDef,
-
-    recipe: { vertical: SOLUTIONS_VERTICAL, slug: entry.recipe_slug },
+    recipe: {
+      vertical: SOLUTIONS_VERTICAL,
+      slug: entry.recipe_slug,
+      ...(Object.keys(inputs).length > 0 ? { inputs } : {}),
+    },
   };
 }
 

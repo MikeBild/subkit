@@ -4,7 +4,7 @@ export type InstallInputPin =
   | { readonly ok: true; readonly definition: unknown }
   | { readonly ok: false; readonly key: string; readonly message: string };
 
-const pinnable = (value: unknown): string | null => {
+export const pinnableInstallInput = (value: unknown): string | null => {
   const text = typeof value === "number" && Number.isSafeInteger(value) ? String(value) : value;
   return typeof text === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(text) ? text : null;
 };
@@ -24,7 +24,7 @@ export function pinInstallInputs(
 ): InstallInputPin {
   const values = new Map<string, string>();
   for (const key of keys.filter((declared) => Object.hasOwn(inputs, declared))) {
-    const value = pinnable(inputs[key]);
+    const value = pinnableInstallInput(inputs[key]);
     if (value === null) return { ok: false, key, message: `install input ${key} ${PIN_RULE}` };
     values.set(key, value);
   }

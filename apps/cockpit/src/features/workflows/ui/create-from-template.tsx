@@ -39,6 +39,8 @@ import {
   type ConnectorTemplate,
   choiceValue,
   findSolution,
+  installInputFields,
+  installInputProblem,
   joinNames,
   missingConnectors,
   NEW_CONNECTOR,
@@ -56,6 +58,7 @@ import {
   solutionTrigger,
   templateConnectorBody,
 } from "../model/create-template-model";
+import { InstallInputFields } from "./install-input-fields";
 
 type Connector = components["schemas"]["Connector"];
 
@@ -220,6 +223,7 @@ export function useSolutionFlow(
   const [query, setQuery] = useState("");
   const [addresses, setAddresses] = useState<Record<string, string>>({});
   const [choices, setChoices] = useState<Record<string, string>>({});
+  const [inputs, setInputs] = useState<Record<string, string>>({});
   const created = useRef<Record<string, string>>({});
   const pack = useSolutionPack(active);
   const catalog = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
@@ -232,6 +236,7 @@ export function useSolutionFlow(
     setQuery("");
     setAddresses({});
     setChoices({});
+    setInputs({});
     created.current = {};
   };
   const entries = pack.data?.recipes ?? [];
@@ -262,7 +267,7 @@ export function useSolutionFlow(
         }
       }
       const draft = await apiCall("post", "/v1/workflows/drafts", {
-        body: solutionDraftBody(entry, plan, mapping),
+        body: solutionDraftBody(entry, plan, mapping, inputs),
       });
 
       return { draft, title: solutionText(entry, t).title };
@@ -286,7 +291,10 @@ export function useSolutionFlow(
     reset: clear,
     submit: (slug) => {
       const entry = find(slug);
-      const problem = entry ? solutionAddressProblem(addressed(entry), addresses) : null;
+      const problem = entry
+        ? (installInputProblem(entry, inputs) ??
+          solutionAddressProblem(addressed(entry), addresses))
+        : null;
       if (problem) return fail(t(problem));
       create.mutate(slug);
     },
@@ -374,6 +382,11 @@ export function useSolutionFlow(
                   help: t("create.solution.boundaryHelp"),
                 },
               ]}
+            />
+            <InstallInputFields
+              fields={installInputFields(entry)}
+              values={inputs}
+              onChange={(key, value) => setInputs((current) => ({ ...current, [key]: value }))}
             />
             {missingConnectors(entry)
               .filter((connector) => connector.candidates.length > 0)

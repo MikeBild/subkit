@@ -40,7 +40,7 @@ function summarizeStep(step: Record<string, unknown>): StepSummary {
 export const inspectRecipeTool: ConversationTool = {
   name: "inspect_recipe",
   description:
-    "Inspect a recipe in depth before cloning. Returns description, prerequisites, sample_input, expected_output_preview, and a per-step shape summary. Use when the per-turn recipe roster lists 2+ candidates and you need to pick one.",
+    "Inspect a recipe in depth before cloning. Returns description, prerequisites, sample_input, install_inputs, expected_output_preview, and a per-step shape summary. Use when the per-turn recipe roster lists 2+ candidates and you need to pick one.",
   use_case:
     "When the template lists several recipes, inspect their descriptions and step shapes before cloning the matching one.",
   important_notes: [
@@ -97,6 +97,7 @@ export const inspectRecipeTool: ConversationTool = {
         prerequisites: recipe.prerequisites,
         intent_keywords: recipe.intent_keywords,
         sample_input: recipe.sample_input,
+        install_inputs: recipe.install_inputs,
         expected_output_preview: recipe.expected_output_preview,
         required_connectors: recipe.required_connectors,
         version: recipe.version,

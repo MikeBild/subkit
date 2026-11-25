@@ -10,6 +10,8 @@ import {
   choiceValue,
   findSolution,
   freeSlug,
+  installInputFields,
+  installInputProblem,
   joinNames,
   missingConnectors,
   NEW_CONNECTOR,
@@ -70,8 +72,16 @@ function report(gaBound: boolean): SolutionEntry {
       },
     ],
     sample_input: { property_id: "123456789" },
+    install_inputs: ["property_id"],
     workflow: fixtureWorkflow({
       name: "daily-analytics-report",
+      input_schema: {
+        type: "object",
+        properties: {
+          property_id: { type: "string", description: "GA4 property id (digits only)" },
+          recipient: { type: "string" },
+        },
+      },
       trigger: { kind: "schedule", cron: "0 7 * * *", tz: "Europe/Berlin" },
       steps: [
         {
@@ -233,6 +243,45 @@ describe("solution templates: list, detail, create", () => {
       undefined,
       "gggggggg-gggg-4ggg-8ggg-gggggggggggg",
     ]);
+  });
+
+  test("each declared install input becomes a field labelled from the recipe's input schema", () => {
+    expect(installInputFields(report(true))).toEqual([
+      { key: "property_id", label: "GA4 property id (digits only)" },
+    ]);
+    expect(installInputFields({ ...report(true), install_inputs: undefined })).toEqual([]);
+    const untitled = { ...report(true), install_inputs: ["view_id"] };
+    expect(installInputFields(untitled)).toEqual([{ key: "view_id", label: "view_id" }]);
+  });
+
+  test("an install input must be one plain path segment, like the engine pins it", () => {
+    const entry = report(true);
+    expect(installInputProblem(entry, {})).toBe("create.solution.inputMissing");
+    expect(installInputProblem(entry, { property_id: "  " })).toBe("create.solution.inputMissing");
+    expect(installInputProblem(entry, { property_id: "properties/123" })).toBe(
+      "create.solution.inputInvalid",
+    );
+    expect(installInputProblem(entry, { property_id: "123:runReport" })).toBe(
+      "create.solution.inputInvalid",
+    );
+    expect(installInputProblem(entry, { property_id: " 123456789 " })).toBeNull();
+    expect(installInputProblem({ ...entry, install_inputs: [] }, {})).toBeNull();
+  });
+
+  test("the draft sends every declared install input with its recipe origin", () => {
+    const entry = report(true);
+    const plan = planSolution(entry, { choices: {}, created: {}, takenSlugs: new Set() });
+    const body = solutionDraftBody(entry, plan, {}, { property_id: " 123456789 ", other: "x" });
+    expect(body.recipe).toEqual({
+      vertical: "solutions",
+      slug: "daily-analytics-report",
+      inputs: { property_id: "123456789" },
+    });
+    const plain = { ...entry, install_inputs: [] };
+    expect(solutionDraftBody(plain, plan, {}, { property_id: "1" }).recipe).toEqual({
+      vertical: "solutions",
+      slug: "daily-analytics-report",
+    });
   });
 
   test("the same solution twice gives two workflows and reuses the connector made the first time", () => {
