@@ -59,7 +59,7 @@ Beim ersten Start siehst du „Willkommen bei SubKit Desktop“. Dort stehen vie
 - **Neuen Arbeitsbereich anlegen** führt ebenfalls zu „Server verbinden“. Bei der Anmeldung im Browser fragt SubKit dann nach deinem Namen, dem Namen des Arbeitsbereichs, der Zeitzone und dem Schlüssel deines KI-Anbieters. Danach meldest du das Gerät wie gewohnt an. Das geht mit einem Konto, das noch zu keinem Arbeitsbereich gehört, und nur, wenn der Server neue Arbeitsbereiche erlaubt. Sonst sagt der Browser es dir.
 - **Einladungslink verwenden** ist für eine Einladungs-Mail. Füg den ganzen Link unter **Einladungslink** ein und wähle **Einladung öffnen**. Du liest zum Beispiel „Anna hat dich in den Arbeitsbereich ‚Brennwerk‘ eingeladen.“ mit Adresse und Gültigkeit. **Beitreten und anmelden** öffnet die Einladung in deinem Browser, und die App wartet auf die Bestätigung. Tritt im Browser bei. Gleich danach zeigt der Browser „Bei SubKit Desktop anmelden“ (siehe „Im Browser anmelden“, ab Schritt 3). Nach **Anmelden** bist du in der App angemeldet, ohne einen zweiten Schritt in der App.
 
-Ist eine Einladung abgelaufen, zurückgezogen oder schon verwendet, sagt die App das. Bitte die Person, die dich eingeladen hat, um eine neue.
+Ist eine Einladung abgelaufen oder zurückgezogen, sagt die App das. Bitte die Person, die dich eingeladen hat, um eine neue. Auch eine schon verwendete Einladung zeigt die App an. Dein Konto gibt es dann schon: Geh zurück, verbinde den Server und melde dich an.
 
 ### Mit einem Server verbinden
 
@@ -331,7 +331,8 @@ Verlangt der Server eine neuere App, liest du das beim Verbinden. Aktualisiere d
 | „App zu alt“ | Aktualisiere SubKit Desktop. |
 | „Anmeldung nicht unterstützt“ | Aktualisiere den Server oder SubKit Desktop. |
 | „Das ist kein vollständiger Einladungslink.“ | Kopiere den ganzen Link aus der Einladungs-Mail. |
-| „Diese Einladung ist abgelaufen“ oder „Diese Einladung wurde schon verwendet“ | Bitte die Person, die dich eingeladen hat, um eine neue Einladung. |
+| „Diese Einladung ist abgelaufen“ | Bitte die Person, die dich eingeladen hat, um eine neue Einladung. |
+| „Diese Einladung wurde schon verwendet“ | Geh zurück, verbinde den Server und melde dich an. |
 | „Anmeldung abgelaufen, starte sie neu“ | Zwischen **Anmelden** im Browser und der Rückkehr in die App darf höchstens eine Minute liegen. Starte die Anmeldung neu. |
 | „Server hat abgelehnt“ | Starte neu. Bleibt es dabei, prüfe, ob dein Konto im Arbeitsbereich aktiv ist. |
 | „Der Browser ließ sich nicht öffnen“ | Prüfe, ob auf deinem Mac ein Standardbrowser eingerichtet ist. |

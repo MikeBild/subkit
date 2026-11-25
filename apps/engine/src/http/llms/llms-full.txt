@@ -238,7 +238,7 @@ When you reach one, SubKit shows a message. Most of these messages appear in Eng
 
 | What you see | What to do |
 | --- | --- |
-| The invitation link or sign-in does not work | Sign in with the email address the invitation is for. If the link has expired or was already used, ask for a new one. |
+| The invitation link or sign-in does not work | Sign in with the email address the invitation is for. If the link has expired, ask for a new one. If it was already used, your account exists: sign in. |
 | You forgot your password | Upraft Auth sends you an email to reset it. |
 | You want to use a different account | Follow “Switch accounts”. |
 | You are signed out unexpectedly | Your session ended after 8 hours of inactivity or 24 hours. Sign in again. |
@@ -3696,7 +3696,7 @@ On the first start you see “Welcome to SubKit Desktop”. It names four things
 - **Create a new workspace** also leads to “Connect server”. When you sign in in the browser, SubKit then asks for your name, the name of the workspace, the time zone and the key of your AI provider. After that you sign the device in as usual. This works with an account that does not belong to a workspace yet, and only when the server allows new workspaces. Otherwise the browser tells you.
 - **Use an invitation link** is for an invitation email. Paste the whole link under **Invitation link** and select **Open invitation**. You read, for example, “Anna invited you to the workspace ‘Brennwerk’.” with the address and the validity. **Join and sign in** opens the invitation in your browser, and the app waits for the confirmation. Join in the browser. Right after that, the browser shows “Sign in to SubKit Desktop” (see “Sign in in the browser”, from step 3). After **Sign in** you are signed in to the app, without a second step in the app.
 
-An invitation that has expired, was withdrawn or was already used says so. Ask the person who invited you for a new one.
+An invitation that has expired or was withdrawn says so. Ask the person who invited you for a new one. An invitation that was already used says so too. Your account already exists, so go back, connect the server and sign in.
 
 ### Connect to a server
 
@@ -3968,7 +3968,8 @@ When the server requires a newer app, you read it while connecting. Update SubKi
 | “App too old” | Update SubKit Desktop. |
 | “Sign-in not supported” | Update the server or SubKit Desktop. |
 | “This isn’t a complete invitation link.” | Copy the whole link from the invitation email. |
-| “This invitation has expired” or “This invitation was already used” | Ask the person who invited you for a new invitation. |
+| “This invitation has expired” | Ask the person who invited you for a new invitation. |
+| “This invitation was already used” | Go back, connect the server and sign in. |
 | “Sign-in expired, start it again” | At most one minute may pass between **Sign in** in the browser and the return to the app. Start the sign-in again. |
 | “The server declined” | Start again. If it stays that way, check that your account is active in the workspace. |
 | “The browser couldn’t be opened” | Check that a default browser is set up on your Mac. |

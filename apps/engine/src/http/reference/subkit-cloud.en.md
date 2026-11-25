@@ -206,7 +206,7 @@ When you reach one, SubKit shows a message. Most of these messages appear in Eng
 
 | What you see | What to do |
 | --- | --- |
-| The invitation link or sign-in does not work | Sign in with the email address the invitation is for. If the link has expired or was already used, ask for a new one. |
+| The invitation link or sign-in does not work | Sign in with the email address the invitation is for. If the link has expired, ask for a new one. If it was already used, your account exists: sign in. |
 | You forgot your password | Upraft Auth sends you an email to reset it. |
 | You want to use a different account | Follow “Switch accounts”. |
 | You are signed out unexpectedly | Your session ended after 8 hours of inactivity or 24 hours. Sign in again. |
