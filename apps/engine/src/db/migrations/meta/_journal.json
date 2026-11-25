@@ -78,6 +78,13 @@
       "when": 1795413354483,
       "tag": "0010_tenant_row_security_force",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795598783475,
+      "tag": "0011_task_run_conversation_abandoned",
+      "breakpoints": true
     }
   ]
 }

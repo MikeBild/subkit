@@ -1,0 +1,2 @@
+ALTER TABLE "task_runs" DROP CONSTRAINT "task_runs_waiting_reason_check";--> statement-breakpoint
+ALTER TABLE "task_runs" ADD CONSTRAINT "task_runs_waiting_reason_check" CHECK ("task_runs"."waiting_reason" IS NULL OR "task_runs"."waiting_reason" IN ('question', 'approval', 'no_progress', 'budget', 'question_expired', 'ai_access', 'turn_stopped', 'conversation_abandoned'));

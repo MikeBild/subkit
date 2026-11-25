@@ -33816,6 +33816,7 @@
               "question_expired",
               "ai_access",
               "turn_stopped",
+              "conversation_abandoned",
               null
             ]
           },
@@ -34380,6 +34381,7 @@
               "question_expired",
               "ai_access",
               "turn_stopped",
+              "conversation_abandoned",
               null
             ]
           },
@@ -34711,6 +34713,7 @@
               "question_expired",
               "ai_access",
               "turn_stopped",
+              "conversation_abandoned",
               null
             ]
           },

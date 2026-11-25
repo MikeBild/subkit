@@ -192,6 +192,7 @@ describe("tasks schema", () => {
         "question_expired",
         "ai_access",
         "turn_stopped",
+        "conversation_abandoned",
       ].map((v) => `UPDATE subkit.task_runs SET waiting_reason='${v}'`),
       `UPDATE subkit.task_runs SET sleep_reason='${"s".repeat(200)}'`,
     ].map((statement) => `${statement} WHERE id='${runId}'`);

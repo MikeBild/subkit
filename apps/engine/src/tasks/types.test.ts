@@ -186,6 +186,7 @@ describe("closed value sets", () => {
         "question_expired",
         "ai_access",
         "turn_stopped",
+        "conversation_abandoned",
       ],
       "deadline",
     ],

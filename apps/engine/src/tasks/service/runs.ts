@@ -12,6 +12,7 @@ import {
   TASK_TURN_STOPPED,
   type TaskRunDecision,
   type TaskRunObservation,
+  taskRunHeldForPerson,
   taskRunIsOpen,
 } from "../core/run-state.ts";
 import type { TaskRun } from "../types.ts";
@@ -318,6 +319,7 @@ export async function recordRunObservation(
     if (outdated) return { run: rowToTaskRun(outdated), changed: true, enqueue: false };
     const settled = run.state === "result_ready";
     if (!taskRunIsOpen(run.state) && !settled) return unchanged;
+    if (taskRunHeldForPerson(run)) return unchanged;
     if (observation.turn_id !== null && observation.turn_id === run.last_seen_turn_id)
       return unchanged;
     const at = deps.now();

@@ -37738,7 +37738,7 @@ export interface components {
             /** @enum {string} */
             state: "running" | "waiting" | "sleeping" | "result_ready" | "completed" | "aborted" | "failed";
             /** @enum {string|null} */
-            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | null;
+            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | "conversation_abandoned" | null;
             /** Format: date-time */
             next_check_at: string | null;
             /** Format: date-time */
@@ -37886,7 +37886,7 @@ export interface components {
             /** @enum {string} */
             state: "running" | "waiting" | "sleeping" | "result_ready" | "completed" | "aborted" | "failed";
             /** @enum {string|null} */
-            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | null;
+            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | "conversation_abandoned" | null;
             /** Format: date-time */
             next_check_at: string | null;
             sleep_reason: string | null;
@@ -37960,7 +37960,7 @@ export interface components {
             /** @enum {string} */
             state: "running" | "waiting" | "sleeping" | "result_ready" | "completed" | "aborted" | "failed";
             /** @enum {string|null} */
-            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | null;
+            waiting_reason: "question" | "approval" | "no_progress" | "budget" | "question_expired" | "ai_access" | "turn_stopped" | "conversation_abandoned" | null;
             /** Format: date-time */
             next_check_at: string | null;
             sleep_reason: string | null;

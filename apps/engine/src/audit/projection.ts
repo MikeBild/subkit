@@ -137,6 +137,7 @@ const SAFE_REASONS = new Set([
   "question_expired",
   "ai_access",
   "turn_stopped",
+  "conversation_abandoned",
   ...DEVICE_REFUSALS,
   ...DEVICE_LOSS_CODES,
   ...LOCAL_SOURCE_REFUSALS,
@@ -189,6 +190,7 @@ export const TASK_DETAIL_VOCABULARY = {
     "question_expired",
     "ai_access",
     "turn_stopped",
+    "conversation_abandoned",
   ],
   admission_reasons: [
     "grant_required",

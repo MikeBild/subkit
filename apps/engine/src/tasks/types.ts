@@ -34,6 +34,7 @@ export const TASK_RUN_WAITING_REASONS = [
   "question_expired",
   "ai_access",
   "turn_stopped",
+  "conversation_abandoned",
 ] as const;
 export const TASK_ADMISSION_REASONS = [
   "grant_required",

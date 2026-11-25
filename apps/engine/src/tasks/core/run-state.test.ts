@@ -241,7 +241,6 @@ describe("decideTaskRunState", () => {
     for (const conversation_status of ["awaiting_input", "committed"] as const)
       expect(decide({ conversation_status }).state).toBe("running");
   });
-
   const tampered: Array<[string, TaskPlaybookFacts | null]> = [
     ["no readable playbook", null],
     ["plan no longer intact", playbook({ intact: false })],

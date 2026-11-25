@@ -62,6 +62,7 @@ const WAITING_WORDS: Record<NonNullable<TaskRun["waiting_reason"]>, string> = {
   question_expired: "its question expired",
   ai_access: "AI access is missing",
   turn_stopped: "it was stopped and waits for you",
+  conversation_abandoned: "its conversation was abandoned",
 };
 
 const AUTOMATIC_WAIT_LINES: Partial<Record<NonNullable<TaskRun["waiting_reason"]>, string>> = {

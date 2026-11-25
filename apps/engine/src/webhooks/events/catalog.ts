@@ -98,6 +98,7 @@ const TaskRunWaiting = z.object({
     "question_expired",
     "ai_access",
     "turn_stopped",
+    "conversation_abandoned",
   ]),
 });
 

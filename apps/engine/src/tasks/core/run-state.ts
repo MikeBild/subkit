@@ -5,6 +5,7 @@ import { taskRunProgress } from "./progress.ts";
 
 export const TASK_NO_PROGRESS_LIMIT = 2;
 export const TASK_TURN_STOPPED = "turn_stopped";
+export const TASK_CONVERSATION_ABANDONED = "conversation_abandoned";
 export const TASK_TURN_FAILURES_BEFORE_THE_MODEL: readonly string[] = [
   "llm_spend_limit_reached",
   "ai_access_missing",
@@ -131,6 +132,11 @@ export function decideTaskRunState(
     settle("sleeping", { next_check_at: within(at, now, run.deadline_at), sleep_reason });
   const rejected = observation.result_rejected || revision === run.rejected_playbook_revision;
   if (
+    observation.conversation_status === "abandoned" &&
+    failure?.code === TASK_CONVERSATION_ABANDONED
+  )
+    return settle("waiting", { waiting_reason: TASK_CONVERSATION_ABANDONED });
+  if (
     observation.conversation_status === "missing" ||
     observation.conversation_status === "abandoned"
   )
@@ -174,6 +180,13 @@ export function decideTaskRunResume(
   const limit = taskRunLimitCode(run, limits, now);
   if (limit) return { resume: false, failure_code: limit };
   return { resume: true, no_progress_count: run.state === "waiting" ? 0 : run.no_progress_count };
+}
+
+export function taskRunHeldForPerson(run: {
+  state: TaskRunState;
+  waiting_reason: TaskRunWaitingReason | null;
+}): boolean {
+  return run.state === "waiting" && run.waiting_reason === TASK_CONVERSATION_ABANDONED;
 }
 
 export function taskRunIsOpen(state: TaskRunState): boolean {

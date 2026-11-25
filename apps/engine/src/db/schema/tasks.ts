@@ -124,6 +124,7 @@ export const taskRuns = pgTable(
       | "question_expired"
       | "ai_access"
       | "turn_stopped"
+      | "conversation_abandoned"
     >(),
     next_check_at: timestamp("next_check_at", { withTimezone: true }),
     sleep_reason: text("sleep_reason"),
@@ -165,7 +166,7 @@ export const taskRuns = pgTable(
     ),
     check(
       "task_runs_waiting_reason_check",
-      sql`${t.waiting_reason} IS NULL OR ${t.waiting_reason} IN ('question', 'approval', 'no_progress', 'budget', 'question_expired', 'ai_access', 'turn_stopped')`,
+      sql`${t.waiting_reason} IS NULL OR ${t.waiting_reason} IN ('question', 'approval', 'no_progress', 'budget', 'question_expired', 'ai_access', 'turn_stopped', 'conversation_abandoned')`,
     ),
     check(
       "task_runs_sleep_reason_check",
