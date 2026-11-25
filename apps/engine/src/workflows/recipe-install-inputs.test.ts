@@ -141,6 +141,21 @@ describe("install-time inputs pinned into recipe request paths (#519)", () => {
     ]);
   });
 
+  test("host arrays cannot leave scalar request destinations unpinned", () => {
+    expect(
+      pinInstallInputs(analytics().workflow, ["property_id"], {
+        property_id: ["example.com"],
+      }),
+    ).toMatchObject({ ok: false, key: "property_id" });
+    for (const field of ["path", "url"]) {
+      expect(
+        pinInstallInputs({ steps: [{ kind: "request", [field]: "${input.target}" }] }, ["target"], {
+          target: ["example.com"],
+        }),
+      ).toMatchObject({ ok: false, key: "target" });
+    }
+  });
+
   test("a value that is not one plain path segment is refused, never spliced", () => {
     for (const property_id of ["1/../2", "", "12 34", "a%2F", "${input.other}", { id: 1 }]) {
       expect(
@@ -214,6 +229,26 @@ describe("install-time allowed hosts pinned into web-scraper boundaries (#859)",
     expect(outcomes.map((outcome) => outcome.boundary?.max_calls)).toEqual([1, 1000]);
   });
 
+  test("an input used for both a host boundary and a scalar destination is refused", () => {
+    for (const allowed_hosts of [["example.com"], "example"]) {
+      expect(
+        pinInstallInputs(
+          {
+            steps: [
+              {
+                kind: "request",
+                url: "https://${input.allowed_hosts}/page",
+                boundary: { allowed_hosts: "${input.allowed_hosts}" },
+              },
+            ],
+          },
+          ["allowed_hosts"],
+          { allowed_hosts },
+        ),
+      ).toMatchObject({ ok: false, key: "allowed_hosts" });
+    }
+  });
+
   test("without the install input the gate refuses the unpinned host list", async () => {
     const recipe = scraper("fetch-url-as-markdown");
     const unpinned = pinInstallInputs(recipe.workflow, recipe.install_inputs, {});
@@ -233,6 +268,7 @@ describe("install-time allowed hosts pinned into web-scraper boundaries (#859)",
       [],
       ["example.com", 7],
       "example.com",
+      "localhost",
     ])
       expect(
         pinInstallInputs(recipe.workflow, recipe.install_inputs, { allowed_hosts }),

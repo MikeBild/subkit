@@ -97,6 +97,7 @@ export function pinInstallInputs(
   inputDefinition: unknown = definition,
 ): InstallInputPin {
   const mailboxKeys = new Set(mailboxInstallInputs(inputDefinition, keys));
+  const requests = stepsOf(definition).filter((step) => step?.kind === "request");
   const paths = new Map<string, string>();
   const senders = new Map<string, string>();
   const lists = new Map<string, string[]>();
@@ -110,12 +111,24 @@ export function pinInstallInputs(
       continue;
     }
     if (!given) continue;
+    const placeholder = `\${input.${key}}`;
+    const hostDestination = requests.some(
+      (step) =>
+        (step.boundary as { allowed_hosts?: unknown } | null)?.allowed_hosts === placeholder,
+    );
+    const scalarDestination = requests.some((step) =>
+      [step.path, step.url].some(
+        (destination) => typeof destination === "string" && destination.includes(placeholder),
+      ),
+    );
     if (Array.isArray(inputs[key])) {
+      if (!hostDestination || scalarDestination) return refused(key, false, PIN_RULE);
       const hosts = canonicalHostList(inputs[key]);
       if (hosts === null) return refused(key, false, ALLOWED_HOST_RULE);
       lists.set(key, hosts);
       continue;
     }
+    if (hostDestination) return refused(key, false, ALLOWED_HOST_RULE);
     const value = pinnableInstallInput(inputs[key]);
     if (value === null) return refused(key, false, PIN_RULE);
     paths.set(key, value);
