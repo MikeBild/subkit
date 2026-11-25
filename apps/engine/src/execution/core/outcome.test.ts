@@ -117,7 +117,10 @@ test("status class is projected only for failed and partial outcomes", () => {
       const result = deriveExecutionOutcome(
         { status, failure: { step_id: "read" }, output_contract: "none" },
         [row("read", "failed", 1)],
-        { ...outcomeFacts, failure: { ...failureFacts, status_class } },
+        {
+          ...outcomeFacts,
+          failure: { ...failureFacts, ...(status_class === undefined ? {} : { status_class }) },
+        },
       );
       if (status !== "running" && status_class) {
         expect(result).toHaveProperty("status_class", status_class);
