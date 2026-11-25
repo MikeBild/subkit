@@ -67,6 +67,7 @@ const agrees = (left: unknown, right: unknown): boolean =>
   left === undefined || right === undefined || isDeepStrictEqual(left, right);
 
 export function asksForSameApproval(open: OpenQuestion, next: OpenQuestion): boolean {
+  if (open.tool_name !== "ask_user_confirm" || next.tool_name !== "ask_user_confirm") return false;
   if (
     record(open.input)?.kind === LOCAL_CONFIRMATION_KIND ||
     record(next.input)?.kind === LOCAL_CONFIRMATION_KIND

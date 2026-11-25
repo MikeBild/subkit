@@ -34,6 +34,32 @@ const oauthCard = (connector_id: string, extra: Record<string, unknown> = {}) =>
 });
 
 describe("conversations/same-approval", () => {
+  test("workflow input forms cannot reuse approval cards or other input forms", () => {
+    const input = {
+      commit_intent: {
+        kind: "run_workflow",
+        payload: { workflow: "publish", environment: "dev" },
+      },
+    };
+    const card = { tool_name: "ask_user_confirm", input };
+    const form = {
+      tool_name: "ask_user_form",
+      input: {
+        ...input,
+        fields: [{ name: "date", type: "text", required: true }],
+      },
+    };
+    expect(asksForSameApproval(card, form)).toBe(false);
+    expect(asksForSameApproval(form, card)).toBe(false);
+    expect(asksForSameApproval(form, form)).toBe(false);
+    expect(
+      asksForSameApproval(form, {
+        ...form,
+        input: { ...input, fields: [{ name: "filename", type: "text", required: true }] },
+      }),
+    ).toBe(false);
+  });
+
   test("names the action from the target, the commit intent or a specific kind", () => {
     expect(approvalAction(saveGate.input)).toEqual({
       name: "save_workflow_draft",
