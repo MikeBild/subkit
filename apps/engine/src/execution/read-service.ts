@@ -209,6 +209,19 @@ const EMPTY_LLM_TOTALS = {
   latency_ms: 0,
 };
 
+export const runCacheReadPct = ({
+  reported_calls,
+  reported_prompt_tokens,
+  cache_read_tokens,
+}: {
+  reported_calls: number;
+  reported_prompt_tokens: number;
+  cache_read_tokens: number;
+}): number | null =>
+  reported_calls > 0 && reported_prompt_tokens > 0
+    ? Math.round((cache_read_tokens / reported_prompt_tokens) * 1000) / 10
+    : null;
+
 export async function loadExecutionCost(
   db: Db,
   principal: ResolvedPrincipal,
@@ -224,6 +237,9 @@ export async function loadExecutionCost(
       completion_tokens: sql<number>`coalesce(sum(${llmUsage.completion_tokens}), 0)::int`,
       cache_read_tokens: sql<number>`coalesce(sum(${llmUsage.cache_read_tokens}), 0)::int`,
       latency_ms: sql<number>`coalesce(sum(${llmUsage.latency_ms}), 0)::int`,
+      reported_calls: sql<number>`(count(*) filter (where ${llmUsage.cache_reported}))::int`,
+      reported_prompt_tokens: sql<number>`coalesce(sum(${llmUsage.prompt_tokens}) filter (where ${llmUsage.cache_reported}), 0)::int`,
+      reported_cache_read_tokens: sql<number>`coalesce(sum(${llmUsage.cache_read_tokens}) filter (where ${llmUsage.cache_reported}), 0)::int`,
     })
     .from(llmUsage)
     .where(
@@ -260,9 +276,16 @@ export async function loadExecutionCost(
     { ...EMPTY_LLM_TOTALS },
   );
 
-  const cache_input = llm.prompt_tokens + llm.cache_read_tokens;
-  const cache_read_pct =
-    cache_input > 0 ? Math.round((llm.cache_read_tokens / cache_input) * 1000) / 10 : 0;
+  const cache_read_pct = runCacheReadPct(
+    llmRows.reduce(
+      (acc, r) => ({
+        reported_calls: acc.reported_calls + Number(r.reported_calls),
+        reported_prompt_tokens: acc.reported_prompt_tokens + Number(r.reported_prompt_tokens),
+        cache_read_tokens: acc.cache_read_tokens + Number(r.reported_cache_read_tokens),
+      }),
+      { reported_calls: 0, reported_prompt_tokens: 0, cache_read_tokens: 0 },
+    ),
+  );
 
   const extRows = await db
     .select({

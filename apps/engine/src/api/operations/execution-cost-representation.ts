@@ -21,7 +21,7 @@ export const ExecutionCost = z
       prompt_tokens: z.number().int(),
       completion_tokens: z.number().int(),
       cache_read_tokens: z.number().int(),
-      cache_read_pct: z.number(),
+      cache_read_pct: z.number().nullable(),
       latency_ms: z.number().int(),
       by_flow: z.array(ExecutionCostPerFlow),
       cost: z

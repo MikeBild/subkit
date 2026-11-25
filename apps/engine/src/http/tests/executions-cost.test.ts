@@ -107,6 +107,7 @@ beforeAll(async () => {
       completion_tokens: 50,
       cache_read_tokens: 100,
       cache_creation_tokens: 0,
+      cache_reported: true,
       total_tokens: 215,
       latency_ms: 300,
       result: "success",
@@ -121,6 +122,7 @@ beforeAll(async () => {
       completion_tokens: 30,
       cache_read_tokens: 0,
       cache_creation_tokens: 0,
+      cache_reported: true,
       total_tokens: 130,
       latency_ms: 200,
       result: "success",
@@ -206,7 +208,7 @@ describe("GET /v1/executions/{id}/cost — happy path", () => {
         prompt_tokens: number;
         completion_tokens: number;
         cache_read_tokens: number;
-        cache_read_pct: number;
+        cache_read_pct: number | null;
         latency_ms: number;
         by_flow: Array<{ flow: string; calls: number; prompt_tokens: number }>;
       };
@@ -228,8 +230,10 @@ describe("GET /v1/executions/{id}/cost — happy path", () => {
   test("cache_read_pct is rounded correctly", async () => {
     const res = await adminFetch(`/v1/executions/${executionId}/cost`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { llm: { cache_read_pct: number; prompt_tokens: number } };
-    expect(body.llm.cache_read_pct).toBeCloseTo(25.0, 1);
+    const body = (await res.json()) as {
+      llm: { cache_read_pct: number | null; prompt_tokens: number };
+    };
+    expect(body.llm.cache_read_pct).toBe(33.3);
   });
 
   test("by_flow breakdown lists each distinct flow", async () => {
@@ -272,11 +276,12 @@ describe("GET /v1/executions/{id}/cost — execution with no llm rows", () => {
     const res = await adminFetch(`/v1/executions/${executionIdNoLlm}/cost`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      llm: { calls: number; weighted_tokens: number };
+      llm: { calls: number; weighted_tokens: number; cache_read_pct: number | null };
       external: { calls: number };
     };
     expect(body.llm.calls).toBe(0);
     expect(body.llm.weighted_tokens).toBe(0);
+    expect(body.llm.cache_read_pct).toBeNull();
     expect(body.external.calls).toBe(0);
   });
 });

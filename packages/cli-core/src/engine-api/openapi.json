@@ -26300,7 +26300,10 @@
                 "type": "integer"
               },
               "cache_read_pct": {
-                "type": "number"
+                "type": [
+                  "number",
+                  "null"
+                ]
               },
               "latency_ms": {
                 "type": "integer"

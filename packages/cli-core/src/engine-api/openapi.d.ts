@@ -36009,7 +36009,7 @@ export interface components {
                 prompt_tokens: number;
                 completion_tokens: number;
                 cache_read_tokens: number;
-                cache_read_pct: number;
+                cache_read_pct: number | null;
                 latency_ms: number;
                 by_flow: components["schemas"]["ExecutionCostPerFlow"][];
                 cost: components["schemas"]["ExecutionCostMoney"];

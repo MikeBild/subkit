@@ -312,7 +312,7 @@ function printExecutionCostCard(cost: ExecutionCost): void {
   if (llm.calls > 0) {
     process.stdout.write(
       `  ${pc.cyan("llm")}      ${formatTokens(llm.weighted_tokens)} weighted` +
-        ` · ${llm.cache_read_pct.toFixed(0)}% cache-read` +
+        (llm.cache_read_pct === null ? "" : ` · ${llm.cache_read_pct.toFixed(0)}% cache-read`) +
         ` · ${llm.calls} call${llm.calls === 1 ? "" : "s"}` +
         ` · ${humanMs(llm.latency_ms)}\n`,
     );
