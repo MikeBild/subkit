@@ -83,6 +83,7 @@ describe("Info.plist of the macOS app", () => {
         "NSDocumentsFolderUsageDescription",
         "NSDownloadsFolderUsageDescription",
         "NSLocalNetworkUsageDescription",
+        "NSMicrophoneUsageDescription",
         "NSNetworkVolumesUsageDescription",
         "NSRemovableVolumesUsageDescription",
       ].sort(),
@@ -177,13 +178,14 @@ describe("bundle identity", () => {
 });
 
 describe("entitlements of the macOS app", () => {
-  test("hardened runtime with the JIT entitlement and nothing more", () => {
+  test("hardened runtime with the JIT and microphone entitlements and nothing more", () => {
     expect(base.mac.hardenedRuntime).toBe(true);
-    expect(base.mac.entitlements).toBe("assets/entitlements.mac.plist");
-    expect(base.mac.entitlementsInherit).toBe("assets/entitlements.mac.plist");
+    expect(base.mac.entitlements).toBe("assets/entitlements.app.mac.plist");
+    expect(base.mac.entitlementsInherit).toBe("assets/entitlements.app.mac.plist");
     const plist = read(join(app, base.mac.entitlements));
     expect(plist.match(/<key>[^<]+<\/key>/g)).toEqual([
       "<key>com.apple.security.cs.allow-jit</key>",
+      "<key>com.apple.security.device.audio-input</key>",
     ]);
   });
 
