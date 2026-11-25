@@ -6546,7 +6546,7 @@ Create a connector from a template slug (--template) or a definition file (--fil
 
 - `--template` (string) — Template slug
 - `--file` (string) — Path to a connector definition JSON file
-- `--credential` (string) — Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `subkit vault attach` after create.
+- `--credential` (string) — Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `subkit vault attach` after create. JSON object with a `mode` and the fields it needs: none→no fields, header→headers, query→query, bearer→token, basic→username+password, aws_sigv4→access_key_id+secret_access_key[+session_token], signed_jwt→private_key. Example: {"mode":"bearer","token":"…"}
 - `--name` (string) — Override connector name (--template only)
 - `--skip-checks` — Skip the checks (NOT recommended).
 - `--json` — JSON-only output (suppresses narration)
@@ -6664,7 +6664,7 @@ Probe a connector's upstream boundary. With an id, probes the saved connector (a
 
 - `<id>` (positional) — Connector id
 - `--file` (string) — Path to a connector definition JSON file — probes it without saving it
-- `--credential` (string) — Path to a credential JSON file. Signs this probe only; never stored. Required when the definition's auth_type is not 'none'.
+- `--credential` (string) — Path to a credential JSON file. Signs this probe only; never stored. Required when the definition's auth_type is not 'none'. JSON object with a `mode` and the fields it needs: none→no fields, header→headers, query→query, bearer→token, basic→username+password, aws_sigv4→access_key_id+secret_access_key[+session_token], signed_jwt→private_key. Example: {"mode":"bearer","token":"…"}
 - `--json` — JSON-only output
 
 #### `subkit connectors promote`
