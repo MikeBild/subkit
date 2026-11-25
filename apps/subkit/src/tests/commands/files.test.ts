@@ -144,6 +144,55 @@ describe("subkit files get", () => {
   });
 });
 
+describe("subkit files catalog fields (#757)", () => {
+  const catalogRow = {
+    ...makeFileRow(),
+    description: "Quarterly revenue report",
+    description_source: "human",
+    category: "finance",
+    category_source: "llm",
+    slug: "q3-report",
+    reference: null,
+    version: 2,
+    replaced_at: NOW,
+    created_by: null,
+    creator: null,
+  };
+
+  const clientReturning = (body: unknown) =>
+    new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async () =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    });
+
+  test("getFile keeps description, category and version", async () => {
+    const result = await clientReturning(catalogRow).getFile(catalogRow.id);
+    expect(result.description).toBe("Quarterly revenue report");
+    expect(result.category).toBe("finance");
+    expect(result.slug).toBe("q3-report");
+    expect(result.version).toBe(2);
+    expect(result.replaced_at).toBe(NOW);
+    expect((result as unknown as Record<string, unknown>).description_source).toBe("human");
+  });
+
+  test("listFiles items keep description and category", async () => {
+    const res = await clientReturning({ items: [catalogRow], next_cursor: null }).listFiles();
+    expect(res.items[0]?.description).toBe("Quarterly revenue report");
+    expect(res.items[0]?.category).toBe("finance");
+  });
+
+  test("rows from engines without catalog fields still parse", async () => {
+    const result = await clientReturning(makeFileRow()).getFile("fid_x");
+    expect(result.description).toBeUndefined();
+  });
+});
+
 describe("subkit files upload — inline path (≤5 MB)", () => {
   test("small file calls uploadInline, returns FileWire", async () => {
     const row = makeFileRow({ size_bytes: 5 });
