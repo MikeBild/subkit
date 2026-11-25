@@ -44,7 +44,9 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
   Fail "PowerShell 7 or newer is needed (winget install Microsoft.PowerShell), you run $($PSVersionTable.PSVersion)"
 }
 if (-not $IsWindows) { Fail "this installer is for Windows; use install.sh on macOS and Linux" }
-if (Test-Elevated) { Fail "run this installer as yourself, not from an administrator shell" }
+if ((Test-Elevated) -and $env:SUBKIT_ALLOW_ELEVATED -ne "1") {
+  Fail "run this installer as yourself, not from an administrator shell"
+}
 $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 if ($architecture -ne [System.Runtime.InteropServices.Architecture]::X64) {
   Fail "there is no subkit build for windows/$architecture"
