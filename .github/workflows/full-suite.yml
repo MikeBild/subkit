@@ -1,0 +1,103 @@
+name: full-suite
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-suite
+  cancel-in-progress: false
+
+env:
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+  TZ: UTC
+  LLM_PROVIDER: mock
+  SKIP_DOCKER: "1"
+  MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
+  DATABASE_URL: postgres://subkit:subkit-test@127.0.0.1:5432/subkit
+  SUBKIT_COVERAGE_OWNED_DATABASE_URL: postgres://subkit:subkit-test@127.0.0.1:5432/subkit
+
+jobs:
+  suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit-test
+          POSTGRES_DB: subkit
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U subkit -d subkit"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.5
+      - name: Install dependencies (retry transient download failures)
+        run: for attempt in 1 2 3; do bun install --frozen-lockfile && exit 0; echo "install attempt $attempt failed, retrying"; sleep 20; done; exit 1
+      - name: Install expect (retry transient apt failures)
+        run: for attempt in 1 2 3; do sudo apt-get update && sudo apt-get install -y expect && exit 0; sleep 20; done; exit 1
+      - run: bun run build assets
+      - run: bun run build subkit --skip-deps
+      - name: Run this shard of every test file, isolated
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          bun scripts/test-files-isolated.ts --list --shard "$SHARD/8" apps packages scripts | grep -E '\.test\.tsx?$' > shard.txt || true
+          echo "$(wc -l < shard.txt) test files in shard $SHARD"
+          : > failed.txt
+          while read -r file; do
+            [ -z "$file" ] && continue
+            bun scripts/test-files-isolated.ts "$file" > run.log 2>&1 || { echo "$file" >> failed.txt; echo "::error file=$file::failed on main"; tail -40 run.log; }
+          done < shard.txt
+          cp failed.txt "failed-$SHARD.txt"
+          [ ! -s failed.txt ]
+      - name: Keep the list of failing files
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: failed-${{ matrix.shard }}
+          path: failed-${{ matrix.shard }}.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  report:
+    needs: suite
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: failed
+      - name: Open or update the nightly full-suite issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          files=$(cat failed/*/failed-*.txt 2>/dev/null | sort -u)
+          title="Full test suite fails on main"
+          existing=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -z "$files" ]; then
+            [ -n "$existing" ] && gh issue close -R "$GITHUB_REPOSITORY" "$existing" --comment "The full suite passed on main ($RUN_URL)."
+            exit 0
+          fi
+          body=$(printf 'The nightly full test suite found failing files on main.\n\nRun: %s\n\n%s\n' "$RUN_URL" "$(echo "$files" | sed 's/^/- `/; s/$/`/')")
+          if [ -n "$existing" ]; then
+            gh issue comment -R "$GITHUB_REPOSITORY" "$existing" --body "$body"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --label bug --body "$body"
+          fi
