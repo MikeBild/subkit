@@ -432,18 +432,9 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
   <sub>Copyright 2026 Mike Bild · <a href="LICENSE">Apache License 2.0</a> · <a href="https://subkit.mikebild.dev/en/contact/">Contact</a><br />Every release ships <code>THIRD_PARTY_NOTICES.txt</code> with the license texts of all bundled components.</sub>
 </p>
 
-## Code signing policy
+## Code signing
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-The Windows builds of SubKit Desktop and the subkit CLI are signed only when they are built from this repository by GitHub Actions. Bundled third-party programs are not signed with this certificate.
-
-| Role | People |
-| --- | --- |
-| Committers and reviewers | [Mike Bild](https://github.com/MikeBild) |
-| Approvers | [Mike Bild](https://github.com/MikeBild) |
-
-Every signing request is approved by hand. Committers and approvers sign in to GitHub and SignPath with multi-factor authentication.
+The macOS app is signed with an Apple Developer ID and notarized. The Windows builds of SubKit Desktop and the subkit CLI are not Authenticode signed yet, so Windows may show an unknown publisher warning. Every release publishes `SHA256SUMS` with an Ed25519 signature; `install.sh`, `install.ps1` and `subkit update` check the files against it before they install anything.
 
 ### Privacy
 
