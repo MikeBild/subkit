@@ -68,6 +68,17 @@ describe("decodePcmWav", () => {
     expect(result.ok && [...result.audio.samples]).toEqual([0.25, -0.5]);
   });
 
+  test("refuses formats other than 16-bit PCM", () => {
+    const eightBit = pcmWav([0, 0], 16000);
+    new DataView(eightBit.buffer).setUint16(34, 8, true);
+    expect(decodePcmWav(eightBit)).toEqual({ ok: false, reason: "unsupported_format" });
+  });
+
+  test("skips other chunks and reports a header without audio as truncated", () => {
+    const headerOnly = pcmWav([], 16000).subarray(0, 36);
+    expect(decodePcmWav(headerOnly)).toEqual({ ok: false, reason: "truncated" });
+  });
+
   test("rejects non-wav and truncated input", () => {
     expect(decodePcmWav(new TextEncoder().encode("OggS-not-a-wav"))).toEqual({
       ok: false,
