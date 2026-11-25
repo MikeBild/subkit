@@ -355,6 +355,37 @@ To keep old apps from signing in to a server they no longer fit, raise
 `server.desktop_min_version` on that server; such an app asks for an update instead of signing
 in.
 
+## Diagnosing a failed self-update
+
+On macOS the app hands the downloaded build to ShipIt, which moves the old bundle away and the
+new one into place. When an update leaves no app behind, or the old version still starts, the
+app log holds the evidence. It is at `~/Library/Logs/SubKit/subkit.log` (rotated as
+`subkit.log.1` and so on).
+
+Lines to look for:
+
+| Line | When | What it says |
+| --- | --- | --- |
+| `update.volumes stage=downloaded` | the update finished downloading | app bundle path, `bundle_dev` and `tmp_dev` (device ids of the bundle and the temp folder), `cross_volume`, free bytes on both. It is a `WARN` when the bundle and the temp folder sit on different volumes. |
+| `update.volumes stage=before_install` | right before the app quits to install | the same fields, taken again |
+| `update.marker` | right before the app quits to install | `expected` (new version) and `from` (running version). The app also writes `update-pending.json` to `~/Library/Application Support/SubKit/`. |
+| `update.result` | first launch after an install attempt | `expected`, `from`, `actual`, `matched`, `bundle_present`. A `WARN` means the old version still runs or the bundle is missing. |
+| `update.shipit` | on that same launch | the ShipIt cache folder `~/Library/Caches/dev.mikebild.subkit.desktop.ShipIt` and whether its files exist |
+| `update.shipit_state` | on that same launch | the keys and values of `ShipItState.plist` |
+| `update.shipit_stderr` | on that same launch | the last 40 lines of `ShipIt_stderr.log`, one log line each |
+| `update.diagnostics_failed` | any of the steps above | a diagnostics step failed; the update itself goes on |
+
+To report a failed update, attach:
+
+1. `subkit.log` and `subkit.log.1` from `~/Library/Logs/SubKit/`.
+2. The whole ShipIt folder `~/Library/Caches/dev.mikebild.subkit.desktop.ShipIt/`
+   (`ShipIt_stderr.log`, `ShipIt_stdout.log`, `ShipItState.plist`), copied before the app starts
+   again.
+3. `ls -la /Applications | grep -i subkit` and `df -P /Applications "$TMPDIR"` from the moment
+   the bundle was missing.
+4. Whether anything killed or restarted processes during the install (a test runner, MDM,
+   a sleep or a log-out).
+
 ## License notices: what the owner should confirm
 
 Every package carries `THIRD_PARTY_NOTICES.txt`, the Electron license and

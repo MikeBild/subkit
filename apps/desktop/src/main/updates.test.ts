@@ -46,7 +46,7 @@ mock.module("electron-updater", () => ({ autoUpdater: updater }));
 mock.module("./channel.ts", () => ({ CHANNEL: { channel: "production" } }));
 mock.module("./app-log.ts", () => ({ appLog: { info: () => {}, warn: () => {} } }));
 
-const { UpdateController } = await import("./updates.ts");
+const { UpdateController, updateDiagnostics } = await import("./updates.ts");
 const { UpdateFlow } = await import("./update-flow.ts");
 
 async function readyController() {
@@ -159,5 +159,45 @@ describe("the update flow offers the restart after the native hand-off", () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(updater.trail).toEqual(["native-check", "prompt"]);
     expect(prompts).toEqual([{ parent }]);
+  });
+});
+
+describe("the update controller records diagnostics around the install", () => {
+  test("reports the last attempt once, logs the download and marks before the install", async () => {
+    const trail: string[] = [];
+    const controller = new UpdateController(
+      { onState: () => {}, onError: () => {} },
+      {
+        previousAttempt: () => trail.push("previous"),
+        downloaded: (version) => trail.push(`downloaded:${version}`),
+        beforeInstall: (version) => trail.push(`before:${version}:${updater.installs}`),
+      },
+    );
+    await controller.start();
+    await controller.start();
+    updater.emit("update-downloaded", { version: "0.5.0" });
+    const installs = updater.installs;
+    expect(controller.restart()).toBe(true);
+    expect(trail).toEqual(["previous", "downloaded:0.5.0", `before:0.5.0:${installs}`]);
+    expect(updater.installs).toBe(installs + 1);
+  });
+
+  test("keeps the update running when a diagnostics step throws", () => {
+    const warnings: string[] = [];
+    const diagnostics = updateDiagnostics(
+      () => {
+        throw new Error("no user data");
+      },
+      undefined,
+      { info: () => {}, warn: (event) => warnings.push(event) },
+    );
+    diagnostics.previousAttempt();
+    diagnostics.downloaded("0.5.0");
+    diagnostics.beforeInstall("0.5.0");
+    expect(warnings).toEqual([
+      "update.diagnostics_failed",
+      "update.diagnostics_failed",
+      "update.diagnostics_failed",
+    ]);
   });
 });
