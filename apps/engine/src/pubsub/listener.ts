@@ -44,6 +44,7 @@ export class PubSubListener {
   private pendingDuringCatchup: Map<OutboxChannel, number[]> = new Map();
   private catchingUp = false;
   private inflight = new Set<Promise<void>>();
+  private channelDrains = new Map<OutboxChannel, Promise<void>>();
   private readonly channels: readonly OutboxChannel[];
   private readonly emitter: PubSubEmitter;
   private readonly listenerId: string;
@@ -83,6 +84,7 @@ export class PubSubListener {
       await Promise.allSettled([...this.inflight]);
       this.inflight.clear();
     }
+    this.channelDrains.clear();
     this.connected = false;
     logger.info({
       module: "pubsub",
@@ -232,13 +234,24 @@ export class PubSubListener {
       this.pendingDuringCatchup.set(channel, arr);
       return;
     }
-    const drain = this.catchUpChannel(channel, id);
+    const drain = this.drainAfter(this.channelDrains.get(channel), channel, id);
+    this.channelDrains.set(channel, drain);
     this.inflight.add(drain);
     try {
       await drain;
     } finally {
       this.inflight.delete(drain);
+      if (this.channelDrains.get(channel) === drain) this.channelDrains.delete(channel);
     }
+  }
+
+  private async drainAfter(
+    previous: Promise<void> | undefined,
+    channel: OutboxChannel,
+    untilId: number,
+  ): Promise<void> {
+    if (previous) await Promise.allSettled([previous]);
+    await this.catchUpChannel(channel, untilId);
   }
 
   private async catchUpChannel(channel: OutboxChannel, untilId?: number): Promise<void> {
