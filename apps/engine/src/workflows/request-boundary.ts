@@ -8,17 +8,37 @@ import {
 } from "@shared/allowed-hosts.ts";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
-import { hasCode, isC0OrDelete } from "../utils/control-chars.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { onlyVaultHandles } from "./core/vault-uses.ts";
 import type { McpBoundaryRefusal } from "./mcp-boundary.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
+import {
+  boundedRequestHeaders,
+  type HeaderBoundaryRefusal,
+  RequestHeaderBoundsSchema,
+  ReviewedHeadersSchema,
+  reviewedHeaderViolation,
+} from "./request-boundary-headers.ts";
 import {
   bodyPagingRefusal,
   describePagedBodyViolation,
   type PagedBodyViolation,
   pagedBodyParts,
 } from "./request-boundary-paging.ts";
+import {
+  CLASS_SAMPLE,
+  expression,
+  isCallerExpression,
+  pathValueAllowed,
+  type RequestVariableRule,
+  rule,
+  ruleLabel,
+  VALUE_CLASSES,
+  type ValueClass,
+  valueAllowed,
+  variablesError,
+  WHOLE_SEGMENT,
+} from "./request-value-rules.ts";
 import type { RequestStep } from "./types.ts";
 
 export {
@@ -27,68 +47,14 @@ export {
   pagedBodyGuard,
 } from "./request-boundary-paging.ts";
 
-const expression = z
-  .string()
-  .regex(/^(?:(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+|caller\.(?:subject|principalId))$/);
-const VARIABLES_KEY_ERROR =
-  "a `variables` key is the placeholder expression without its `${}`, rooted at `input`, " +
-  "`scope` or `item` — for example `scope.window.data.start` or `item.id` — or one of " +
-  "`caller.subject` and `caller.principalId` with the rule `{ caller_bound: true }`. A query " +
-  "parameter's name or a path segment's label is not a key.";
-export const variablesError = (issue: { code?: string }) =>
-  issue.code === "invalid_key" ? VARIABLES_KEY_ERROR : undefined;
-
-const enumValue = z
-  .string()
-  .regex(/^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$/)
-  .refine((value) => {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(value);
-    } catch {
-      return false;
-    }
-    if (decoded.includes("\\") || hasCode(decoded, isC0OrDelete)) return false;
-    return !decoded.split("/").some((part) => part === "." || part === "..");
-  });
-export const VALUE_CLASSES = {
-  identifier: /^[A-Za-z0-9_-]{1,200}$/,
-  long_identifier: /^[A-Za-z0-9_-]{1,1024}$/,
-  uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/,
-  integer: /^(0|[1-9][0-9]{0,18})$/,
-  date: /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/,
-  timestamp: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$/,
-  timestamp_range: /^>=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$/,
-  file_name: /^[A-Za-z0-9_-]{1,200}\.[A-Za-z0-9]{1,16}$/,
-  path: /^(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*(?:\/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*)*$/,
-} as const;
-const MAX_PATH_VALUE = 1024;
-type ValueClass = keyof typeof VALUE_CLASSES;
-const VALUE_CLASS_NAMES = Object.keys(VALUE_CLASSES) as [ValueClass, ...ValueClass[]];
-const CLASS_SAMPLE: Record<ValueClass, string> = {
-  identifier: "a",
-  long_identifier: "a",
-  uuid: "00000000-0000-4000-8000-000000000000",
-  integer: "0",
-  date: "2000-01-01",
-  timestamp: "2000-01-01T00:00:00Z",
-  timestamp_range: ">=2000-01-01T00:00:00Z",
-  file_name: "a.a",
-  path: "a",
-};
-
-const rule = z.union([
-  z.object({ enum: z.array(enumValue).min(1).max(50) }).strict(),
-  z.object({ class: z.enum(VALUE_CLASS_NAMES) }).strict(),
-  z.object({ caller_bound: z.literal(true) }).strict(),
-]);
-export type RequestVariableRule = z.infer<typeof rule>;
-export const VariableExpressionSchema = expression;
-export const RequestVariableRuleSchema = rule;
-
-function isCallerExpression(name: string): boolean {
-  return name.startsWith("caller.");
-}
+export {
+  expression as VariableExpressionSchema,
+  pathValueAllowed,
+  type RequestVariableRule,
+  rule as RequestVariableRuleSchema,
+  VALUE_CLASSES,
+  variablesError,
+} from "./request-value-rules.ts";
 
 export function callerRulesConsistent(variables: Record<string, RequestVariableRule>): boolean {
   return Object.entries(variables).every(
@@ -112,6 +78,7 @@ const allowedHostsPlaceholder = z.string().regex(/^\$\{input\.[A-Za-z_][A-Za-z0-
 export const RequestBoundaryScopeSchema = z
   .object({
     variables: z.record(expression, rule, { error: variablesError }),
+    headers: RequestHeaderBoundsSchema.optional(),
     allowed_hosts: z
       .union([allowedHostList, allowedHostsPlaceholder])
       .optional()
@@ -201,6 +168,7 @@ export const RequestBoundarySchema = z
       .optional(),
     body_encoding: z.literal("multipart").optional(),
     idempotency_key: z.object({ var: expression }).strict().optional(),
+    headers: ReviewedHeadersSchema.optional(),
     segments: z
       .array(z.union([z.string(), z.object({ var: expression }).strict()]))
       .min(2)
@@ -272,7 +240,7 @@ export type RequestBoundaryRefusal =
   | "pagination_param_conflict"
   | "pagination_body_unsupported"
   | "query_placeholder_unsupported"
-  | "runtime_header"
+  | HeaderBoundaryRefusal
   | "runtime_value_outside_path_and_body"
   | "path_unsupported"
   | "partial_segment_placeholder"
@@ -299,7 +267,6 @@ export type RequestBoundaryRefusal =
   | "stricter_profile_applies";
 
 const MASK = "__subkit_var_";
-const WHOLE_SEGMENT = /^\$\{([^}]+)\}$/;
 
 function refuse(refusal: RequestBoundaryRefusal) {
   return { refusal } as const;
@@ -352,38 +319,6 @@ function paginationShape(
   };
 }
 
-function idempotencyHeader(
-  step: RequestStep,
-): { idempotency_key?: { var: string }; refusal?: never } | { refusal: RequestBoundaryRefusal } {
-  let idempotencyKey: { var: string } | undefined;
-  const effectiveHeaders: Record<string, string> =
-    step.idempotency_key !== undefined &&
-    !Object.keys(step.headers ?? {}).some((name) => name.toLowerCase() === "idempotency-key")
-      ? { ...step.headers, "Idempotency-Key": step.idempotency_key }
-      : { ...step.headers };
-  for (const [name, value] of Object.entries(effectiveHeaders)) {
-    if (hasRuntimeValue(name)) return refuse("runtime_header");
-    if (!hasRuntimeValue(value) || onlyVaultHandles(value)) continue;
-    const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
-    if (
-      name.toLowerCase() !== "idempotency-key" ||
-      idempotencyKey ||
-      !whole?.[1] ||
-      whole[1].startsWith("caller.") ||
-      !expression.safeParse(whole[1]).success
-    )
-      return refuse("runtime_header");
-    idempotencyKey = { var: whole[1] };
-  }
-  if (
-    idempotencyKey &&
-    Object.keys(effectiveHeaders).filter((name) => name.toLowerCase() === "idempotency-key")
-      .length !== 1
-  )
-    return refuse("runtime_header");
-  return idempotencyKey ? { idempotency_key: idempotencyKey } : {};
-}
-
 function stepWithoutRuntimeParts(step: RequestStep) {
   const {
     body: _body,
@@ -430,7 +365,7 @@ function compileDestinationBoundary(
     Object.keys(step.query ?? {}).length > 0
   )
     return refuse("runtime_destination_unsupported");
-  const header = idempotencyHeader(step);
+  const header = boundedRequestHeaders(step, scope.data.headers);
   if (header.refusal) return refuse(header.refusal);
   if (hasRuntimeValue(stepWithoutRuntimeParts(step)))
     return refuse("runtime_value_outside_path_and_body");
@@ -448,6 +383,7 @@ function compileDestinationBoundary(
     method,
     destination: { var: destination, hosts },
     ...(header.idempotency_key ? { idempotency_key: header.idempotency_key } : {}),
+    ...(header.headers ? { headers: header.headers } : {}),
     variables: scope.data.variables,
     query: { fixed: {}, variable: [] },
     max_body_bytes: scope.data.max_body_bytes,
@@ -488,7 +424,7 @@ export function compileRequestBoundary(
   }
   variableQuery.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   vaultQuery.sort();
-  const header = idempotencyHeader(step);
+  const header = boundedRequestHeaders(step, step.boundary?.headers);
   if (header.refusal) return refuse(header.refusal);
   const idempotencyKey = header.idempotency_key;
   if (hasRuntimeValue(stepWithoutRuntimeParts(step)))
@@ -610,6 +546,7 @@ export function compileRequestBoundary(
     origin: resolved.origin,
     ...(step.multipart ? { body_encoding: "multipart" as const } : {}),
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+    ...(header.headers ? { headers: header.headers } : {}),
     segments,
     variables: scope.data.variables,
     query: {
@@ -678,32 +615,8 @@ export function variableValueAllowed(
   return valueAllowed(variableRule, value);
 }
 
-function valueAllowed(variableRule: RequestVariableRule | undefined, value: string): boolean {
-  if (!variableRule) return false;
-  if ("enum" in variableRule) return variableRule.enum.includes(value);
-  if ("caller_bound" in variableRule) return VALUE_CLASSES.uuid.test(value);
-  if (variableRule.class === "path") return false;
-  return VALUE_CLASSES[variableRule.class]?.test(value) === true;
-}
-
 function isPathRule(variableRule: RequestVariableRule | undefined): boolean {
   return variableRule !== undefined && "class" in variableRule && variableRule.class === "path";
-}
-
-export function pathValueAllowed(value: string): boolean {
-  if (value.length > MAX_PATH_VALUE) return false;
-  if (value.startsWith("//")) return false;
-  if (!VALUE_CLASSES.path.test(value)) return false;
-  return value.split("/").every((segment) => {
-    if (segment === "." || segment === "..") return false;
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(segment);
-    } catch {
-      return false;
-    }
-    return !decoded.includes("/") && decoded !== "." && decoded !== "..";
-  });
 }
 
 function matchTarget(boundary: RequestBoundary, url: URL): boolean {
@@ -743,13 +656,6 @@ export type TargetVariableIssue = {
   rule: string;
   fits_class?: ValueClass;
 };
-
-function ruleLabel(variableRule: RequestVariableRule | undefined): string {
-  if (!variableRule) return "no rule";
-  if ("enum" in variableRule) return `enum of ${variableRule.enum.length} value(s)`;
-  if ("caller_bound" in variableRule) return "the authenticated caller";
-  return `class ${variableRule.class}`;
-}
 
 function targetVariableIssue(boundary: RequestBoundary, url: URL): TargetVariableIssue | undefined {
   const segments = boundary.segments;
@@ -834,6 +740,7 @@ export type RequestBoundaryViolation =
         | "url_invalid"
         | "idempotency_key";
     }
+  | { kind: "header"; name: string }
   | { kind: "method"; actual: string; reviewed: string }
   | { kind: "target"; reviewed: string; actual: string; variable?: TargetVariableIssue }
   | { kind: "destination"; issue: DestinationHostIssue; actual: string; hosts: string[] }
@@ -865,6 +772,8 @@ export function requestBoundaryViolation(
     )
       return { kind: "idempotency_key" };
   }
+  const header = reviewedHeaderViolation(reviewed.headers, request.headers);
+  if (header !== null) return { kind: "header", name: header };
   const method = request.method.toUpperCase();
   if (method !== reviewed.method)
     return { kind: "method", actual: method, reviewed: reviewed.method };
@@ -936,6 +845,8 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
   switch (violation.kind) {
     case "idempotency_key":
       return "the idempotency key is missing, ambiguous or outside its reviewed value rule";
+    case "header":
+      return `the header \`${violation.name}\` is missing, repeated or outside its reviewed value rule`;
     case "body_size":
       return `the body is ${violation.bytes} bytes but \`boundary.max_body_bytes\` is ${violation.max_body_bytes}`;
     case "target": {

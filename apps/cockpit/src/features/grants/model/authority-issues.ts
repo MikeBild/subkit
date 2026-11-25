@@ -19,6 +19,7 @@ const REFUSAL_KEYS = [
   "path_unsupported",
   "partial_segment_placeholder",
   "runtime_header",
+  "header_boundary_mismatch",
   "runtime_value_outside_path_and_body",
   "query_placeholder_unsupported",
   "pagination_unsupported",

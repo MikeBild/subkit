@@ -306,3 +306,32 @@ test("SQL declarations require a PostgreSQL binding even with a GraphQL-shaped p
     ]);
   }
 });
+
+test("a reviewed boundary stops covering the step once its header boundary changes", () => {
+  const bounded = (rule: Record<string, unknown>) => ({
+    headers: { "Idempotency-Key": "${input.body.workId}" },
+    boundary: {
+      variables: {},
+      headers: { "Idempotency-Key": rule },
+      max_body_bytes: 5000,
+      max_calls: 1,
+    },
+  });
+  const input = fixture(bounded({ class: "identifier" }));
+  const reviewedStep = input.definition.steps[0];
+  if (reviewedStep?.kind !== "request") throw new Error("missing request");
+  const profile = requestBoundary(reviewedStep, "https://example.test");
+  if (!profile) throw new Error("missing request profile");
+  Object.assign(input.bindings[0]!, { boundary: profile, target: requestBoundaryTarget(profile) });
+  expect(compileWorkflowEffectManifest(input).manifest.issues).toEqual([]);
+  const widened = fixture(bounded({ class: "long_identifier" }));
+  Object.assign(widened.bindings[0]!, {
+    boundary: profile,
+    target: requestBoundaryTarget(profile),
+  });
+  expect(compileWorkflowEffectManifest(widened).manifest.issues).toEqual([
+    { step_id: "send", code: "binding_mismatch" },
+    { step_id: "send", code: "dynamic_request" },
+  ]);
+  expect(widened.bindings[0]!.request_digest).not.toBe(input.bindings[0]!.request_digest);
+});
