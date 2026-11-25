@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { conversationLifecycleOperations } from "../../api/operations/conversation-lifecycle.ts";
 import { actorOfPrincipal, type OperationScope } from "../../api/operations/index.ts";
 import * as lifecycle from "../../conversations/public/lifecycle.ts";
-import { conversations, conversationTurns } from "../../db/schema/index.ts";
+import { conversations, conversationTurns, taskRuns } from "../../db/schema/index.ts";
 import { abortTaskRun } from "../../tasks/index.ts";
 import { advanceTaskRun, observePersonTurn } from "../../tasks/run-driver.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
@@ -217,37 +217,55 @@ describe("stopping a task run turn", () => {
     });
   }, 180_000);
 
-  test("stopping a queued person turn waits when the scheduler observes it", async () => {
-    const { w, run } = await freshRun();
-    await clearQueue();
-    const [turn] = await db
-      .insert(conversationTurns)
-      .values({
-        tenant_id: w.tenant_id,
-        conversation_id: run.conversation_id,
-        state: "queued",
-      })
-      .returning({ id: conversationTurns.id });
-    await lifecycle.interruptTaskRunTurn(
-      w.tenant_id,
-      run.conversation_id,
-      w.owner.id,
-      db,
-      "user",
-      w.owner,
-    );
-    const scope = { tenant_id: w.tenant_id, task_run_id: run.id, now: FIXED_NOW };
-    expect(await advanceTaskRun(db, scope)).toBe("observed");
-    expect(await runRow(w, run.id)).toMatchObject({
-      state: "waiting",
-      waiting_reason: "turn_stopped",
-      failure_code: null,
-      last_seen_turn_id: turn?.id,
-    });
-    expect(await queuedJobs(run.id)).toHaveLength(0);
-    expect(await advanceTaskRun(db, scope)).toBe("idle");
-    expect(await queuedJobs(run.id)).toHaveLength(0);
-  }, 180_000);
+  test.each(["running", "sleeping"] as const)(
+    "stopping a queued person turn while %s waits when the scheduler observes it",
+    async (state) => {
+      const { w, run } = await freshRun();
+      await clearQueue();
+      await db
+        .update(taskRuns)
+        .set({
+          state,
+          sleep_reason: state === "sleeping" ? "check_requested" : null,
+          next_check_at: state === "sleeping" ? FIXED_NOW : null,
+        })
+        .where(and(eq(taskRuns.tenant_id, w.tenant_id), eq(taskRuns.id, run.id)));
+      const [turn] = await db
+        .insert(conversationTurns)
+        .values({
+          tenant_id: w.tenant_id,
+          conversation_id: run.conversation_id,
+          state: "queued",
+        })
+        .returning({ id: conversationTurns.id });
+      await lifecycle.interruptTaskRunTurn(
+        w.tenant_id,
+        run.conversation_id,
+        w.owner.id,
+        db,
+        "user",
+        w.owner,
+      );
+      expect(await runRow(w, run.id)).toMatchObject({
+        state: "waiting",
+        waiting_reason: "turn_stopped",
+        sleep_reason: null,
+        next_check_at: null,
+      });
+      const scope = { tenant_id: w.tenant_id, task_run_id: run.id, now: FIXED_NOW };
+      expect(await advanceTaskRun(db, scope)).toBe("observed");
+      expect(await runRow(w, run.id)).toMatchObject({
+        state: "waiting",
+        waiting_reason: "turn_stopped",
+        failure_code: null,
+        last_seen_turn_id: turn?.id,
+      });
+      expect(await queuedJobs(run.id)).toHaveLength(0);
+      expect(await advanceTaskRun(db, scope)).toBe("idle");
+      expect(await queuedJobs(run.id)).toHaveLength(0);
+    },
+    180_000,
+  );
 
   test("stop at the message field of a conversation without an open run is no turn stop", async () => {
     const { w, run } = await freshRun();

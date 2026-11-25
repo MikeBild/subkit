@@ -125,7 +125,7 @@ export async function interruptTaskRunTurn(
     },
     exec,
   );
-  if (run.state === "running") {
+  if (run.state === "running" || run.state === "sleeping") {
     const { observeTaskRun } = await import("../../tasks/run-driver.ts");
     await observeTaskRun(exec, {
       tenant_id,
