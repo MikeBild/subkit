@@ -8327,14 +8327,14 @@ Manage workflows
 
 #### `subkit workflows create`
 
-Create a workflow from a JSON file (--file) or a solution recipe (--from-recipe <slug>, see `subkit connector-templates recipe-pack solutions`). Runs `validate` and `preview` by default; pass --skip-checks to bypass.
+Create a workflow from a JSON file (--file), a solution recipe (--from-recipe <slug>, see `subkit connector-templates recipe-pack solutions`) or a connector template recipe (--from-recipe <template>/<recipe>, see `subkit connector-templates recipes <template>`). Runs `validate` and `preview` by default; pass --skip-checks to bypass.
 
 - `--file` (string) — Path to WorkflowDef JSON
-- `--from-recipe` (string) — Slug of a solution recipe; its connectors are bound to the ones you already have
+- `--from-recipe` (string) — Slug of a solution recipe, or <template>/<recipe> for a connector template recipe; its connectors are bound to the ones you already have
 - `--bind` (string) — With --from-recipe: bind connectors yourself, as <template or placeholder>=<connector id or slug>[,…]; needed for templates without a fixed address such as http
 - `--environment` (string, default: dev) — Where the pre-flight preview runs: dev (default) or prod. Use the environment the workflow's schedule or webhook runs in; writes stay held either way.
 - `--skip-checks` — Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.
-- `--input` (string) — Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input.
+- `--input` (string) — Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input and must carry every install input the recipe declares, such as a host list.
 - `--json` — JSON-only output (suppresses narration)
 
 #### `subkit workflows delete`
@@ -8816,7 +8816,7 @@ Find the connector templates and recipes that ship with SubKit. There are **62 c
 
 A **template** connects a system: base URL, sign-in flow, endpoint schema and a vendor-basics skill. A **recipe** is a complete workflow built on that template. Say what you want in a conversation, and SubKit clones the closest recipe as your first draft.
 
-Some recipes ask for a value when you install them, such as a GA4 property id or, for the web-scraper recipes, `allowed_hosts`: the host names their url may point to. SubKit writes these values into the steps before you approve the workflow, so the approval names them. A web-scraper run then fetches only https addresses on exactly those hosts and stops with `request_host_not_allowed` for any other address.
+Some recipes ask for **install inputs** when you install them, such as a GA4 property id or, for the web-scraper recipes, `allowed_hosts`: the host names their url may point to. SubKit writes these values into the steps before you approve the workflow, so the approval names them. A web-scraper run then fetches only https addresses on exactly those hosts and stops with `request_host_not_allowed` for any other address. Give install inputs in the Cockpit template gallery, in chat, or with `subkit workflows create --from-recipe <template>/<recipe> --input '<json>'`, for example `--from-recipe google-analytics/run-report --input '{"property_id":"123456789"}'`.
 
 ## Connector templates
 

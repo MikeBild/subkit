@@ -42,6 +42,14 @@ export function getSolutionRecipe(slug: string): ConnectorRecipe | null {
   return loadSolutionRecipes().find((recipe) => recipe.slug === slug) ?? null;
 }
 
+export function getTemplateRecipe(template: string, slug: string): ConnectorRecipe | null {
+  return (
+    loadBuiltinTemplates()
+      .find((candidate) => candidate.slug === template)
+      ?.recipes.find((recipe) => recipe.slug === slug) ?? null
+  );
+}
+
 interface RecipePackMembership {
   categories: readonly string[];
   tags: readonly string[];

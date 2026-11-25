@@ -30,6 +30,7 @@ export {
   defaultChoice,
   findSolution,
   freeSlug,
+  hostListValues,
   type InstallInputField,
   installInputFields,
   installInputProblem,
@@ -37,6 +38,7 @@ export {
   missingConnectors,
   NEW_CONNECTOR,
   planSolution,
+  recipeEntryKey,
   SIGN_IN_LABEL,
   SOLUTIONS_VERTICAL,
   type SolutionConnector,
@@ -57,6 +59,7 @@ export {
   templateKeyHeader,
   templateMatches,
   templateNeedsAddress,
+  templateRecipeEntries,
   templateSignIn,
 } from "./create-template-model";
 export { manualWorkflowDefinition, type WorkflowTrigger } from "./create-workflow-model";

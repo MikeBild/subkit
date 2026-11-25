@@ -1,5 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { pinnableInstallInput } from "@shared/recipe-install-inputs.ts";
+import { pinInstallInputs } from "@shared/recipe-install-inputs.ts";
 import type { ConnectorSignIn } from "@/features/connectors";
 import {
   definitionKind,
@@ -223,11 +223,37 @@ export function bindingConnectorId(
   return choice ? choice.connectorId : (binding.connector_id ?? binding.candidates[0]?.id ?? null);
 }
 
-export function findSolution(
-  entries: readonly SolutionEntry[],
-  slug: string,
-): SolutionEntry | null {
-  return entries.find((entry) => entry.recipe_slug === slug) ?? null;
+export const recipeEntryKey = (entry: Pick<SolutionEntry, "template_slug" | "recipe_slug">) =>
+  entry.template_slug ? `${entry.template_slug}/${entry.recipe_slug}` : entry.recipe_slug;
+
+export function findSolution(entries: readonly SolutionEntry[], key: string): SolutionEntry | null {
+  return entries.find((entry) => recipeEntryKey(entry) === key) ?? null;
+}
+
+export function templateRecipeEntries(
+  templates: readonly Pick<ConnectorTemplate, "slug" | "recipes">[],
+): SolutionEntry[] {
+  return templates.flatMap((template) =>
+    template.recipes
+      .filter(
+        (recipe) =>
+          (recipe.install_inputs ?? []).length > 0 &&
+          (recipe.required_connectors ?? []).length === 0,
+      )
+      .map((recipe) => ({
+        template_slug: template.slug,
+        recipe_slug: recipe.slug,
+        title: recipe.title,
+        description: recipe.description,
+        category: recipe.category,
+        tags: recipe.tags,
+        difficulty: recipe.difficulty,
+        connectors: [],
+        install_inputs: recipe.install_inputs,
+        sample_input: recipe.sample_input ?? null,
+        workflow: recipe.workflow as unknown as SolutionEntry["workflow"],
+      })),
+  );
 }
 
 interface SolutionPlan {
@@ -271,6 +297,7 @@ export function planSolution(
 export interface InstallInputField {
   key: string;
   label: string;
+  list: boolean;
 }
 
 export function installInputFields(entry: SolutionEntry): InstallInputField[] {
@@ -280,19 +307,36 @@ export function installInputFields(entry: SolutionEntry): InstallInputField[] {
     const label = [field.title, field.description].find(
       (text): text is string => typeof text === "string" && text.trim().length > 0,
     );
-    return { key, label: label ?? key };
+    return { key, label: label ?? key, list: field.type === "array" };
   });
 }
+
+export const hostListValues = (text: string): string[] =>
+  text
+    .split(/[\s,]+/)
+    .map((host) => host.trim())
+    .filter(Boolean);
+
+const installInputValue = (field: InstallInputField, text: string): string | string[] | null => {
+  const value = field.list ? hostListValues(text) : text.trim();
+  return value.length > 0 ? value : null;
+};
 
 export function installInputProblem(
   entry: SolutionEntry,
   values: Readonly<Record<string, string>>,
 ): TranslationKey | null {
-  const texts = (entry.install_inputs ?? []).map((key) => (values[key] ?? "").trim());
-  if (texts.some((text) => !text)) return "create.solution.inputMissing";
-  return texts.every((text) => pinnableInstallInput(text) !== null)
-    ? null
-    : "create.solution.inputInvalid";
+  const fields = installInputFields(entry);
+  const given = fields.map((field) => ({
+    field,
+    value: installInputValue(field, values[field.key] ?? ""),
+  }));
+  if (given.some(({ value }) => value === null)) return "create.solution.inputMissing";
+  const refused = given.find(
+    ({ field, value }) => !pinInstallInputs({ steps: [] }, [field.key], { [field.key]: value }).ok,
+  );
+  if (!refused) return null;
+  return refused.field.list ? "create.solution.hostsInvalid" : "create.solution.inputInvalid";
 }
 
 export function solutionDraftBody(
@@ -301,21 +345,22 @@ export function solutionDraftBody(
   mapping: Readonly<Record<string, string>>,
   values: Readonly<Record<string, string>> = {},
 ): CreateWorkflowDraft {
-  const declared = entry.install_inputs ?? [];
   const inputs = Object.fromEntries(
-    declared.flatMap((key) => (values[key]?.trim() ? [[key, values[key].trim()]] : [])),
+    installInputFields(entry).flatMap((field) => {
+      const value = installInputValue(field, values[field.key] ?? "");
+      return value === null ? [] : [[field.key, value]];
+    }),
   );
+  const pinned = Object.keys(inputs).length > 0 ? { inputs } : {};
   return {
     definition: {
       ...record(swapConnectorIds(entry.workflow, mapping)),
       name: plan.name,
       slug: plan.slug,
     } as WorkflowDef,
-    recipe: {
-      vertical: SOLUTIONS_VERTICAL,
-      slug: entry.recipe_slug,
-      ...(Object.keys(inputs).length > 0 ? { inputs } : {}),
-    },
+    recipe: entry.template_slug
+      ? { template: entry.template_slug, slug: entry.recipe_slug, ...pinned }
+      : { vertical: SOLUTIONS_VERTICAL, slug: entry.recipe_slug, ...pinned },
   };
 }
 

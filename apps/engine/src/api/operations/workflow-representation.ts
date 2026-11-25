@@ -8,6 +8,7 @@ import {
   workflowTriggerView,
 } from "../../scheduler/trigger-bindings.ts";
 import * as svc from "../../workflows/index.ts";
+import type { RecipeOrigin } from "../../workflows/index.ts";
 import { loadWorkflowBinding, type WorkflowListEntry } from "../../workflows/read-model.ts";
 import {
   checkRecipeOrigin,
@@ -185,10 +186,7 @@ export async function serializeOne(w: svc.WorkflowView, tenantId: string, db: Ex
   return serializeWorkflowDetail(w, await loadWorkflowBinding(tenantId, w.id, db));
 }
 
-export function recipeOriginRejection(
-  origin: { vertical: string; slug: string },
-  definition: unknown,
-): Rejection | null {
+export function recipeOriginRejection(origin: RecipeOrigin, definition: unknown): Rejection | null {
   const check = checkRecipeOrigin(origin, definition);
   return check.ok
     ? null
@@ -196,7 +194,7 @@ export function recipeOriginRejection(
 }
 
 export function pinRecipeInputs<T>(
-  origin: { vertical: string; slug: string; inputs?: Record<string, unknown> | undefined },
+  origin: RecipeOrigin,
   definition: T,
 ):
   | { definition: T; binding_id?: string; rejection?: never }
