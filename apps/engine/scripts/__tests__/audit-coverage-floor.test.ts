@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   aggregateByPrefix,
+  coverageFailureDetail,
   coverageTargetWanted,
   judgeFile,
   parseCoverageTable,
@@ -305,4 +306,45 @@ test("changed subsystem files select their parent without matching adjacent path
   expect(
     coverageTargetWanted("apps/engine/src/rbac/check.ts", ["apps/engine/src/rbac/other.ts"]),
   ).toBe(false);
+});
+
+describe("coverageFailureDetail", () => {
+  const failingBlock = [
+    "error: expect(received).toBe(expected)",
+    "Expected: true",
+    "Received: false",
+    "      at <anonymous> (apps/engine/src/device-tools-entry.test.ts:42:7)",
+    "(fail) task runs > the owner's own run sees the tools [12.00ms]",
+  ].join("\n");
+
+  test("keeps the assertion of a failure that lies far before the output tail", () => {
+    const output = [
+      "apps/engine/src/device-tools-entry.test.ts:",
+      "(pass) task runs > lists tools [1.00ms]",
+      failingBlock,
+      ...Array.from({ length: 400 }, (_, index) => `(pass) later suite > case ${index} [1.00ms]`),
+      " 400 pass",
+      " 1 fail",
+    ].join("\n");
+    expect(output.indexOf(failingBlock)).toBeLessThan(output.length - 4_000);
+    const detail = coverageFailureDetail(output);
+    expect(detail).toContain(failingBlock);
+    expect(detail).not.toContain("(pass) task runs > lists tools");
+    expect(detail.endsWith(" 1 fail")).toBe(true);
+  });
+
+  test("returns the tail when no test failed", () => {
+    const output = `${"x".repeat(5_000)}\nboom`;
+    expect(coverageFailureDetail(output)).toBe(output.slice(-4_000));
+  });
+
+  test("caps the failure section and every block", () => {
+    const output = Array.from(
+      { length: 40 },
+      (_, index) => `error: ${"y".repeat(3_000)}\n(fail) suite > case ${index}`,
+    ).join("\n");
+    const detail = coverageFailureDetail(output);
+    expect(detail.length).toBeLessThanOrEqual(16_100);
+    expect(detail).toContain("(fail) suite > case 0");
+  });
 });
