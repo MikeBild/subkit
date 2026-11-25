@@ -32304,6 +32304,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -32323,6 +32324,10 @@ export interface components {
             xml?: {
                 body: components["schemas"]["WorkflowJsonValue"];
                 declaration?: boolean;
+            };
+            /** @description Fields sent as an application/x-www-form-urlencoded body. Values resolve placeholders like body fields; a field that resolves to null is left out. Not combinable with body, xml or multipart. */
+            form?: {
+                [key: string]: string | number | boolean;
             };
             graphql?: null;
             sql?: null;
@@ -32455,6 +32460,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -32474,6 +32480,10 @@ export interface components {
             xml?: {
                 body: components["schemas"]["WorkflowJsonValue"];
                 declaration?: boolean;
+            };
+            /** @description Fields sent as an application/x-www-form-urlencoded body. Values resolve placeholders like body fields; a field that resolves to null is left out. Not combinable with body, xml or multipart. */
+            form?: {
+                [key: string]: string | number | boolean;
             };
             graphql?: null;
             sql?: null;
@@ -32775,6 +32785,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -32817,6 +32828,7 @@ export interface components {
                 };
             } | string;
             xml?: null;
+            form?: null;
             sql?: null;
             s3?: null;
             sftp?: null;
@@ -32947,6 +32959,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -32989,6 +33002,7 @@ export interface components {
                 };
             } | string;
             xml?: null;
+            form?: null;
             sql?: null;
             s3?: null;
             sftp?: null;
@@ -33119,6 +33133,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -33156,6 +33171,7 @@ export interface components {
                 };
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             s3?: null;
             sftp?: null;
@@ -33286,6 +33302,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -33323,6 +33340,7 @@ export interface components {
                 };
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             s3?: null;
             sftp?: null;
@@ -33453,6 +33471,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -33495,6 +33514,7 @@ export interface components {
                 };
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             sql?: null;
             sftp?: null;
@@ -33625,6 +33645,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -33667,6 +33688,7 @@ export interface components {
                 };
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             sql?: null;
             sftp?: null;
@@ -33797,6 +33819,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -33820,6 +33843,7 @@ export interface components {
                 max_entries?: number;
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             sql?: null;
             s3?: null;
@@ -33950,6 +33974,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -33973,6 +33998,7 @@ export interface components {
                 max_entries?: number;
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             sql?: null;
             s3?: null;
@@ -34103,6 +34129,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -34158,6 +34185,7 @@ export interface components {
                 };
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             sql?: null;
             s3?: null;
@@ -34288,6 +34316,7 @@ export interface components {
                 min?: number;
                 max?: number;
             };
+            /** @description Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself. */
             idempotency_key?: string;
             outputs?: {
                 [key: string]: {
@@ -34343,6 +34372,7 @@ export interface components {
                 };
             };
             xml?: null;
+            form?: null;
             graphql?: null;
             sql?: null;
             s3?: null;

@@ -12511,7 +12511,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -12579,6 +12580,23 @@
             "required": [
               "body"
             ]
+          },
+          "form": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Fields sent as an application/x-www-form-urlencoded body. Values resolve placeholders like body fields; a field that resolves to null is left out. Not combinable with body, xml or multipart."
           },
           "graphql": {
             "type": "null",
@@ -13074,7 +13092,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -13142,6 +13161,23 @@
             "required": [
               "body"
             ]
+          },
+          "form": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Fields sent as an application/x-www-form-urlencoded body. Values resolve placeholders like body fields; a field that resolves to null is left out. Not combinable with body, xml or multipart."
           },
           "graphql": {
             "type": "null",
@@ -14291,7 +14327,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -14442,6 +14479,10 @@
             ]
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -14937,7 +14978,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -15089,6 +15131,10 @@
             ]
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -15586,7 +15632,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -15725,6 +15772,10 @@
             ]
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -16219,7 +16270,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -16361,6 +16413,10 @@
             ]
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -16857,7 +16913,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -17000,6 +17057,10 @@
             }
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -17493,7 +17554,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -17639,6 +17701,10 @@
             }
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -18134,7 +18200,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -18209,6 +18276,10 @@
             ]
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -18701,7 +18772,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -18776,6 +18848,10 @@
             ]
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -19279,7 +19355,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -19484,6 +19561,10 @@
             }
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },
@@ -19984,7 +20065,8 @@
             ]
           },
           "idempotency_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself."
           },
           "outputs": {
             "type": "object",
@@ -20192,6 +20274,10 @@
             ]
           },
           "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "form": {
             "type": "null",
             "not": {}
           },

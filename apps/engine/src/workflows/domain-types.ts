@@ -52,6 +52,8 @@ export interface DomainRequestStep extends DomainStepBase {
   headers?: Record<string, unknown> | string | undefined;
   query?: Record<string, string | number | boolean> | undefined;
   body?: JsonValue | undefined;
+  form?: Record<string, string | number | boolean> | undefined;
+  idempotency_key?: string | undefined;
   graphql?: { variables?: Record<string, unknown> | undefined } | undefined;
   mcp?: { arguments?: Record<string, JsonValue> | undefined } | undefined;
   report_delivery?: { to?: unknown; from?: unknown } | undefined;

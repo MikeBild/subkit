@@ -313,6 +313,7 @@ export function supportsReadQuery(step: RequestStep): boolean {
   return (
     step.method === "GET" &&
     !step.body &&
+    !step.form &&
     !step.pagination &&
     !step.xml &&
     !step.multipart &&

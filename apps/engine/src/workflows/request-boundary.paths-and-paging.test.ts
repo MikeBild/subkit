@@ -130,7 +130,10 @@ test("a JS selector may hold a template literal; a real runtime value elsewhere 
   });
   expect(compileRequestBoundary(iterated, BASE).refusal).toBeUndefined();
   expect(
-    compileRequestBoundary(step({ ...release, idempotency_key: "${input.site}" }), BASE).refusal,
+    compileRequestBoundary(
+      step({ ...release, state_read: { key: "${input.site}", into_var: "site" } }),
+      BASE,
+    ).refusal,
   ).toBe("runtime_value_outside_path_and_body");
 });
 
