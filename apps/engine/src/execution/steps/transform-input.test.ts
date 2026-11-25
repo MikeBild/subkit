@@ -102,6 +102,7 @@ describe("runTransformStep with input_from", () => {
 
 describe("web scraper recipe URL preservation", () => {
   const recipes = templates.find((template) => template.slug === "web-scraper")!.recipes;
+  if (!recipes) throw new Error("Web scraper recipes are missing");
   for (const slug of [
     "fetch-url-as-markdown",
     "extract-main-content",
@@ -109,7 +110,10 @@ describe("web scraper recipe URL preservation", () => {
   ]) {
     test(`${slug} preserves source URLs and article link bases`, async () => {
       const recipe = recipes.find((recipe) => recipe.slug === slug)!;
-      const urls = ["https://example.test/news/first", "https://example.test/docs/second"];
+      const urls: [string, string] = [
+        "https://example.test/news/first",
+        "https://example.test/docs/second",
+      ];
       const html = `<article><h1>Fetched page</h1><p>${"Article content. ".repeat(80)}<a href="../related">Related</a></p></article>`;
       const recipeScope: Record<string, { data: unknown }> = {
         fetch: { data: html },
@@ -140,7 +144,7 @@ describe("web scraper recipe URL preservation", () => {
           recipeScope[step.id] = { data: await run(recipeScope) };
         }
       }
-      const markdown = recipeScope.to_markdown.data as { url: string };
+      const markdown = recipeScope.to_markdown?.data as { url: string };
       const readable = recipeScope.readable?.data as { url: string };
       const envelope = recipeScope.envelope?.data as { markdown: string };
       const pages = recipeScope.pages?.data as { url: string; markdown: string }[];
@@ -150,9 +154,11 @@ describe("web scraper recipe URL preservation", () => {
         expect(readable.url).toBe(urls[0]);
         expect(envelope.markdown).toContain("[Related](https://example.test/related)");
       } else {
+        if (!recipeScope.readable) throw new Error("Readable recipe output is missing");
         expect(pages.map((page: { url: string }) => page.url)).toEqual(urls);
-        expect(pages[0].markdown).toContain("[Related](https://example.test/related)");
-        expect(pages[1].markdown).toContain("[Related](https://example.test/related)");
+        for (const page of pages) {
+          expect(page.markdown).toContain("[Related](https://example.test/related)");
+        }
         expect(
           (recipeScope.readable.data as { readable: { data: { url: string } } }[]).map(
             (entry) => entry.readable.data.url,
