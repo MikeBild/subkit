@@ -36543,6 +36543,7 @@ export interface components {
             tags: string[];
             difficulty: string;
             connectors: components["schemas"]["RecipeConnectorBinding"][];
+            install_inputs?: string[];
             sample_input?: unknown;
             workflow: components["schemas"]["WorkflowDefOutput"];
         };

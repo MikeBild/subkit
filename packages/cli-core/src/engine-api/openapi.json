@@ -29142,6 +29142,13 @@
               "$ref": "#/components/schemas/RecipeConnectorBinding"
             }
           },
+          "install_inputs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          },
           "sample_input": {},
           "workflow": {
             "$ref": "#/components/schemas/WorkflowDefOutput"

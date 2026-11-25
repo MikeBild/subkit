@@ -30,6 +30,7 @@ interface PackEntry {
     connector_name: string | null;
     candidates: Array<{ id: string; slug: string; name: string }>;
   }>;
+  install_inputs?: string[];
   sample_input: unknown;
   workflow: { name: string; steps: unknown[] };
 }
@@ -58,6 +59,13 @@ async function createdAudit(workflowId: string): Promise<Record<string, unknown>
 }
 
 describe("GET /v1/recipe-packs/solutions", () => {
+  test("exposes install inputs for the CLI to pin the analytics boundary (#519)", async () => {
+    const entries = await solutions();
+    const analytics = entries.find((entry) => entry.recipe_slug === "daily-analytics-report");
+    expect(analytics).toBeDefined();
+    expect(analytics?.install_inputs).toEqual(["property_id"]);
+  });
+
   test("lists every solution with its connectors, unbound while the tenant has none", async () => {
     const entries = await solutions();
     expect(entries.map((e) => e.recipe_slug)).toContain("webhook-to-slack");
