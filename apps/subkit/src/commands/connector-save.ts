@@ -12,8 +12,11 @@ import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts"
 import type { ConnectorSummary } from "../render/types.ts";
 import { makeClient } from "./command-runtime.ts";
 import { credentialHint, parseCredentialFile } from "./connector-credential-file-model.ts";
-import { connectorCheckPlan } from "./connector-save-model.ts";
-
+import {
+  type ConnectorCheckOutcome,
+  connectorCheckFailure,
+  connectorCheckPlan,
+} from "./connector-save-model.ts";
 import { readDefinitionFile } from "./definition-file.ts";
 
 type ConnectorSavePlan =
@@ -57,6 +60,8 @@ export async function saveConnectorFromFile(
     const plan = await connectorSavePlan(client, target, String(args.file));
     const { body, name } = plan;
     const skip = Boolean(args["skip-checks"]);
+    const unsavedOutcome: ConnectorCheckOutcome =
+      plan.action === "create" ? { created: false } : { updated: false };
     await renderIntent(
       {
         kind: "connector",
@@ -71,19 +76,24 @@ export async function saveConnectorFromFile(
     if (!skip) {
       const verdict = await client.validateConnectorDraft(plan.draft());
       if (!verdict.ok) {
+        const validateDetail = verdict.issues
+          .map((issue) => `${issue.path}: ${issue.message}`)
+          .join("; ");
         await renderTaskList(
           [
-            {
-              id: "validate",
-              label: "Validate",
-              status: "failed",
-              detail: verdict.issues.map((i) => `${i.path}: ${i.message}`).join("; "),
-            },
+            { id: "validate", label: "Validate", status: "failed", detail: validateDetail },
             { id: "probe", label: "Probe", status: "pending" },
             { id: "save", label: "Save", status: "pending" },
           ],
           { jsonMode },
         );
+        if (jsonMode) {
+          printJson(
+            connectorCheckFailure(unsavedOutcome, "validate", validateDetail, {
+              issues: verdict.issues.map(({ path, message }) => ({ path, message })),
+            }),
+          );
+        }
         process.exit(1);
       }
 
@@ -117,6 +127,7 @@ export async function saveConnectorFromFile(
         });
         probe = { ok: result.ok };
         if (!result.ok) {
+          const probeDetail = result.detail ?? result.error_code ?? "probe returned not-ok";
           await renderTaskList(
             [
               { id: "validate", label: "Validate", status: "succeeded" },
@@ -124,12 +135,17 @@ export async function saveConnectorFromFile(
                 id: "probe",
                 label: "Probe",
                 status: "failed",
-                detail: credentialHint(result) ?? "probe returned not-ok",
+                detail: credentialHint(result) ?? probeDetail,
               },
               { id: "save", label: "Save", status: "pending" },
             ],
             { jsonMode },
           );
+          if (jsonMode) {
+            printJson(
+              connectorCheckFailure(unsavedOutcome, "probe", probeDetail, { probe: result }),
+            );
+          }
           process.exit(64);
         }
       }
