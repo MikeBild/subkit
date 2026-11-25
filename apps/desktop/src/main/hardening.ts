@@ -1,6 +1,19 @@
-import { app, type Session, shell, type WebContents, type WebPreferences } from "electron";
+import {
+  app,
+  type Session,
+  shell,
+  systemPreferences,
+  type WebContents,
+  type WebPreferences,
+} from "electron";
 import { parseAppUrl } from "../shared/app-url.ts";
+import {
+  type PermissionAsk,
+  permissionGranted,
+  wantsMicrophone,
+} from "../shared/permission-policy.ts";
 import { isExternallyOpenable, type NavigationDecision } from "../shared/server-address.ts";
+import { appLog } from "./app-log.ts";
 
 const DEBUG_SWITCHES = [
   "inspect",
@@ -21,8 +34,6 @@ export function hasDebugSwitch(argv: readonly string[]): boolean {
   );
 }
 
-const ALLOWED_PERMISSIONS = new Set(["notifications", "clipboard-sanitized-write"]);
-
 function originOf(raw: string | undefined): string | null {
   try {
     return raw ? new URL(raw).origin : null;
@@ -31,14 +42,42 @@ function originOf(raw: string | undefined): string | null {
   }
 }
 
+async function systemMicrophoneAllowed(): Promise<boolean> {
+  if (process.platform !== "darwin") return true;
+  if (systemPreferences.getMediaAccessStatus("microphone") === "granted") return true;
+  return systemPreferences.askForMediaAccess("microphone").catch(() => false);
+}
+
 export function hardenSession(session: Session, serverOrigin: string | null): void {
-  const allowed = (permission: string, requester: string | null) =>
-    serverOrigin !== null && requester === serverOrigin && ALLOWED_PERMISSIONS.has(permission);
   session.setPermissionRequestHandler((_contents, permission, callback, details) => {
-    callback(details.isMainFrame && allowed(permission, originOf(details.requestingUrl)));
+    const ask: PermissionAsk = {
+      permission,
+      requester: originOf(details.requestingUrl),
+      serverOrigin,
+      mediaTypes: "mediaTypes" in details ? (details.mediaTypes ?? []) : [],
+    };
+    const granted = details.isMainFrame && permissionGranted(ask);
+    if (!granted || !wantsMicrophone(ask)) {
+      if (permission === "media")
+        appLog.info("permission.media.denied", { media_types: ask.mediaTypes.join(",") });
+      callback(granted);
+      return;
+    }
+    void systemMicrophoneAllowed().then((allowed) => {
+      appLog.info(allowed ? "permission.media.granted" : "permission.media.denied", {
+        media_types: "audio",
+        system: allowed,
+      });
+      callback(allowed);
+    });
   });
-  session.setPermissionCheckHandler((_contents, permission, requestingOrigin) =>
-    allowed(permission, originOf(requestingOrigin)),
+  session.setPermissionCheckHandler((_contents, permission, requestingOrigin, details) =>
+    permissionGranted({
+      permission,
+      requester: originOf(requestingOrigin),
+      serverOrigin,
+      mediaTypes: details.mediaType ? [details.mediaType] : [],
+    }),
   );
   session.setDevicePermissionHandler(() => false);
   session.setDisplayMediaRequestHandler((_request, callback) => callback({}));

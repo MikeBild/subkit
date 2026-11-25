@@ -1,5 +1,14 @@
 export const QUALITY_RUNTIME_WITNESSES = [
   {
+    consumer: "apps/engine/src/speech/local/whisper-worker.ts",
+    test: "apps/engine/src/speech/local/whisper-worker.test.ts",
+    kind: "source-worker",
+    rationale:
+      "A Worker constructed from the exact source URL receives the production transcribe protocol and must return a correlated response even when the local model is absent.",
+    independent_review:
+      "Added with the voice dictation change; the focused worker test exercises the real entry and protocol.",
+  },
+  {
     consumer: "apps/engine/src/embeddings/embedding-worker.ts",
     test: "apps/engine/src/embeddings/tests/worker-entry.test.ts",
     kind: "source-worker",

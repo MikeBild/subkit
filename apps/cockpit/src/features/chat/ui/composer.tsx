@@ -23,6 +23,7 @@ import {
   mentionTokenText,
   reconcileReferences,
 } from "@/features/chat/model/mentions";
+import { DictationControl, insertTranscript } from "@/features/voice";
 import { useI18n } from "@/lib/i18n-context";
 import { useDirtyGuard } from "@/lib/use-dirty-guard";
 import {
@@ -77,6 +78,7 @@ export function ChatComposer({
   const controller = usePromptInputController();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const [references, setReferences] = useState<ConversationReference[]>([]);
   const seedReferences = useMemo(() => chatSeedFromUrl(window.location.search).references, []);
   const seeded = useSeedMentionReferences(seedReferences);
@@ -143,11 +145,23 @@ export function ChatComposer({
     if (taken.length > 0) onAttach(taken);
   };
   const streaming = status === "streaming";
+  const insertDictation = (transcript: string) => {
+    const textarea = textareaRef.current;
+    const selection = textarea
+      ? { start: textarea.selectionStart, end: textarea.selectionEnd }
+      : null;
+    const next = insertTranscript(controller.textInput.value, selection, transcript);
+    setInput(next.value);
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(next.caret, next.caret);
+    });
+  };
   useDirtyGuard(controller.textInput.value.trim().length > 0 || attachments.length > 0);
   return (
     <Popover open={mentions.open} onOpenChange={(open) => !open && mentions.close()}>
       <PopoverAnchor asChild>
-        <div className="relative">
+        <div className="relative" ref={composerRef}>
           <MentionPicker
             open={mentions.open}
             groups={mentions.groups}
@@ -223,14 +237,21 @@ export function ChatComposer({
               />
             </PromptInputBody>
             <PromptInputFooter className="p-0" data-testid="chat-composer-tools">
-              <IconButton
-                label={t("chat.attach")}
-                disabled={disabled}
-                onClick={() => fileInputRef.current?.click()}
-                data-testid="chat-attach"
-              >
-                <Paperclip />
-              </IconButton>
+              <span className="inline-flex items-center gap-1">
+                <IconButton
+                  label={t("chat.attach")}
+                  disabled={disabled}
+                  onClick={() => fileInputRef.current?.click()}
+                  data-testid="chat-attach"
+                >
+                  <Paperclip />
+                </IconButton>
+                <DictationControl
+                  disabled={disabled || seedPending}
+                  scopeRef={composerRef}
+                  onTranscript={insertDictation}
+                />
+              </span>
               <input
                 ref={fileInputRef}
                 type="file"

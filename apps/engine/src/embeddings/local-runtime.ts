@@ -23,23 +23,28 @@ interface TransformersWeb {
 
 let extractorPromise: Promise<Extractor | null> | null = null;
 
-async function importWebBuild(): Promise<TransformersWeb> {
-  const { ORT_ASSETS, MODEL_FILE_BY_BASENAME } = await import("./embedded-assets.ts");
-
+export async function importTransformersWeb<T>(): Promise<T> {
   const release = process.release as { name?: string };
   const realName = release.name;
   Object.defineProperty(process.release, "name", { value: "bun-embed", configurable: true });
-  let mod: TransformersWeb;
   try {
-    mod = (await import(
+    return (await import(
       // @ts-expect-error — the web build dist file ships no type declarations;
       // its shape is asserted via the TransformersWeb interface below.
       "../../../../node_modules/@huggingface/transformers/dist/transformers.web.js"
-    )) as unknown as TransformersWeb;
+    )) as unknown as T;
   } finally {
     Object.defineProperty(process.release, "name", { value: realName, configurable: true });
   }
+}
 
+export async function onnxRuntimeAssets(): Promise<{ mjs: string; wasm: string }> {
+  return (await import("./embedded-assets.ts")).ORT_ASSETS;
+}
+
+async function importWebBuild(): Promise<TransformersWeb> {
+  const { ORT_ASSETS, MODEL_FILE_BY_BASENAME } = await import("./embedded-assets.ts");
+  const mod = await importTransformersWeb<TransformersWeb>();
   const { env } = mod;
   env.allowRemoteModels = true;
   env.allowLocalModels = false;

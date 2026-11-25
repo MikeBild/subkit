@@ -128,6 +128,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/install.ps1": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public subkit CLI installer for Windows PowerShell, pinned to this engine's version
+         * @description Returns the Windows PowerShell installer with the CLI version pinned to this engine's version. It downloads subkit-windows-x64.exe from this engine's /install files or the GitHub release of the same version, verifies the checksums and installs subkit.exe into the user's local programs folder.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description PowerShell script (text/plain) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/install/skill": {
         parameters: {
             query?: never;
@@ -18821,6 +18860,163 @@ export interface paths {
                 };
                 /** @description This server takes no reports without signing in */
                 503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show whether voice dictation can transcribe and which service it uses */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SpeechStatus"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/speech/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download the local speech model so dictation works without a cloud service */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Preparation started; poll the status */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SpeechStatus"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/speech/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn a short voice recording into text for the message you are writing */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SpeechTranscribeRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SpeechTranscription"];
+                    };
+                };
+                /** @description audio_empty */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description speech_unavailable */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description audio_too_large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description no_speech */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description transcription_failed */
+                502: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -38557,6 +38753,43 @@ export interface components {
              * @description The device id of SubKit Desktop. The app sends it so its reports count against the device as well as the address.
              */
             device_id?: string;
+        };
+        SpeechStatus: {
+            available: boolean;
+            /** @enum {string} */
+            preference: "auto" | "off" | "local" | "openai" | "azure" | "gemini";
+            transcribers: ("openai" | "azure" | "gemini" | "local")[];
+            local_model: components["schemas"]["SpeechLocalModel"];
+            needs_prepare: boolean;
+        };
+        SpeechLocalModel: {
+            /** @enum {string} */
+            kind: "missing";
+        } | {
+            /** @enum {string} */
+            kind: "downloading";
+            receivedBytes: number;
+            totalBytes: number;
+        } | {
+            /** @enum {string} */
+            kind: "ready";
+        } | {
+            /** @enum {string} */
+            kind: "failed";
+            reason: string;
+        };
+        SpeechTranscription: {
+            text: string;
+            /** @enum {string} */
+            transcriber: "openai" | "azure" | "gemini" | "local";
+            duration_ms: number;
+        };
+        SpeechTranscribeRequest: {
+            /** @description Recording type, one of audio/wav, audio/webm, audio/ogg, audio/mp4, audio/mpeg; WAV works with every service. */
+            content_type: string;
+            content_base64: string;
+            /** @description Spoken language as an ISO 639-1 code, e.g. de or en; improves accuracy. */
+            language?: string;
         };
         KnowledgeSourceVersionListResponse: {
             items: components["schemas"]["KnowledgeSourceVersion"][];

@@ -78,7 +78,7 @@ built.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DESKTOP_RELEASE_AUTO` | unset | Unset or any value but `false`, the desktop release starts by itself after every successful `release` run of a tag. `false` leaves it to a start by hand. |
-| `DESKTOP_WINDOWS_SIGNING` | `certificate` | `cloud` switches Windows to the cloud signing block. |
+| `DESKTOP_WINDOWS_SIGNING` | `certificate` | `cloud` switches Windows to the cloud signing block. `none` builds Windows without Authenticode signing; the app then installs an update only after its installer matches the Ed25519-signed `SHA256SUMS-desktop` of the release. |
 
 ### Windows signing
 

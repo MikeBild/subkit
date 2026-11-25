@@ -466,6 +466,7 @@ export {
   restoreSkillOperation,
   updateSkillOperation,
 } from "./operations/skills.ts";
+export { speechOperations } from "./operations/speech.ts";
 export {
   continueSpendOperation,
   getSpendLimitOperation,

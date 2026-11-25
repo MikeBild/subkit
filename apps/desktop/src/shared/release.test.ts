@@ -299,7 +299,7 @@ describe("desktop release workflow", () => {
     expect(scripts).not.toContain("--clobber");
     expect(scripts).not.toContain("electron-builder");
     expect(scripts).not.toMatch(/bun run package(?![^\n]*--publish never)[^\n]*--(mac|win|linux)/);
-    expect(scripts.match(/--publish never/g)?.length).toBe(5);
+    expect(scripts.match(/--publish never/g)?.length).toBe(6);
   });
 
   test("builds two platforms, each from its own engine job, and no Linux", () => {
@@ -494,9 +494,19 @@ describe("desktop release workflow", () => {
       }
   });
 
+  test("windows can ship without code signing, then skips the Authenticode check", () => {
+    const windows = jobs.windows?.steps ?? [];
+    const unsigned = windows.find((step) => step.name === "Build without code signing");
+    expect(unsigned?.if).toContain("windows_signing == 'none'");
+    expect(unsigned?.env?.SUBKIT_DESKTOP_UPDATES).toBe("1");
+    expect(unsigned?.run).toContain("-c.win.verifyUpdateCodeSignature=false");
+    const verify = windows.find((step) => step.name === "Verify Authenticode signatures");
+    expect(verify?.if).toContain("windows_signing != 'none'");
+  });
+
   test("a dry run builds without updates, a release build requires them", () => {
     const builds = steps.filter((step) => step.run?.includes("bun run package --prebuilt"));
-    expect(builds.length).toBe(5);
+    expect(builds.length).toBe(6);
     for (const step of builds) {
       const dry = step.if?.includes("dry_run == 'true'") ?? false;
       expect(step.env?.SUBKIT_DESKTOP_UPDATES).toBe(dry ? "0" : "1");

@@ -18,6 +18,7 @@ import type { PaneSpec } from "../repl/slash/handler.ts";
 import { resolveTaskActionSuggestion, type TaskAction } from "../repl/task-actions.ts";
 import type { SlashCommand } from "../slash.ts";
 import type { TranscriptMode } from "./types.ts";
+import type { Dictation } from "./use-dictation.ts";
 import type { TranscriptNotice } from "./use-notices.ts";
 
 interface ComposerKeyDeps {
@@ -56,6 +57,7 @@ interface ComposerKeyDeps {
   starterTaskActions: readonly TaskAction[];
   mentionSpec: ReturnType<typeof extractMention>;
   showInfo: (message: string) => void;
+  dictation: Pick<Dictation, "recording" | "toggle" | "cancel">;
 }
 
 export function useComposerKeys(deps: ComposerKeyDeps): void {
@@ -95,6 +97,7 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
     starterTaskActions,
     mentionSpec,
     showInfo,
+    dictation,
   } = deps;
   const { stdout } = useStdout();
   const pendingElicit = pendingElicitation;
@@ -116,6 +119,14 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
           showInfo(`/view: ${next}`);
           return next;
         });
+        return;
+      }
+      if (key.ctrl && char === "d") {
+        dictation.toggle();
+        return;
+      }
+      if (key.escape && dictation.recording) {
+        dictation.cancel();
         return;
       }
       if (input.ghost) {

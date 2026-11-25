@@ -641,7 +641,7 @@ There is no npm package. Builds exist for macOS on Apple silicon, Linux (x64 and
 
 - The address of your engine, without a path. The examples use `http://localhost:3000`.
   For SubKit Cloud, see "Use SubKit Cloud".
-- Bash and curl.
+- On macOS and Linux: Bash and curl. On Windows: PowerShell 7.
 - To sign in with an API key on a self-hosted engine: access to the engine host.
 
 ### Install and sign in
@@ -660,6 +660,20 @@ There is no npm package. Builds exist for macOS on Apple silicon, Linux (x64 and
    ```
 
    Both put `subkit` into `~/.local/bin`. Set `SUBKIT_INSTALL_DIR` to choose another folder, or `SUBKIT_VERSION` to pin a version.
+
+   On Windows, run this in PowerShell 7 as yourself, not as administrator:
+
+   ```powershell
+   irm http://localhost:3000/install.ps1 | iex
+   ```
+
+   Without an engine at hand, use the latest release:
+
+   ```powershell
+   irm https://github.com/MikeBild/subkit/releases/latest/download/install.ps1 | iex
+   ```
+
+   It puts `subkit.exe` into `%LOCALAPPDATA%\Programs\subkit` and adds that folder to your user `PATH`. Open a new terminal afterwards.
 
 2. Sign in:
 
@@ -725,7 +739,14 @@ A missing license file or a checksum that does not match stops the installation.
 | Installer | What it checks | What it trusts |
 | --- | --- | --- |
 | `install.sh` from the release or the engine's `/install` | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` against `SHA256SUMS`, and the signature of `SHA256SUMS` when it is published and OpenSSL 3 is on your PATH | The release or engine you download from, and the pinned public release key when it can check the signature |
+| `install.ps1` from the release or the engine's `/install.ps1` | The binary, `LICENSE` and `THIRD_PARTY_NOTICES.txt` against `SHA256SUMS`; PowerShell cannot check the signature | The release or engine you download from |
 | `subkit update` | The signed checksum manifest of the release, then the binary and both license files | The pinned public release key, whether the files come from your engine or from GitHub |
+
+### Dictate a message
+
+In the interactive session, press `Ctrl-D`, speak, and press `Ctrl-D` again. The text lands in the input at the cursor, so you can check and change it before you send it. `Esc` discards the recording.
+
+Dictation needs a recorder on your machine: SoX (`rec` or `sox`) or ffmpeg, on Linux also `arecord`. `subkit doctor` shows which one it found. On Windows with ffmpeg the CLI takes the first microphone; set `SUBKIT_MICROPHONE` to choose another. `SUBKIT_DICTATION_LANGUAGE` sets the spoken language, for example `de`; otherwise your system language is used.
 
 ### Move your workspace to another engine
 
@@ -8553,6 +8574,8 @@ LLM configuration
 | `llm.suggestion_model` | string | `""` | tenant | no | no | Small model used to generate post-turn suggestions; empty uses the primary provider's default |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |
+| `llm.transcription_model` | string | `""` | tenant | no | no | Speech-to-text model; empty uses the provider's default |
+| `llm.transcription_provider` | enum("auto" \| "openai" \| "azure" \| "gemini" \| "local" \| "off") | `"auto"` | tenant | no | no | Speech-to-text service for voice dictation: auto picks a configured audio-capable provider and falls back to the local model; off hides dictation |
 | `llm.web_search` | boolean | `true` | tenant | no | no | Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings. |
 
 ## auth

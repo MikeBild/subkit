@@ -32,6 +32,8 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.summarize_provider": "Summarization provider",
   "llm.summarize_model": "Summarization model",
   "llm.suggestion_model": "Suggestion model",
+  "llm.transcription_provider": "Dictation speech-to-text",
+  "llm.transcription_model": "Dictation model",
   "llm.context_1m": "Enable 1M context",
   "llm.web_search": "AI web search",
   "llm.result_question_check": "Check task-run result questions",
