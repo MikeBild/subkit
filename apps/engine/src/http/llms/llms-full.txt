@@ -8553,6 +8553,8 @@ LLM configuration
 | `llm.suggestion_model` | string | `""` | tenant | no | no | Small model used to generate post-turn suggestions; empty uses the primary provider's default |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |
+| `llm.transcription_model` | string | `""` | tenant | no | no | Speech-to-text model; empty uses the provider's default |
+| `llm.transcription_provider` | enum("auto" \| "openai" \| "azure" \| "gemini" \| "local" \| "off") | `"auto"` | tenant | no | no | Speech-to-text service for voice dictation: auto picks a configured audio-capable provider and falls back to the local model; off hides dictation |
 | `llm.web_search` | boolean | `true` | tenant | no | no | Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings. |
 
 ## auth

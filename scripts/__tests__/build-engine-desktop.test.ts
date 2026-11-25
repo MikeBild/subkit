@@ -56,11 +56,11 @@ describe("desktop engine build", () => {
     if (!linux.ok) throw new Error(linux.usage);
     const image = linux.steps.map((step) => step.argv.join(" ")).join("\n");
     expect(image).toContain(
-      "apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts --compile --root . --external cpu-features --define process.env.NODE_ENV=process.env.NODE_ENV",
+      "apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts apps/engine/src/speech/local/whisper-worker.ts --compile --root . --external cpu-features --define process.env.NODE_ENV=process.env.NODE_ENV",
     );
     expect(readFileSync(join(ROOT, "Dockerfile"), "utf8")).toContain("bun run build engine");
     expect(command).toBe(
-      'bun build apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts --compile --root . --external cpu-features --target=bun-darwin-arm64 --define process.env.NODE_ENV=process.env.NODE_ENV --define BUILD_VERSION="1.2.3" --metafile=out/engine.json --outfile out/engine',
+      'bun build apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts apps/engine/src/speech/local/whisper-worker.ts --compile --root . --external cpu-features --target=bun-darwin-arm64 --define process.env.NODE_ENV=process.env.NODE_ENV --define BUILD_VERSION="1.2.3" --metafile=out/engine.json --outfile out/engine',
     );
   });
 

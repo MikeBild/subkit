@@ -41,6 +41,8 @@
     "summarize_provider": null,
     "summarize_model": "",
     "suggestion_model": "",
+    "transcription_provider": "auto",
+    "transcription_model": "",
     "context_1m": false,
     "web_search": true,
     "result_question_check": false,

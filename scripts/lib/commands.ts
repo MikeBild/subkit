@@ -92,6 +92,7 @@ export function compileCommand(input: CompileInput): string[] {
 export const ENGINE_ENTRIES = [
   "apps/engine/src/index.ts",
   "apps/engine/src/embeddings/embedding-worker.ts",
+  "apps/engine/src/speech/local/whisper-worker.ts",
 ] as const;
 export const SUBKIT_ENTRIES = ["apps/subkit/src/index.ts"] as const;
 

@@ -1,0 +1,66 @@
+export const LOCAL_SPEECH_MODEL = "onnx-community/whisper-base";
+export const LOCAL_SPEECH_REVISION = "27a07b4b52b3a4c5886134bb4320e93e1a4bbc7c";
+
+export interface ModelFile {
+  readonly path: string;
+  readonly bytes: number;
+  readonly sha256: string;
+}
+
+export const LOCAL_SPEECH_FILES: readonly ModelFile[] = [
+  {
+    path: "config.json",
+    bytes: 2243,
+    sha256: "f4d0608f7d918166da7edb3e188de5ef1bfe70d9802e785d271fd88111e9cf4b",
+  },
+  {
+    path: "generation_config.json",
+    bytes: 3832,
+    sha256: "61070cf8de25b1e9256e8e102ded49d8d24a8369ed36ef84fdf21549e68125a0",
+  },
+  {
+    path: "preprocessor_config.json",
+    bytes: 339,
+    sha256: "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d",
+  },
+  {
+    path: "tokenizer.json",
+    bytes: 2480466,
+    sha256: "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566",
+  },
+  {
+    path: "tokenizer_config.json",
+    bytes: 282682,
+    sha256: "2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573",
+  },
+  {
+    path: "onnx/encoder_model_quantized.onnx",
+    bytes: 23201314,
+    sha256: "5862993336bf33acd23736071aae2b32261d3b1b2f37780194460d4ef974dd46",
+  },
+  {
+    path: "onnx/decoder_model_merged_quantized.onnx",
+    bytes: 53693315,
+    sha256: "fa3ef9902734ce5ae6f9ef2bdb2ba9a6c4b5785b09f4f420ce036573dc9d090b",
+  },
+];
+
+export const LOCAL_SPEECH_TOTAL_BYTES = LOCAL_SPEECH_FILES.reduce(
+  (sum, file) => sum + file.bytes,
+  0,
+);
+
+export const modelFileUrl = (file: ModelFile): string =>
+  `https://huggingface.co/${LOCAL_SPEECH_MODEL}/resolve/${LOCAL_SPEECH_REVISION}/${file.path}`;
+
+export function modelFileForUrl(url: string): ModelFile | undefined {
+  const tail = (url.split("?")[0] ?? "").split(`${LOCAL_SPEECH_MODEL}/`)[1] ?? "";
+  const path = tail.replace(/^resolve\/[^/]+\//, "");
+  return LOCAL_SPEECH_FILES.find((file) => file.path === path);
+}
+
+export type LocalModelState =
+  | { readonly kind: "missing" }
+  | { readonly kind: "downloading"; readonly receivedBytes: number; readonly totalBytes: number }
+  | { readonly kind: "ready" }
+  | { readonly kind: "failed"; readonly reason: string };

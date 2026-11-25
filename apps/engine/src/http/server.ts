@@ -144,6 +144,7 @@ import { registerSetupRoute } from "./routes/setup.ts";
 import { registerSkillCandidateRoutes } from "./routes/skill-candidates.ts";
 import { registerSkillRoutes } from "./routes/skills.ts";
 import { registerSlackIdentityLinkRoutes } from "./routes/slack-identity-link.ts";
+import { registerSpeechRoutes } from "./routes/speech.ts";
 import { registerStatsRoutes } from "./routes/stats/index.ts";
 import { registerStatusRoute } from "./routes/status.ts";
 import { registerSubscriptionRoutes } from "./routes/subscriptions.ts";
@@ -369,6 +370,7 @@ export function createApp(opts: CreateAppOptions): OpenAPIHono<AppEnv> {
   registerCategoryRoutes(app);
   registerIntakeRoutes(app);
   registerFeedbackRoutes(app);
+  registerSpeechRoutes(app);
   registerKnowledgeSourceRoutes(app);
   registerSkillCandidateRoutes(app);
   registerAgentBriefingRoutes(app);
