@@ -58,7 +58,10 @@ export const files = pgTable(
   },
   (t) => [
     index("files_tenant_status_idx").on(t.tenant_id, t.status),
-    uniqueIndex("files_tenant_sha256_uq").on(t.tenant_id, t.sha256),
+    index("files_tenant_sha256_idx").on(t.tenant_id, t.sha256),
+    uniqueIndex("files_tenant_sha256_uq")
+      .on(t.tenant_id, t.sha256)
+      .where(sql`${t.deleted_at} IS NULL`),
     uniqueIndex("files_tenant_slug_uq")
       .on(t.tenant_id, t.slug)
       .where(sql`${t.slug} IS NOT NULL AND ${t.deleted_at} IS NULL`),

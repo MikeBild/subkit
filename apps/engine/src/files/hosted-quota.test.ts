@@ -14,7 +14,7 @@ import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registrat
 import { HostedFileQuotaError } from "./hosted-quota.ts";
 import { persistInlineUpload } from "./persist-inline-upload.ts";
 import { removeStoredFile } from "./remove-stored-file.ts";
-import { insertFileRow, reviveFileRow } from "./slug.ts";
+import { findFileByContent, insertFileRow, reviveFileRow } from "./slug.ts";
 
 let tdb: TestDb;
 let configDir: string;
@@ -190,4 +190,34 @@ test("self-hosted file behavior does not require hosted quota configuration", as
     .returning();
   if (!tenant) throw new Error("tenant fixture missing");
   await expect(insert(tenant.id, "large", 1000)).resolves.toBeDefined();
+});
+
+test("revive returns the active twin and lookups prefer active then latest deleted content", async () => {
+  const tenant = await fixture();
+  const withHash = (name: string) =>
+    insertFileRow(tdb.db, {
+      tenant_id: tenant,
+      filename: name,
+      size_bytes: 2,
+      storage_uri: `s3://fixture/${tenant}/${name}`,
+      sha256: "twin-hash",
+      status: "ready",
+    });
+  const softDelete = async (id: string, at: number) => {
+    const [row] = await tdb.db
+      .update(files)
+      .set({ deleted_at: new Date(at) })
+      .where(eq(files.id, id))
+      .returning();
+    if (!row) throw new Error("soft delete fixture missing");
+    return row;
+  };
+  const older = await softDelete((await withHash("older")).id, FROZEN_NOW);
+  const newer = await softDelete((await withHash("newer")).id, FROZEN_NOW + 1000);
+  expect((await findFileByContent(tdb.db, tenant, "twin-hash"))?.id).toBe(newer.id);
+  const active = await withHash("active");
+  expect((await findFileByContent(tdb.db, tenant, "twin-hash"))?.id).toBe(active.id);
+  expect((await reviveFileRow(tdb.db, older)).id).toBe(active.id);
+  const [stillDeleted] = await tdb.db.select().from(files).where(eq(files.id, older.id));
+  expect(stillDeleted?.deleted_at).not.toBeNull();
 });

@@ -14,6 +14,13 @@ const rows = (...list: Array<string | null>) =>
   list.map((tag, position) => ({ id: position + 1, hash: `hash-${position}`, tag }));
 
 describe("migration tags", () => {
+  test("keeps conversation visibility before active file content uniqueness", () => {
+    const visibility = tags.indexOf("0009_conversation_visibility");
+    const activeContent = tags.findIndex((tag) => tag.endsWith("_files_active_content_unique"));
+    expect(visibility).toBeGreaterThan(0);
+    expect(activeContent).toBeGreaterThan(visibility);
+  });
+
   test("every tag in the journal is unique and the journal starts with the baseline", () => {
     expect(new Set(tags).size).toBe(tags.length);
     expect(journal.entries.map((entry) => entry.idx)).toEqual(tags.map((_, idx) => idx));

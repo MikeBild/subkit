@@ -31,7 +31,7 @@ import { buildObjectKey, composeStorageUri } from "../object-key.ts";
 import { persistInlineUpload } from "../persist-inline-upload.ts";
 import { removeStoredFile } from "../remove-stored-file.ts";
 import { storageKey } from "../resolver.ts";
-import { insertFileRow, reviveFileRow } from "../slug.ts";
+import { findFileByContent, insertFileRow, reviveFileRow } from "../slug.ts";
 import {
   auditedBy,
   creatorId,
@@ -104,15 +104,6 @@ export interface InlineFileOutcome {
   scan_timed_out: boolean;
 }
 
-async function sameContentFile(db: Db, tenantId: string, sha256: string) {
-  const [row] = await db
-    .select()
-    .from(files)
-    .where(and(eq(files.tenant_id, tenantId), eq(files.sha256, sha256)))
-    .limit(1);
-  return row;
-}
-
 async function reuseCanonical(db: Db, tenantId: string, existing: FileRow): Promise<FileRow> {
   const canonical = existing.deleted_at ? await reviveFileRow(db, existing) : existing;
   recordFileDedupHit();
@@ -138,7 +129,7 @@ export async function createInlineFile(
       request_source: actor.request_source,
     });
 
-  const existing = await sameContentFile(db, tenant_id, sha256);
+  const existing = await findFileByContent(db, tenant_id, sha256);
   if (existing) {
     const canonical = await reuseCanonical(db, tenant_id, existing);
     await auditAwaitStandalone(
@@ -229,7 +220,7 @@ export async function createUploadSlots(
 
   for (const entry of entries) {
     if (entry.sha256) {
-      const existing = await sameContentFile(db, tenant_id, entry.sha256);
+      const existing = await findFileByContent(db, tenant_id, entry.sha256);
       if (existing) {
         const canonical = await reuseCanonical(db, tenant_id, existing);
         dedup_hits++;
@@ -392,7 +383,7 @@ export async function finalizeFile(
     return { kind: "sha256_mismatch" };
   }
 
-  const sibling = await sameContentFile(db, tenant_id, digest.sha256);
+  const sibling = await findFileByContent(db, tenant_id, digest.sha256);
   if (sibling && sibling.id !== row.id) {
     await removeStoredFile(db, row.tenant_id, row.id, eq(files.status, row.status));
     recordFileDedupHit();

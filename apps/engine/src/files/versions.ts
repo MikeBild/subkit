@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { FILE_VERSION_RETENTION, type FileVersionWire } from "../api/files-schemas.ts";
 import {
   AuditAction,
@@ -118,6 +118,7 @@ export async function replaceFileContent(
               eq(files.tenant_id, tenantId),
               eq(files.sha256, content.sha256),
               ne(files.id, row.id),
+              isNull(files.deleted_at),
             ),
           )
           .limit(1);

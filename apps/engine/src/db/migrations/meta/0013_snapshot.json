@@ -1,6 +1,6 @@
 {
-  "id": "2d8ec565-765c-4dc0-8179-c4f4b5961f17",
-  "prevId": "982b2492-989f-4750-aa29-701a3589670b",
+  "id": "2e090b97-4520-4a64-8c09-34273233e463",
+  "prevId": "2d8ec565-765c-4dc0-8179-c4f4b5961f17",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9741,6 +9741,27 @@
           "method": "btree",
           "with": {}
         },
+        "files_tenant_sha256_idx": {
+          "name": "files_tenant_sha256_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "files_tenant_sha256_uq": {
           "name": "files_tenant_sha256_uq",
           "columns": [
@@ -9758,6 +9779,7 @@
             }
           ],
           "isUnique": true,
+          "where": "\"files\".\"deleted_at\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

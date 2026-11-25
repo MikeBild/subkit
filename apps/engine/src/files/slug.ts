@@ -1,6 +1,6 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { files } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { getObjectStore } from "../storage/object-store.ts";
@@ -122,6 +122,37 @@ export async function insertFileRow(
   );
 }
 
+export async function findFileByContent(
+  db: Executor,
+  tenant_id: string,
+  sha256: string,
+): Promise<typeof files.$inferSelect | undefined> {
+  const [row] = await db
+    .select()
+    .from(files)
+    .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, sha256)))
+    .orderBy(sql`${files.deleted_at} DESC NULLS FIRST`)
+    .limit(1);
+  return row;
+}
+
+async function findActiveTwin(db: Executor, row: typeof files.$inferSelect) {
+  if (!row.sha256) return undefined;
+  const [twin] = await db
+    .select()
+    .from(files)
+    .where(
+      and(
+        eq(files.tenant_id, row.tenant_id),
+        eq(files.sha256, row.sha256),
+        ne(files.id, row.id),
+        isNull(files.deleted_at),
+      ),
+    )
+    .limit(1);
+  return twin;
+}
+
 export async function reviveFileRow(
   db: Db,
   row: typeof files.$inferSelect,
@@ -137,6 +168,8 @@ export async function reviveFileRow(
         .limit(1);
       if (!current) throw new Error("File was removed before it could be restored");
       if (!current.deleted_at) return current;
+      const twin = await findActiveTwin(tx, current);
+      if (twin) return twin;
       if (!(await getObjectStore().head(storageKey(current.storage_uri)))) {
         throw new Error("File object is missing; retained file cannot be restored");
       }

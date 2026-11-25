@@ -49,6 +49,16 @@ async function upload(text: string, filename: string): Promise<{ id: string }> {
   return (await response.json()) as { id: string };
 }
 
+async function reupload(text: string, filename: string): Promise<string> {
+  const response = await request("POST", "/v1/files/inline", srv.apiKey, {
+    filename,
+    content_type: "text/plain",
+    content_base64: Buffer.from(text).toString("base64"),
+  });
+  expect(response.status).toBe(200);
+  return ((await response.json()) as { id: string }).id;
+}
+
 async function replace(id: string, text: string, filename: string) {
   return request("POST", `/v1/files/${id}/replace`, srv.apiKey, {
     filename,
@@ -205,6 +215,34 @@ describe("file versions", () => {
     const response = await request("POST", `/v1/files/${file.id}/versions/1/restore`, srv.apiKey);
     expect(response.status).toBe(409);
     expect(((await response.json()) as { code: string }).code).toBe("duplicate_content");
+  });
+
+  test("restore succeeds once the only duplicate is deleted and uploads reuse the active file", async () => {
+    const file = await upload("restore-after-delete content", "omicron.txt");
+    expect((await replace(file.id, "restore-after-delete current", "omicron.txt")).status).toBe(
+      200,
+    );
+    const copy = await upload("restore-after-delete content", "omicron-copy.txt");
+    expect((await request("DELETE", `/v1/files/${copy.id}`, srv.apiKey)).status).toBe(204);
+    const restored = await request("POST", `/v1/files/${file.id}/versions/1/restore`, srv.apiKey);
+    expect(restored.status).toBe(200);
+    expect(((await restored.json()) as { id: string; version: number }).version).toBe(3);
+    expect((await versions(file.id)).map((item) => [item.version, item.restored_from])).toEqual([
+      [3, 1],
+      [2, null],
+      [1, null],
+    ]);
+    expect(await reupload("restore-after-delete content", "again.txt")).toBe(file.id);
+    expect((await request("DELETE", `/v1/files/${file.id}`, srv.apiKey)).status).toBe(204);
+    expect(await reupload("restore-after-delete content", "revived.txt")).toBe(file.id);
+  });
+
+  test("replace accepts content only a deleted file holds", async () => {
+    const file = await upload("replace-target content", "rho.txt");
+    const copy = await upload("deleted-only content", "sigma.txt");
+    expect((await request("DELETE", `/v1/files/${copy.id}`, srv.apiKey)).status).toBe(204);
+    expect((await replace(file.id, "deleted-only content", "rho.txt")).status).toBe(200);
+    expect(await reupload("deleted-only content", "sigma-again.txt")).toBe(file.id);
   });
 
   test("another tenant cannot list, read or restore versions", async () => {
