@@ -7,6 +7,7 @@ import {
 } from "../workflows/report-delivery-boundary.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import { classifyRunFailure, type PreviewClassification } from "./core/classify.ts";
+import { failureStatusClass } from "./core/sensitive-diagnostics.ts";
 
 export { classifyRunFailure } from "./core/classify.ts";
 
@@ -61,8 +62,13 @@ export function deriveExecutionOutcome(
       error_code: cause?.error_code ?? null,
       refusal_reason: stopping ? reportRefusalReason(stopping.error) : null,
       connector: refusedConnector(exec.failure),
+      status_class: failureStatusClass(stopping?.error, fieldStatus(stopping?.request_meta)),
     },
   });
+}
+
+function fieldStatus(meta: unknown): unknown {
+  return meta && typeof meta === "object" ? (meta as { status?: unknown }).status : undefined;
 }
 
 export function deriveRerunSafety(

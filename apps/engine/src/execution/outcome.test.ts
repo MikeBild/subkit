@@ -63,6 +63,7 @@ describe("deriveExecutionOutcome", () => {
       kind: "failed",
       failed_step: { step_key: "send", kind: "request" },
       cause_class: "auth_failed",
+      status_class: "4xx",
       error_code: "http_4xx",
       refusal_reason: null,
       connector: null,
@@ -73,6 +74,29 @@ describe("deriveExecutionOutcome", () => {
         reason: "the persisted workflow definition is unavailable or invalid",
       },
     });
+  });
+
+  test("the status class of the stopping step tells sign-in, service and network apart", () => {
+    const classOf = (error: unknown, request_meta: unknown = null) =>
+      deriveExecutionOutcome(
+        {
+          status: "failed",
+          failure: {
+            step_id: "send",
+            error_code: "sensitive_execution_failure",
+            error_message: "Sensitive execution failed.",
+          },
+          output_contract: "none",
+        },
+        [row({ step_key: "send", status: "failed", error, request_meta, started_at: at(1) })],
+        def,
+      ).status_class;
+    expect(
+      classOf({ code: "sensitive_execution_failure", message: "x", status_class: "5xx" }),
+    ).toBe("5xx");
+    expect(classOf({ code: "connection", message: "ECONNREFUSED" })).toBe("network");
+    expect(classOf({ code: "unexpected_status_code", message: "x" }, { status: 409 })).toBe("4xx");
+    expect(classOf({ code: "sensitive_execution_failure", message: "x" })).toBeUndefined();
   });
 
   test("a changed approval names the report rule the stopping step broke", () => {

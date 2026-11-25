@@ -3482,6 +3482,14 @@ A failed run shows a notice with three parts: what happened, one recommended act
 
 For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `subkit` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
 
+A failed request step of a confidential run also keeps a few redacted facts, so you can tell a refused request from a broken service or a network problem without seeing any data:
+
+- **Status class**: `4xx` (the service refused the request, for example the sign-in or the values sent), `5xx` (the service failed on its side), `network` (not reachable) or `timeout`. Never the exact status code.
+- **Placeholder types**: which placeholders the step body resolved and the JSON type each produced, for example `input.body.app.argv: array`. Never the values.
+- **Body size**: the size of the request body as a range: `<1KB`, `<10KB`, `<100KB`, `<1MB` or `>=1MB`.
+
+SubKit never keeps the upstream error code, the exact status, headers or the body. You find these facts in `request_meta` of the step (`driver: sensitive` with `status_class`, `placeholder_types` and `body_size`), as `status_class` in the run's `outcome`, in `subkit executions inspect` and in the Cockpit under the failure of the run.
+
 ### See what a schedule will cost
 
 Before you create or change a schedule, and on every schedule, SubKit shows an estimate like “≈ €4.20 / month” with its basis, for example “from 12 runs, current model prices”.

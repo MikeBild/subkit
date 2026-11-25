@@ -385,6 +385,42 @@ export function stepLimitSentence(
   return t(text.key, { step: step.step_key, limit: text.limit });
 }
 
+type SensitiveRequestMeta = components["schemas"]["SensitiveRequestMeta"];
+type StatusClass = NonNullable<SensitiveRequestMeta["status_class"]>;
+
+const PROTECTED_STATUS_KEYS: Record<StatusClass, TranslationKey> = {
+  "2xx": "runs.outcome.protected.status.2xx",
+  "3xx": "runs.outcome.protected.status.3xx",
+  "4xx": "runs.outcome.protected.status.4xx",
+  "5xx": "runs.outcome.protected.status.5xx",
+  network: "runs.outcome.protected.status.network",
+  timeout: "runs.outcome.protected.status.timeout",
+};
+
+function sensitiveMetaOf(meta: unknown): SensitiveRequestMeta | null {
+  return meta && typeof meta === "object" && (meta as { driver?: unknown }).driver === "sensitive"
+    ? (meta as SensitiveRequestMeta)
+    : null;
+}
+
+export function protectedDiagnosticsSentence(
+  step: Pick<StepLike, "request_meta"> | null,
+  t: Translate,
+): string | null {
+  const meta = sensitiveMetaOf(step?.request_meta);
+  if (!meta) return null;
+  const status = meta.status_class ? PROTECTED_STATUS_KEYS[meta.status_class] : undefined;
+  const placeholders = Object.entries(meta.placeholder_types ?? {})
+    .map(([path, type]) => `${path} (${type})`)
+    .join(", ");
+  const parts = [
+    status ? t(status) : null,
+    meta.body_size ? t("runs.outcome.protected.body", { size: meta.body_size }) : null,
+    placeholders ? t("runs.outcome.protected.placeholders", { list: placeholders }) : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 export function runStatusSentence(statusWord: string, t: Translate): OutcomeSentence {
   const plain = t("runs.outcome.statusOnly", { status: statusWord });
   return { lead: plain, cause: null, tail: "", plain };

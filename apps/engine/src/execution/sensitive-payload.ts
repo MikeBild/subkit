@@ -2,6 +2,12 @@ import { z } from "zod";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import { DEVICE_STEP_ERROR_CODES, DEVICE_STEP_REMEDIES } from "../devices/core/step-output.ts";
 import { classifyFailure, type PreviewClassification } from "./core/classify.ts";
+import {
+  failureStatusClass,
+  isBodySizeBucket,
+  recordedPlaceholderTypes,
+  type StatusClass,
+} from "./core/sensitive-diagnostics.ts";
 import type { RequestMeta, SensitiveConnectorRef, SensitiveOutputField } from "./types.ts";
 
 const SensitivePayloadSchema = z
@@ -206,6 +212,7 @@ export interface SensitiveFailure {
   code: string;
   message: string;
   error_class?: PreviewClassification;
+  status_class?: StatusClass;
 }
 
 export function sensitiveRunError(error: unknown): Error {
@@ -216,7 +223,16 @@ export function sensitiveRunError(error: unknown): Error {
   });
 }
 
-export function sensitiveFailure(code?: string, message?: string): SensitiveFailure {
+export function sensitiveFailure(
+  code?: string,
+  message?: string,
+  status?: StatusClass | null,
+): SensitiveFailure {
+  const failure = protectedFailure(code, message);
+  return status ? { ...failure, status_class: status } : failure;
+}
+
+function protectedFailure(code?: string, message?: string): SensitiveFailure {
   const safeCode = code && safeFailureCodes.has(code) ? code : "sensitive_execution_failure";
   const specific = SAFE_FAILURE_MESSAGES[safeCode];
   if (!code || specific) return { code: safeCode, message: specific ?? PROTECTED_MESSAGE };
@@ -237,11 +253,40 @@ function sensitiveConnectorRef(meta: RequestMeta): SensitiveConnectorRef | undef
   return { connector_id: connector.connector_id, connector_slug: connector.connector_slug };
 }
 
-export function sensitiveRequestMeta(meta: RequestMeta | null | undefined): RequestMeta | null {
-  if (!meta) return null;
+function fieldOf(value: unknown, key: string): unknown {
+  return value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
+}
+
+export function sensitiveStatusClass(
+  meta: RequestMeta | null | undefined,
+  error: unknown,
+): StatusClass | null {
+  return failureStatusClass(error, fieldOf(meta, "status"));
+}
+
+function sensitiveDiagnostics(meta: RequestMeta | null | undefined, error: unknown) {
+  if (!error) return {};
+  const status = sensitiveStatusClass(meta, error);
+  const source = meta?.driver === "sensitive" ? meta : fieldOf(meta, "digest");
+  const types = recordedPlaceholderTypes(fieldOf(source, "placeholder_types"));
+  const size = fieldOf(source, "body_size");
+  return {
+    ...(status ? { status_class: status } : {}),
+    ...(types ? { placeholder_types: types } : {}),
+    ...(isBodySizeBucket(size) ? { body_size: size } : {}),
+  };
+}
+
+export function sensitiveRequestMeta(
+  meta: RequestMeta | null | undefined,
+  error?: unknown,
+): RequestMeta | null {
+  const diagnostics = sensitiveDiagnostics(meta, error);
+  const diagnosed = Object.keys(diagnostics).length > 0;
+  if (!meta) return diagnosed ? { driver: "sensitive", ...diagnostics } : null;
   const pagination = "pagination" in meta ? meta.pagination : undefined;
   const connector = sensitiveConnectorRef(meta);
-  if (!pagination && !connector) return null;
+  if (!pagination && !connector && !diagnosed) return null;
   return {
     driver: "sensitive",
     ...(pagination
@@ -259,6 +304,7 @@ export function sensitiveRequestMeta(meta: RequestMeta | null | undefined): Requ
         }
       : {}),
     ...(connector ? { connector } : {}),
+    ...diagnostics,
   };
 }
 

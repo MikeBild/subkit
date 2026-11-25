@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { CredentialUseSnapshotSchema } from "../../credentials/provider-identity.ts";
 import type { executionSteps, executions } from "../../db/schema/index.ts";
 import { ExecutionCallerSchema } from "../../execution/caller-summary.ts";
-import { PREVIEW_CLASSIFICATIONS } from "../../execution/classify.ts";
+import { PREVIEW_CLASSIFICATIONS, STATUS_CLASSES } from "../../execution/classify.ts";
 import { describeExecutionEvidence } from "../../execution/evidence.ts";
 import { scrubRecordedUrls } from "../../execution/recorded-url.ts";
 import { WorkflowPermissionSchema } from "../../execution/workflow-permission.ts";
@@ -56,6 +56,12 @@ const ExecutionOutcomeSchema = z
     kind: z.enum(["succeeded", "failed", "held", "partial", "running"]),
     failed_step: z.object({ step_key: z.string(), kind: z.string() }).nullable(),
     cause_class: CauseClassSchema.nullable(),
+    status_class: z
+      .enum(STATUS_CLASSES)
+      .optional()
+      .describe(
+        "Class of the upstream answer that stopped the run: 4xx for sign-in or validation, 5xx for the service, network or timeout. Present when the stopping step reached or tried to reach a service. Never the exact status.",
+      ),
     error_code: z.string().nullable(),
     refusal_reason: ReportDeliveryRefusalSchema.nullable(),
     connector: RefusedConnectorSchema,

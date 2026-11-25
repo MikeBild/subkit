@@ -33,7 +33,7 @@ export const engineSentenceEn = {
   "engine.class.payload_invalid":
     "The message a step built is malformed and was not sent. Fix how the step builds it; the approval still fits.",
   "engine.code.sensitive_execution_failure":
-    "This run works with protected data, so the engine does not show the cause here. The run view names the failing step.",
+    "This run works with protected data, so the engine shows only the kind of failure, never the data. The run view names the failing step.",
   "engine.code.graphql_pagination_incomplete":
     "The pages of a GraphQL query are incomplete. Check pageInfo, totalCount, the cursors and the configured limits, then retry.",
   "engine.code.graphql_pagination_not_read_only":
@@ -122,7 +122,7 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
   "engine.class.payload_invalid":
     "Die Nachricht, die ein Schritt gebaut hat, ist fehlerhaft und wurde nicht gesendet. Korrigiere, wie der Schritt sie baut; die Freigabe passt weiterhin.",
   "engine.code.sensitive_execution_failure":
-    "Dieser Run arbeitet mit geschützten Daten, deshalb zeigt die Engine die Ursache hier nicht. Die Run-Ansicht nennt den fehlgeschlagenen Schritt.",
+    "Dieser Run arbeitet mit geschützten Daten, deshalb zeigt die Engine nur die Art des Fehlers, nie die Daten. Die Run-Ansicht nennt den fehlgeschlagenen Schritt.",
   "engine.code.graphql_pagination_incomplete":
     "Die Seiten einer GraphQL-Abfrage sind unvollständig. Prüfe pageInfo, totalCount, die Cursor und die eingestellten Limits und versuch es noch einmal.",
   "engine.code.graphql_pagination_not_read_only":

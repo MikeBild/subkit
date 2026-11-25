@@ -9,6 +9,7 @@ import type { StepDef } from "../workflows/types.ts";
 import type { CallerContext } from "./caller-context.ts";
 import type { CallerOrigin } from "./caller-origin.ts";
 import type { Clock, IdGen } from "./clock.ts";
+import type { BodySizeBucket, PlaceholderType, StatusClass } from "./core/sensitive-diagnostics.ts";
 import type { ExecutionStatus, StepStatus } from "./core/status.ts";
 import type { MaterializedRequest } from "./prepared-request.ts";
 
@@ -116,6 +117,8 @@ export interface RequestDigest {
   header_keys: string[];
   query_keys: string[];
   body_kind: string;
+  placeholder_types?: Record<string, PlaceholderType>;
+  body_size?: BodySizeBucket;
 }
 
 export interface PaginationCheckpoint {
@@ -237,6 +240,9 @@ export type RequestMeta =
       driver: "sensitive";
       pagination?: RequestPaginationSummary;
       connector?: SensitiveConnectorRef;
+      status_class?: StatusClass;
+      placeholder_types?: Record<string, PlaceholderType>;
+      body_size?: BodySizeBucket;
       extras?: Record<string, unknown>;
     }
   | {

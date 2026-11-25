@@ -36,6 +36,14 @@ Ein gescheiterter Run zeigt einen Hinweis mit drei Teilen: was passiert ist, ein
 
 Für vertrauliche Workflows (`execution_privacy: sensitive`) speichert SubKit keine Fehlerdetails. Seit dieser Version behält ein solcher Run trotzdem seine Ursache und einen festen Satz, der sagt, was zu tun ist. Beispiel: „The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.“ Erkennt SubKit keine Ursache, bleibt es bei „Sensitive execution failed.“ Diese Sätze schreibt die Engine auf Englisch. Das Cockpit sagt sie in deiner Sprache, wo es die Ursache, den Grund eines Anhaltens oder den Fehlercode kennt: in der Übersicht bei angehaltenen und scheiternden Workflows, bei einem abgelehnten erneuten Start und in Fehlerhinweisen. Das Beispiel oben liest du dort als „Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Connector neu und starte den Run noch einmal. Dieser Schritt hat nichts verändert.“ In den technischen Angaben eines Runs, über die HTTP-API und in `subkit` steht weiter der englische Satz der Engine. Auch SubKit Desktop benachrichtigt in deiner Sprache.
 
+Ein gescheiterter Request-Schritt eines vertraulichen Runs behält außerdem ein paar geschwärzte Angaben. So unterscheidest du eine abgelehnte Anfrage von einem gestörten Dienst oder einem Netzwerkproblem, ohne Daten zu sehen:
+
+- **Statusklasse**: `4xx` (der Dienst hat die Anfrage abgelehnt, etwa die Anmeldung oder die gesendeten Werte), `5xx` (der Dienst ist auf seiner Seite gescheitert), `network` (nicht erreichbar) oder `timeout`. Nie der genaue Statuscode.
+- **Platzhalter-Typen**: welche Platzhalter der Body des Schritts aufgelöst hat und welchen JSON-Typ jeder ergab, zum Beispiel `input.body.app.argv: array`. Nie die Werte.
+- **Body-Größe**: die Größe des Anfrage-Bodys als Bereich: `<1KB`, `<10KB`, `<100KB`, `<1MB` oder `>=1MB`.
+
+Den Fehlercode des Dienstes, den genauen Status, Header oder den Body behält SubKit nie. Du findest diese Angaben in `request_meta` des Schritts (`driver: sensitive` mit `status_class`, `placeholder_types` und `body_size`), als `status_class` im `outcome` des Runs, in `subkit executions inspect` und im Cockpit unter dem Fehler des Runs.
+
 ### Sehen, was ein Zeitplan kostet
 
 Bevor du einen Zeitplan anlegst oder änderst, und an jedem Zeitplan zeigt SubKit eine Schätzung wie „≈ 4,20 € / Monat“ mit ihrer Grundlage, zum Beispiel „aus 12 Runs, aktuelle Modellpreise“.

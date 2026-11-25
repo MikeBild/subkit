@@ -25487,6 +25487,33 @@
           },
           "body_kind": {
             "type": "string"
+          },
+          "placeholder_types": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "string",
+                "number",
+                "boolean",
+                "null",
+                "array",
+                "object",
+                "unresolved"
+              ]
+            },
+            "description": "JSON type each resolved body placeholder produced, keyed by placeholder path such as input.body.app.argv. Never the value."
+          },
+          "body_size": {
+            "type": "string",
+            "enum": [
+              "<1KB",
+              "<10KB",
+              "<100KB",
+              "<1MB",
+              ">=1MB"
+            ],
+            "description": "Coarse size of the request body that was built."
           }
         },
         "required": [
@@ -25903,6 +25930,45 @@
           },
           "connector": {
             "$ref": "#/components/schemas/SensitiveConnectorRef"
+          },
+          "status_class": {
+            "type": "string",
+            "enum": [
+              "2xx",
+              "3xx",
+              "4xx",
+              "5xx",
+              "network",
+              "timeout"
+            ],
+            "description": "Class of the upstream answer of a failed step: 2xx, 3xx, 4xx, 5xx, network or timeout. Never the exact status."
+          },
+          "placeholder_types": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "string",
+                "number",
+                "boolean",
+                "null",
+                "array",
+                "object",
+                "unresolved"
+              ]
+            },
+            "description": "JSON type each resolved body placeholder produced, keyed by placeholder path such as input.body.app.argv. Never the value."
+          },
+          "body_size": {
+            "type": "string",
+            "enum": [
+              "<1KB",
+              "<10KB",
+              "<100KB",
+              "<1MB",
+              ">=1MB"
+            ],
+            "description": "Coarse size of the request body that was built."
           },
           "extras": {
             "type": "object",
@@ -26820,6 +26886,18 @@
               "step_error",
               null
             ]
+          },
+          "status_class": {
+            "type": "string",
+            "enum": [
+              "2xx",
+              "3xx",
+              "4xx",
+              "5xx",
+              "network",
+              "timeout"
+            ],
+            "description": "Class of the upstream answer that stopped the run: 4xx for sign-in or validation, 5xx for the service, network or timeout. Present when the stopping step reached or tried to reach a service. Never the exact status."
           },
           "error_code": {
             "type": [

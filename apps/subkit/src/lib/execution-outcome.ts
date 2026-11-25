@@ -12,7 +12,12 @@ export function executionOutcomeLine(outcome: ExecutionOutcome | null): string |
   if (outcome.failed_step) {
     parts.push(`at step ${outcome.failed_step.step_key} (${outcome.failed_step.kind})`);
   }
-  const cause = [outcome.cause_class, outcome.error_code, outcome.refusal_reason]
+  const cause = [
+    outcome.cause_class,
+    outcome.status_class ? `upstream ${outcome.status_class}` : null,
+    outcome.error_code,
+    outcome.refusal_reason,
+  ]
     .filter(Boolean)
     .join(", ");
   if (cause) parts.push(`· ${cause}`);
@@ -58,4 +63,26 @@ export function recordLinkLines(links: readonly ExecutionRecordLink[] | undefine
   return (links ?? []).map((link) =>
     [link.connector_name, link.label, link.url].filter(Boolean).join(" · "),
   );
+}
+
+type SensitiveRequestMeta = components["schemas"]["SensitiveRequestMeta"];
+
+function sensitiveMetaOf(meta: unknown): SensitiveRequestMeta | null {
+  return meta && typeof meta === "object" && (meta as { driver?: unknown }).driver === "sensitive"
+    ? (meta as SensitiveRequestMeta)
+    : null;
+}
+
+export function sensitiveDiagnosticsLine(step: { request_meta?: unknown }): string | null {
+  const meta = sensitiveMetaOf(step.request_meta);
+  if (!meta) return null;
+  const placeholders = Object.entries(meta.placeholder_types ?? {}).map(
+    ([path, type]) => `${path}: ${type}`,
+  );
+  const parts = [
+    meta.status_class ? `upstream ${meta.status_class}` : null,
+    meta.body_size ? `body ${meta.body_size}` : null,
+    placeholders.length > 0 ? `placeholders ${placeholders.join(", ")}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? `protected run · ${parts.join(" · ")}` : null;
 }
