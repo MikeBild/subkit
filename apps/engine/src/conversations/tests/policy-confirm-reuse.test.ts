@@ -9,6 +9,7 @@ import {
 } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { openedElicitation } from "../../test-helpers/elicitations.ts";
 import { requestApproval } from "../../tools/approval.ts";
 import {
   createElicitation,
@@ -89,25 +90,27 @@ const saveGateInput = (
   ...(approvalId ? { approval_url: `https://engine.example.test/approve/${approvalId}` } : {}),
 });
 
-const ask = (
+const ask = async (
   conversationId: string,
   summary: string,
   input: Record<string, unknown>,
   reuse = true,
   toolCallId: string | null = null,
 ) =>
-  createElicitation(
-    {
-      tenant_id: ctx.tenant_id,
-      conversation_id: conversationId,
-      tool_call_id: toolCallId,
-      tool_name: "ask_user_confirm",
-      summary,
-      input,
-      actor_id: ctx.user_id,
-      ...(reuse ? { reuse_open_approval: true } : {}),
-    },
-    ctx.testDb.db,
+  openedElicitation(
+    await createElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversationId,
+        tool_call_id: toolCallId,
+        tool_name: "ask_user_confirm",
+        summary,
+        input,
+        actor_id: ctx.user_id,
+        ...(reuse ? { reuse_open_approval: true } : {}),
+      },
+      ctx.testDb.db,
+    ),
   );
 
 const pendingIds = async (conversationId: string) => {
