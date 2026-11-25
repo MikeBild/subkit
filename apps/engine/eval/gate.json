@@ -229,5 +229,18 @@
       "proven_at": "2026-11-22"
     }
   },
-  "live": {}
+  "live": {
+    "ta-js-transform-input-scope": {
+      "hash": "7d773288e2af3746bf40948088b9df5e6119b5051355fb3a43d93897ca1d065b",
+      "proven_at": "2026-11-25"
+    },
+    "underspecified-asks-first": {
+      "hash": "f239dd9dd611e6f69e3f3ae5a13ae9732e6214463b1c2a85f31766bf250fca5f",
+      "proven_at": "2026-11-25"
+    },
+    "underspecified-placeholder-rejected": {
+      "hash": "f88aa892e99da8beb9fb25ae599e8486d8ee9467b5169f51e9cfe19f465e96f1",
+      "proven_at": "2026-11-25"
+    }
+  }
 }
