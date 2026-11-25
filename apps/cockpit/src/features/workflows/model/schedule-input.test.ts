@@ -33,8 +33,17 @@ describe("schedule input calendar gates", () => {
     expect(preserveCalendarGates("text", { batch: 23 })).toEqual({ batch: 23 });
   });
 
-  test("an empty new input still carries the saved gates", () => {
-    expect(preserveCalendarGates({ skip_dates: ["2026-11-24"] }, undefined)).toEqual({
+  test("a cadence-only edit omits input to preserve the full saved payload", () => {
+    expect(
+      preserveCalendarGates(
+        { batch: 17, skip_dates: ["2026-11-24"], business_days_only: true },
+        undefined,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("an explicit empty object still carries the saved gates", () => {
+    expect(preserveCalendarGates({ skip_dates: ["2026-11-24"] }, {})).toEqual({
       skip_dates: ["2026-11-24"],
     });
   });

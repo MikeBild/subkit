@@ -12,6 +12,6 @@ export const preserveCalendarGates = (savedInput: unknown, builtInput: unknown):
     ]),
   );
   if (Object.keys(savedGates).length === 0) return builtInput;
-  if (builtInput === undefined) return savedGates;
+  if (builtInput === undefined) return undefined;
   return isPlainObject(builtInput) ? { ...savedGates, ...builtInput } : builtInput;
 };
