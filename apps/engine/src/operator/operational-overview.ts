@@ -5,6 +5,7 @@ import {
 } from "../connectors/health-ratio.ts";
 import type { ConnectorHealthState } from "../connectors/health-state.ts";
 import type { Db } from "../db/client.ts";
+import { type ScopedTx, withTenantScope } from "../db/index.ts";
 import { connectors, selfHealingScans, tenants } from "../db/schema/index.ts";
 import type { PreviewClassification } from "../execution/classify.ts";
 import { getMetrics } from "../observability/index.ts";
@@ -241,7 +242,7 @@ function tasksAwaitingStandingPermission(tenantId: string) {
             AND (g.max_runs IS NULL OR g.reserved_runs < g.max_runs))`;
 }
 
-function heldAutomation(tenantId: string) {
+function heldAutomation(_tx: ScopedTx, tenantId: string) {
   return sql`
     SELECT w.id AS subject_id, w.name AS name, 'held_schedule' AS kind, s.created_at
       FROM workflows_schedules s
@@ -281,7 +282,8 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   if (!bounds.ok) throw new Error(`operational overview window: ${bounds.reason}`);
   const figures = await readOperatingFigures(db, tenantId, bounds);
 
-  const result = await db.execute<SnapshotRow>(sql`
+  const result = await withTenantScope(db, tenantId, (tx) =>
+    tx.execute<SnapshotRow>(sql`
     WITH decisions AS (
       SELECT created_at, FALSE AS blocking FROM patch_candidates
        WHERE tenant_id = ${tenantId} AND status = 'proposed' AND ${readyPatches}
@@ -289,7 +291,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       SELECT created_at, FALSE AS blocking FROM skill_candidates
        WHERE tenant_id = ${tenantId} AND status = 'proposed'
       UNION ALL
-      SELECT created_at, TRUE AS blocking FROM (${heldAutomation(tenantId)}) held
+      SELECT created_at, TRUE AS blocking FROM (${heldAutomation(tx, tenantId)}) held
       UNION ALL
       SELECT created_at, TRUE AS blocking FROM (${taskStartsHeld(tenantId)}) held_tasks
       UNION ALL
@@ -311,7 +313,8 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       (SELECT count(*) FROM connectors WHERE tenant_id = ${tenantId} AND ${connectorCountsAgainstHealth()}) AS connectors_not_ok,
       (SELECT count(*) FROM skills WHERE tenant_id = ${tenantId}) AS skills_total,
       (SELECT count(*) FROM skill_candidates WHERE tenant_id = ${tenantId} AND status = 'proposed') AS pending_skill_candidates
-  `);
+  `),
+  );
   const row = rowsOf<SnapshotRow>(result)[0];
   if (!row) throw new Error("operational overview aggregate query returned no row");
 
@@ -717,10 +720,12 @@ async function readHealthCauses(
 ): Promise<HealthCause[]> {
   type Held = { workflow_id: string; name: string; kind: HealthCause["kind"] & `held_${string}` };
   const held = rowsOf<Held>(
-    await db.execute(sql`
-      SELECT subject_id AS workflow_id, name, kind FROM (${heldAutomation(tenantId)}) held
+    await withTenantScope(db, tenantId, (tx) =>
+      tx.execute(sql`
+      SELECT subject_id AS workflow_id, name, kind FROM (${heldAutomation(tx, tenantId)}) held
        ORDER BY created_at, subject_id
        LIMIT ${MAX_HEALTH_CAUSES}`),
+    ),
   );
   const causes: HealthCause[] = held.map((row) => ({
     kind: row.kind,

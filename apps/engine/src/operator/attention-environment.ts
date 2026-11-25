@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { webhooksInbound, workflowsSchedules } from "../db/schema/index.ts";
 import type { Candidate, TenantFacts } from "./attention-readers.ts";
 
@@ -97,16 +98,18 @@ async function readHookedWorkflows(
   workflowIds: readonly string[],
 ): Promise<Set<string>> {
   if (workflowIds.length === 0) return new Set();
-  const rows = await db
-    .select({ workflow_id: webhooksInbound.workflow_id })
-    .from(webhooksInbound)
-    .where(
-      and(
-        eq(webhooksInbound.tenant_id, tenantId),
-        eq(webhooksInbound.active, true),
-        inArray(webhooksInbound.workflow_id, [...workflowIds]),
+  const rows = await withTenantScope(db, tenantId, (tx) =>
+    tx
+      .select({ workflow_id: webhooksInbound.workflow_id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, tenantId),
+          eq(webhooksInbound.active, true),
+          inArray(webhooksInbound.workflow_id, [...workflowIds]),
+        ),
       ),
-    );
+  );
   return new Set(rows.flatMap((row) => (row.workflow_id ? [row.workflow_id] : [])));
 }
 

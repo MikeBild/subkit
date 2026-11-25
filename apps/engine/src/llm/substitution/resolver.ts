@@ -9,6 +9,7 @@ import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { CredentialMode, DecryptedCredential } from "../../credentials/types.ts";
 import { decryptSecret } from "../../crypto/index.ts";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { connectors, vaultItems } from "../../db/schema/connectors.ts";
 import { logger } from "../../logging/index.ts";
 import { can } from "../../rbac/evaluator.ts";
@@ -588,18 +589,20 @@ async function fetchConnector(ctx: ResolverContext, slug: string) {
 }
 
 async function fetchCredential(ctx: ResolverContext, connectorId: string) {
-  const rows = await ctx.db
-    .select()
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, ctx.tenant_id),
-        eq(vaultItems.connector_id, connectorId),
-        eq(vaultItems.environment, ctx.environment),
-        isNull(vaultItems.deleted_at),
-      ),
-    )
-    .limit(1);
+  const rows = await withTenantScope(ctx.db, ctx.tenant_id, (tx) =>
+    tx
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, ctx.tenant_id),
+          eq(vaultItems.connector_id, connectorId),
+          eq(vaultItems.environment, ctx.environment),
+          isNull(vaultItems.deleted_at),
+        ),
+      )
+      .limit(1),
+  );
   return rows[0] ?? null;
 }
 

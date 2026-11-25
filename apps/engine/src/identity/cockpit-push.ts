@@ -22,6 +22,7 @@ import { liveBrowserSessionWhere } from "../auth/browser-session-validity.ts";
 import { assertEgressAllowedResolved } from "../connectors/index.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
+import { type ScopedTx, withSystemScope, withTenantScope } from "../db/index.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { cockpitPushKeys, cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";
 import { sessions, tenants, users } from "../db/schema/identity.ts";
@@ -267,24 +268,28 @@ function parseSubscription(raw: string): CockpitPushSubscriptionInput {
 }
 
 export async function prepareCockpitPushKey(db: Db, context: CockpitPushContext): Promise<string> {
-  const [existing] = await db
-    .select({
-      ciphertext: cockpitPushKeys.ciphertext,
-      iv: cockpitPushKeys.iv,
-      auth_tag: cockpitPushKeys.auth_tag,
-    })
-    .from(cockpitPushKeys)
-    .where(eq(cockpitPushKeys.tenant_id, context.tenant_id))
-    .limit(1);
+  const [existing] = await withTenantScope(db, context.tenant_id, (tx) =>
+    tx
+      .select({
+        ciphertext: cockpitPushKeys.ciphertext,
+        iv: cockpitPushKeys.iv,
+        auth_tag: cockpitPushKeys.auth_tag,
+      })
+      .from(cockpitPushKeys)
+      .where(eq(cockpitPushKeys.tenant_id, context.tenant_id))
+      .limit(1),
+  );
   if (existing) return parseKeyPair(decryptSecret(existing, keyAad(context.tenant_id))).publicKey;
 
   const keys = webpush.generateVAPIDKeys();
   const encrypted = encryptSecret(JSON.stringify(keys), keyAad(context.tenant_id));
-  const inserted = await db
-    .insert(cockpitPushKeys)
-    .values({ tenant_id: context.tenant_id, ...encrypted })
-    .onConflictDoNothing()
-    .returning({ tenant_id: cockpitPushKeys.tenant_id });
+  const inserted = await withTenantScope(db, context.tenant_id, (tx) =>
+    tx
+      .insert(cockpitPushKeys)
+      .values({ tenant_id: context.tenant_id, ...encrypted })
+      .onConflictDoNothing()
+      .returning({ tenant_id: cockpitPushKeys.tenant_id }),
+  );
   if (inserted.length === 0) return await prepareCockpitPushKey(db, context);
   await auditAwait(
     {
@@ -324,7 +329,7 @@ function verifiedSubscription(subscription: CockpitPushSubscriptionInput): URL {
 type EncryptedSubscription = ReturnType<typeof encryptSecret>;
 
 async function upsertInstallationSubscription(
-  tx: Executor,
+  tx: ScopedTx,
   context: CockpitInstallationPushContext,
   hash: string,
   encrypted: EncryptedSubscription,
@@ -391,7 +396,7 @@ function tenantBrowserRowsOf(context: CockpitBrowserPushContext) {
 }
 
 async function pruneBrowserSubscriptions(
-  tx: Executor,
+  tx: ScopedTx,
   context: CockpitBrowserPushContext,
   hash: string,
 ): Promise<number> {
@@ -413,7 +418,7 @@ async function pruneBrowserSubscriptions(
 }
 
 async function upsertBrowserSubscription(
-  tx: Executor,
+  tx: ScopedTx,
   context: CockpitBrowserPushContext,
   hash: string,
   encrypted: EncryptedSubscription,
@@ -487,7 +492,7 @@ export async function upsertCockpitPushSubscription(
   const hash = endpointHash(subscription.endpoint);
   const encrypted = encryptSecret(JSON.stringify(subscription), subscriptionAad(context, hash));
   const device = deviceHash(context, options.device);
-  await db.transaction(async (tx) => {
+  await withTenantScope(db, context.tenant_id, async (tx) => {
     if (context.kind === "browser")
       await upsertBrowserSubscription(tx, context, hash, encrypted, device);
     else await upsertInstallationSubscription(tx, context, hash, encrypted, device);
@@ -503,7 +508,7 @@ export async function rebindCockpitBrowserPushSubscription(
   verifiedSubscription(subscription);
   const hash = endpointHash(subscription.endpoint);
   const encrypted = encryptSecret(JSON.stringify(subscription), subscriptionAad(context, hash));
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, context.tenant_id, async (tx) => {
     const [row] = await tx
       .update(cockpitPushSubscriptions)
       .set({
@@ -598,9 +603,20 @@ export async function endCockpitPushForSessions(
   actor: { actor_type: AuditActorType; actor_id: string | null },
 ): Promise<number> {
   if ("session_ids" in scope && scope.session_ids.length === 0) return 0;
-  const removed = await exec
+  return await withTenantScope(exec, scope.tenant_id, (tx) =>
+    endCockpitPushInScope(tx, scope, reason, actor),
+  );
+}
+
+async function endCockpitPushInScope(
+  tx: ScopedTx,
+  scope: CockpitPushEndScope,
+  reason: CockpitPushEndReason,
+  actor: { actor_type: AuditActorType; actor_id: string | null },
+): Promise<number> {
+  const removed = await tx
     .delete(cockpitPushSubscriptions)
-    .where(endScopeWhere(exec, scope))
+    .where(endScopeWhere(tx, scope))
     .returning({
       kind: cockpitPushSubscriptions.kind,
       installation_id: cockpitPushSubscriptions.installation_id,
@@ -626,7 +642,7 @@ export async function endCockpitPushForSessions(
         ].sort(),
       },
     },
-    exec,
+    tx,
   );
   return removed.length;
 }
@@ -635,10 +651,12 @@ export async function removeCockpitPushSubscription(
   db: Db,
   context: CockpitPushContext,
 ): Promise<boolean> {
-  const removed = await db
-    .delete(cockpitPushSubscriptions)
-    .where(subscriptionScopeWhere(context))
-    .returning({ id: cockpitPushSubscriptions.id });
+  const removed = await withTenantScope(db, context.tenant_id, (tx) =>
+    tx
+      .delete(cockpitPushSubscriptions)
+      .where(subscriptionScopeWhere(context))
+      .returning({ id: cockpitPushSubscriptions.id }),
+  );
   if (removed.length === 0) return false;
   await auditAwait(
     {
@@ -660,18 +678,20 @@ export async function cockpitPushSubscriptionActive(
   db: Executor,
   context: CockpitPushContext,
 ): Promise<boolean> {
-  const rows = await db
-    .select({ id: cockpitPushSubscriptions.id })
-    .from(cockpitPushSubscriptions)
-    .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
-    .leftJoin(
-      cockpitInstallations,
-      eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
-    )
-    .innerJoin(users, eq(users.id, sessions.user_id))
-    .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
-    .where(activeSessionWhere(context, new Date(now())))
-    .limit(1);
+  const rows = await withTenantScope(db, context.tenant_id, (tx) =>
+    tx
+      .select({ id: cockpitPushSubscriptions.id })
+      .from(cockpitPushSubscriptions)
+      .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
+      .leftJoin(
+        cockpitInstallations,
+        eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
+      )
+      .innerJoin(users, eq(users.id, sessions.user_id))
+      .innerJoin(tenants, eq(tenants.id, sessions.tenant_id))
+      .where(activeSessionWhere(context, new Date(now())))
+      .limit(1),
+  );
   return rows.length > 0;
 }
 
@@ -703,7 +723,7 @@ export interface CockpitPushAudienceRow {
 }
 
 function audienceSelection(
-  exec: Executor,
+  exec: ScopedTx,
   scope: {
     tenant_id: string;
     installation_id?: string;
@@ -761,7 +781,9 @@ export async function listCockpitPushAudience(
   tenantId: string,
   at: Date,
 ): Promise<CockpitPushAudienceRow[]> {
-  const rows = await audienceSelection(exec, { tenant_id: tenantId }, at).limit(PUSH_AUDIENCE_MAX);
+  const rows = await withTenantScope(exec, tenantId, (tx) =>
+    audienceSelection(tx, { tenant_id: tenantId }, at).limit(PUSH_AUDIENCE_MAX),
+  );
   return rows.map((row) => ({
     id: row.id,
     kind: row.kind,
@@ -781,14 +803,16 @@ export async function cockpitPushDeviceHandledByApp(
 ): Promise<boolean> {
   const hash = context.kind === "browser" ? deviceHash(context, device) : null;
   if (!hash) return false;
-  const rows = await audienceSelection(
-    exec,
-    {
-      tenant_id: context.tenant_id,
-      installed_device: { user_id: context.user_id, device_sha256: hash },
-    },
-    at,
-  ).limit(1);
+  const rows = await withTenantScope(exec, context.tenant_id, (tx) =>
+    audienceSelection(
+      tx,
+      {
+        tenant_id: context.tenant_id,
+        installed_device: { user_id: context.user_id, device_sha256: hash },
+      },
+      at,
+    ).limit(1),
+  );
   return rows.length > 0;
 }
 
@@ -798,25 +822,27 @@ export async function listCockpitPushTenants(
   page: { after?: string | null; limit?: number } = {},
 ): Promise<string[]> {
   // tenant-filter:exempt — the attention pass visits every tenant that still has a live push audience
-  const rows = await exec
-    .selectDistinct({ tenant_id: cockpitPushSubscriptions.tenant_id })
-    .from(cockpitPushSubscriptions)
-    .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
-    .leftJoin(
-      cockpitInstallations,
-      eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
-    )
-    .innerJoin(users, eq(users.id, audienceUserId))
-    .innerJoin(tenants, eq(tenants.id, cockpitPushSubscriptions.tenant_id))
-    .where(
-      pushAudienceWhere(
-        exec,
-        page.after ? gt(cockpitPushSubscriptions.tenant_id, page.after) : sql`true`,
-        at,
-      ),
-    )
-    .orderBy(asc(cockpitPushSubscriptions.tenant_id))
-    .limit(page.limit ?? COCKPIT_PUSH_TENANT_PAGE);
+  const rows = await withSystemScope(exec, "cockpit push tenant sweep", (tx) =>
+    tx
+      .selectDistinct({ tenant_id: cockpitPushSubscriptions.tenant_id })
+      .from(cockpitPushSubscriptions)
+      .innerJoin(sessions, eq(sessions.id, cockpitPushSubscriptions.session_id))
+      .leftJoin(
+        cockpitInstallations,
+        eq(cockpitInstallations.id, cockpitPushSubscriptions.installation_id),
+      )
+      .innerJoin(users, eq(users.id, audienceUserId))
+      .innerJoin(tenants, eq(tenants.id, cockpitPushSubscriptions.tenant_id))
+      .where(
+        pushAudienceWhere(
+          tx,
+          page.after ? gt(cockpitPushSubscriptions.tenant_id, page.after) : sql`true`,
+          at,
+        ),
+      )
+      .orderBy(asc(cockpitPushSubscriptions.tenant_id))
+      .limit(page.limit ?? COCKPIT_PUSH_TENANT_PAGE),
+  );
   return rows.map((row) => row.tenant_id);
 }
 
@@ -841,27 +867,31 @@ export async function sendCockpitPushNotifications(input: {
     throw new Error("cockpit push subject must be an HTTPS URL without credentials");
   const at = input.now ?? new Date(now());
   if (input.subscription_ids?.length === 0) return { attempted: 0, delivered: 0, outcomes: [] };
-  const keyRows = await input.db
-    .select({
-      ciphertext: cockpitPushKeys.ciphertext,
-      iv: cockpitPushKeys.iv,
-      auth_tag: cockpitPushKeys.auth_tag,
-    })
-    .from(cockpitPushKeys)
-    .where(eq(cockpitPushKeys.tenant_id, input.tenant_id))
-    .limit(1);
+  const keyRows = await withTenantScope(input.db, input.tenant_id, (tx) =>
+    tx
+      .select({
+        ciphertext: cockpitPushKeys.ciphertext,
+        iv: cockpitPushKeys.iv,
+        auth_tag: cockpitPushKeys.auth_tag,
+      })
+      .from(cockpitPushKeys)
+      .where(eq(cockpitPushKeys.tenant_id, input.tenant_id))
+      .limit(1),
+  );
   const key = keyRows[0];
   if (!key) return { attempted: 0, delivered: 0, outcomes: [] };
   const vapid = parseKeyPair(decryptSecret(key, keyAad(input.tenant_id)));
-  const rows = await audienceSelection(
-    input.db,
-    {
-      tenant_id: input.tenant_id,
-      ...(input.installation_id ? { installation_id: input.installation_id } : {}),
-      ...(input.subscription_ids ? { subscription_ids: input.subscription_ids } : {}),
-    },
-    at,
-  ).limit(PUSH_AUDIENCE_MAX);
+  const rows = await withTenantScope(input.db, input.tenant_id, (tx) =>
+    audienceSelection(
+      tx,
+      {
+        tenant_id: input.tenant_id,
+        ...(input.installation_id ? { installation_id: input.installation_id } : {}),
+        ...(input.subscription_ids ? { subscription_ids: input.subscription_ids } : {}),
+      },
+      at,
+    ).limit(PUSH_AUDIENCE_MAX),
+  );
   const outcomes: CockpitPushOutcome[] = [];
   for (const row of rows) {
     const session = {
@@ -875,11 +905,11 @@ export async function sendCockpitPushNotifications(input: {
         ? { ...session, kind: "installation", installation_id: row.installation_id }
         : { ...session, kind: "browser" };
     const target = { kind: row.kind, installation_id: row.installation_id };
-    const live = await audienceSelection(
-      input.db,
-      { tenant_id: input.tenant_id, subscription_ids: [row.id] },
-      at,
-    ).limit(1);
+    const live = await withTenantScope(input.db, input.tenant_id, (tx) =>
+      audienceSelection(tx, { tenant_id: input.tenant_id, subscription_ids: [row.id] }, at).limit(
+        1,
+      ),
+    );
     if (live.length === 0) continue;
     let endpointHost = "unknown";
     try {
@@ -911,15 +941,17 @@ export async function sendCockpitPushNotifications(input: {
     } catch (error) {
       const statusCode = statusCodeOf(error);
       if (statusCode === 404 || statusCode === 410) {
-        const removed = await input.db
-          .delete(cockpitPushSubscriptions)
-          .where(
-            and(
-              eq(cockpitPushSubscriptions.id, row.id),
-              eq(cockpitPushSubscriptions.tenant_id, input.tenant_id),
-            ),
-          )
-          .returning({ id: cockpitPushSubscriptions.id });
+        const removed = await withTenantScope(input.db, input.tenant_id, (tx) =>
+          tx
+            .delete(cockpitPushSubscriptions)
+            .where(
+              and(
+                eq(cockpitPushSubscriptions.id, row.id),
+                eq(cockpitPushSubscriptions.tenant_id, input.tenant_id),
+              ),
+            )
+            .returning({ id: cockpitPushSubscriptions.id }),
+        );
         if (removed.length > 0)
           await auditAwait(
             {

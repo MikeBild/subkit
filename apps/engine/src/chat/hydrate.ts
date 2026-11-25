@@ -3,6 +3,7 @@ import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
 import { decryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
+import { withSystemScope } from "../db/index.ts";
 import { chatWorkspaces } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import { chatWorkspaceAad } from "./api.ts";
@@ -53,7 +54,9 @@ export async function hydrateChatRegistry(
   // tenant-filter:exempt — every tenant's chat_workspaces is hydrated
   // into one process-local registry at boot; the row already carries
   // `tenant_id` for downstream scoping.
-  const rows = await db.select().from(chatWorkspaces);
+  const rows = await withSystemScope(db, "chat registry boot hydration", (tx) =>
+    tx.select().from(chatWorkspaces),
+  );
 
   const outcome: HydrateOutcome = {
     total: rows.length,

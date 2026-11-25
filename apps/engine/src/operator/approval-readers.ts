@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import {
   webhooksInbound,
   workflowExecutionAuthorities,
@@ -162,39 +163,41 @@ export async function readApprovalFacts(
           runnable(),
         ),
       ),
-    db
-      .select({
-        workflow_id: workflows.id,
-        name: workflows.name,
-        version: workflowVersions.version,
-        saved_at: workflowVersions.created_at,
-        authority_growth: workflowVersions.authority_growth,
-        slug: webhooksInbound.slug,
-        ...approvalColumns(db, now, sql`'prod'`),
-      })
-      .from(webhooksInbound)
-      .innerJoin(
-        workflows,
-        and(
-          eq(workflows.id, webhooksInbound.workflow_id),
-          eq(workflows.tenant_id, webhooksInbound.tenant_id),
+    withTenantScope(db, tenantId, (tx) =>
+      tx
+        .select({
+          workflow_id: workflows.id,
+          name: workflows.name,
+          version: workflowVersions.version,
+          saved_at: workflowVersions.created_at,
+          authority_growth: workflowVersions.authority_growth,
+          slug: webhooksInbound.slug,
+          ...approvalColumns(db, now, sql`'prod'`),
+        })
+        .from(webhooksInbound)
+        .innerJoin(
+          workflows,
+          and(
+            eq(workflows.id, webhooksInbound.workflow_id),
+            eq(workflows.tenant_id, webhooksInbound.tenant_id),
+          ),
+        )
+        .innerJoin(
+          workflowVersions,
+          and(
+            eq(workflowVersions.id, workflows.current_version_id),
+            eq(workflowVersions.tenant_id, workflows.tenant_id),
+          ),
+        )
+        .where(
+          and(
+            eq(webhooksInbound.tenant_id, tenantId),
+            eq(webhooksInbound.active, true),
+            isNull(webhooksInbound.admission_hold),
+            runnable(),
+          ),
         ),
-      )
-      .innerJoin(
-        workflowVersions,
-        and(
-          eq(workflowVersions.id, workflows.current_version_id),
-          eq(workflowVersions.tenant_id, workflows.tenant_id),
-        ),
-      )
-      .where(
-        and(
-          eq(webhooksInbound.tenant_id, tenantId),
-          eq(webhooksInbound.active, true),
-          isNull(webhooksInbound.admission_hold),
-          runnable(),
-        ),
-      ),
+    ),
   ]);
 
   const rows: TriggerRow[] = [

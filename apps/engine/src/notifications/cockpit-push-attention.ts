@@ -5,6 +5,7 @@ import { z } from "zod";
 import { activeSnoozes } from "../attention-snoozes/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";
 import {
   type CockpitPushAudienceRow,
@@ -148,17 +149,19 @@ async function claimNewAttention(
     : current;
   if (fresh === 0 && previous.join() === keys.join() && row.notified_attention_keys !== null)
     return { claim: null, pending: false };
-  const claimed = await db
-    .update(cockpitPushSubscriptions)
-    .set({ notified_attention_keys: keys })
-    .where(
-      and(
-        eq(cockpitPushSubscriptions.tenant_id, tenantId),
-        eq(cockpitPushSubscriptions.id, row.id),
-        keysMatch(row.notified_attention_keys),
-      ),
-    )
-    .returning({ id: cockpitPushSubscriptions.id });
+  const claimed = await withTenantScope(db, tenantId, (tx) =>
+    tx
+      .update(cockpitPushSubscriptions)
+      .set({ notified_attention_keys: keys })
+      .where(
+        and(
+          eq(cockpitPushSubscriptions.tenant_id, tenantId),
+          eq(cockpitPushSubscriptions.id, row.id),
+          keysMatch(row.notified_attention_keys),
+        ),
+      )
+      .returning({ id: cockpitPushSubscriptions.id }),
+  );
   const won = claimed.length > 0 && fresh > 0;
   return {
     pending: fresh > 0,
@@ -187,26 +190,30 @@ async function settleClaims(
     .filter((claim) => settled.has(claim.row.id))
     .map((claim) => claim.row.id);
   if (settledIds.length > 0)
-    await db
-      .update(cockpitPushSubscriptions)
-      .set({ notified_at: at })
-      .where(
-        and(
-          eq(cockpitPushSubscriptions.tenant_id, tenantId),
-          inArray(cockpitPushSubscriptions.id, settledIds),
+    await withTenantScope(db, tenantId, (tx) =>
+      tx
+        .update(cockpitPushSubscriptions)
+        .set({ notified_at: at })
+        .where(
+          and(
+            eq(cockpitPushSubscriptions.tenant_id, tenantId),
+            inArray(cockpitPushSubscriptions.id, settledIds),
+          ),
         ),
-      );
+    );
   for (const claim of claims.filter((pending) => !settled.has(pending.row.id)))
-    await db
-      .update(cockpitPushSubscriptions)
-      .set({ notified_attention_keys: claim.row.notified_attention_keys })
-      .where(
-        and(
-          eq(cockpitPushSubscriptions.tenant_id, tenantId),
-          eq(cockpitPushSubscriptions.id, claim.row.id),
-          keysMatch(claim.keys),
+    await withTenantScope(db, tenantId, (tx) =>
+      tx
+        .update(cockpitPushSubscriptions)
+        .set({ notified_attention_keys: claim.row.notified_attention_keys })
+        .where(
+          and(
+            eq(cockpitPushSubscriptions.tenant_id, tenantId),
+            eq(cockpitPushSubscriptions.id, claim.row.id),
+            keysMatch(claim.keys),
+          ),
         ),
-      );
+    );
 }
 
 export function dedupeSameDeviceAudience(rows: readonly CockpitPushAudienceRow[]): {

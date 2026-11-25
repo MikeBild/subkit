@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { executions, webhooksInbound } from "../db/schema/index.ts";
 import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../execution/caller-context.ts";
@@ -263,18 +264,20 @@ async function preparationInput(
     });
   if (schedules[0]) return { input: schedules[0].input ?? {} };
   if (input.execution_environment === "prod") {
-    const [hook] = await db
-      .select({ slug: webhooksInbound.slug })
-      .from(webhooksInbound)
-      .where(
-        and(
-          eq(webhooksInbound.tenant_id, input.tenant_id),
-          eq(webhooksInbound.workflow_id, input.workflow_id),
-          eq(webhooksInbound.active, true),
-        ),
-      )
-      .orderBy(webhooksInbound.slug)
-      .limit(1);
+    const [hook] = await withTenantScope(db, input.tenant_id, (tx) =>
+      tx
+        .select({ slug: webhooksInbound.slug })
+        .from(webhooksInbound)
+        .where(
+          and(
+            eq(webhooksInbound.tenant_id, input.tenant_id),
+            eq(webhooksInbound.workflow_id, input.workflow_id),
+            eq(webhooksInbound.active, true),
+          ),
+        )
+        .orderBy(webhooksInbound.slug)
+        .limit(1),
+    );
     if (hook) {
       const admitted = await latestAdmittedDelivery(input, db, principal);
       if (admitted !== undefined) return { input: admitted };

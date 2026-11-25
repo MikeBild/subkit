@@ -1,10 +1,12 @@
 import { eq } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
+import { withSystemScope } from "../../db/index.ts";
 import { subscriptions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
 
 export const FAILURE_THRESHOLD = 10;
 export const OPEN_DURATION_MS = 5 * 60_000;
+const BREAKER_SCOPE_REASON = "outbound circuit breaker state is keyed by subscription id";
 
 interface BreakerState {
   consecutive_failures: number;
@@ -37,10 +39,12 @@ export async function recordSuccess(db: Executor, subscriptionId: string): Promi
     });
   }
   state.set(subscriptionId, { consecutive_failures: 0, open_until: 0 });
-  await db
-    .update(subscriptions)
-    .set({ consecutive_failures: 0, circuit_open_until: null })
-    .where(eq(subscriptions.id, subscriptionId));
+  await withSystemScope(db, BREAKER_SCOPE_REASON, (tx) =>
+    tx
+      .update(subscriptions)
+      .set({ consecutive_failures: 0, circuit_open_until: null })
+      .where(eq(subscriptions.id, subscriptionId)),
+  );
 }
 
 export async function recordFailure(
@@ -65,27 +69,31 @@ export async function recordFailure(
   }
   state.set(subscriptionId, next);
 
-  await db
-    .update(subscriptions)
-    .set({
-      consecutive_failures: next.consecutive_failures,
-      circuit_open_until: next.open_until > 0 ? new Date(next.open_until) : null,
-    })
-    .where(eq(subscriptions.id, subscriptionId));
+  await withSystemScope(db, BREAKER_SCOPE_REASON, (tx) =>
+    tx
+      .update(subscriptions)
+      .set({
+        consecutive_failures: next.consecutive_failures,
+        circuit_open_until: next.open_until > 0 ? new Date(next.open_until) : null,
+      })
+      .where(eq(subscriptions.id, subscriptionId)),
+  );
 
   return next;
 }
 
 export async function hydrate(db: Executor, subscriptionId: string): Promise<void> {
   // tenant-filter:exempt — subscriptions PK lookup; row's tenant_id is read out and forwarded into in-memory breaker state
-  const rows = await db
-    .select({
-      failures: subscriptions.consecutive_failures,
-      open_until: subscriptions.circuit_open_until,
-    })
-    .from(subscriptions)
-    .where(eq(subscriptions.id, subscriptionId))
-    .limit(1);
+  const rows = await withSystemScope(db, BREAKER_SCOPE_REASON, (tx) =>
+    tx
+      .select({
+        failures: subscriptions.consecutive_failures,
+        open_until: subscriptions.circuit_open_until,
+      })
+      .from(subscriptions)
+      .where(eq(subscriptions.id, subscriptionId))
+      .limit(1),
+  );
   const row = rows[0];
   if (!row) return;
   state.set(subscriptionId, {

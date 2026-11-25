@@ -2,6 +2,7 @@ import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
 import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { auditLog, executions, webhooksInbound } from "../db/schema/index.ts";
 import { inspectInboundHookAutomation, inspectScheduleAutomation } from "./automation-status.ts";
 import { nextScheduleFire } from "./next-fire.ts";
@@ -43,11 +44,13 @@ export async function inboundHookAutomationView(
   now: Date,
   options: { refusal_reasons: boolean },
 ) {
-  const hooks = await db
-    .select()
-    .from(webhooksInbound)
-    .where(and(eq(webhooksInbound.tenant_id, tenant), eq(webhooksInbound.workflow_id, workflow)))
-    .orderBy(webhooksInbound.slug);
+  const hooks = await withTenantScope(db, tenant, (tx) =>
+    tx
+      .select()
+      .from(webhooksInbound)
+      .where(and(eq(webhooksInbound.tenant_id, tenant), eq(webhooksInbound.workflow_id, workflow)))
+      .orderBy(webhooksInbound.slug),
+  );
   if (hooks.length === 0) return [];
   const refusals = await db
     .selectDistinctOn([auditLog.resource_id], {
@@ -96,16 +99,18 @@ export async function inboundHookDeliveryRate(
   db: Executor,
   now: Date,
 ): Promise<{ deliveries: number; window_days: number } | null> {
-  const hooks = await db
-    .select({ id: webhooksInbound.id })
-    .from(webhooksInbound)
-    .where(
-      and(
-        eq(webhooksInbound.tenant_id, tenant),
-        eq(webhooksInbound.workflow_id, workflow),
-        eq(webhooksInbound.active, true),
+  const hooks = await withTenantScope(db, tenant, (tx) =>
+    tx
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, tenant),
+          eq(webhooksInbound.workflow_id, workflow),
+          eq(webhooksInbound.active, true),
+        ),
       ),
-    );
+  );
   if (hooks.length === 0) return null;
   const since = new Date(now.getTime() - DELIVERY_RATE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const [started] = await db

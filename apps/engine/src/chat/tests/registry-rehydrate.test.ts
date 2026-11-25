@@ -57,7 +57,7 @@ function countingDb(db: Db): { db: Db; count: () => number } {
   let selects = 0;
   const proxy = new Proxy(db, {
     get(target, prop, receiver) {
-      if (prop === "select") {
+      if (prop === "select" || prop === "transaction") {
         selects += 1;
       }
       return Reflect.get(target, prop, receiver);

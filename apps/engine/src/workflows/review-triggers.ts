@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { webhooksInbound, workflowsSchedules } from "../db/schema/index.ts";
 
 interface ReviewTriggerState {
@@ -31,15 +32,17 @@ export async function readReviewTriggerState(
       ),
     )
     .orderBy(workflowsSchedules.id);
-  const webhooksQuery = db
-    .select()
-    .from(webhooksInbound)
-    .where(
-      and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.workflow_id, workflow_id)),
-    )
-    .orderBy(webhooksInbound.id);
   const schedules = lock ? await schedulesQuery.for("update") : await schedulesQuery;
-  const webhooks = lock ? await webhooksQuery.for("update") : await webhooksQuery;
+  const webhooks = await withTenantScope(db, tenant_id, async (tx) => {
+    const webhooksQuery = tx
+      .select()
+      .from(webhooksInbound)
+      .where(
+        and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.workflow_id, workflow_id)),
+      )
+      .orderBy(webhooksInbound.id);
+    return lock ? await webhooksQuery.for("update") : await webhooksQuery;
+  });
   return [
     ...schedules.map((row) => ({
       id: row.id,

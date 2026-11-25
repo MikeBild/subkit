@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Db } from "../../db/client.ts";
+import { withSystemScope } from "../../db/index.ts";
 import { chatWorkspaces, conversationElicitations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
 import type { ChatAdapter } from "../adapter.ts";
@@ -376,16 +377,18 @@ export class GoogleChatAdapter implements ChatAdapter {
 
     // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
     // (mirrors the Slack open_elicit path and the chat-event handler).
-    const [workspace] = await db
-      .select({ tenant_id: chatWorkspaces.tenant_id })
-      .from(chatWorkspaces)
-      .where(
-        and(
-          eq(chatWorkspaces.platform, "google_chat"),
-          eq(chatWorkspaces.workspace_id, event.workspace_id),
-        ),
-      )
-      .limit(1);
+    const [workspace] = await withSystemScope(db, "google chat space lookup by platform id", (tx) =>
+      tx
+        .select({ tenant_id: chatWorkspaces.tenant_id })
+        .from(chatWorkspaces)
+        .where(
+          and(
+            eq(chatWorkspaces.platform, "google_chat"),
+            eq(chatWorkspaces.workspace_id, event.workspace_id),
+          ),
+        )
+        .limit(1),
+    );
     if (!workspace) {
       logger.warn({
         module: "chat",

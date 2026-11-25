@@ -11,6 +11,7 @@ import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { connectorEnvironmentKey } from "../connectors/service.ts";
 import { loadConnectorSystems } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import {
   connectors,
   webhooksInbound,
@@ -259,7 +260,19 @@ export async function recommendAuthorityEnvironment(
       ),
     )
     .limit(1);
-  const [schedules, hooks, authorityRows] = await Promise.all([
+  const hooks = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, tenant_id),
+          eq(webhooksInbound.workflow_id, workflow_id),
+          eq(webhooksInbound.active, true),
+        ),
+      ),
+  );
+  const [schedules, authorityRows] = await Promise.all([
     db
       .select({
         id: workflowsSchedules.id,
@@ -273,16 +286,6 @@ export async function recommendAuthorityEnvironment(
         and(
           eq(workflowsSchedules.tenant_id, tenant_id),
           eq(workflowsSchedules.workflow_id, workflow_id),
-        ),
-      ),
-    db
-      .select({ id: webhooksInbound.id })
-      .from(webhooksInbound)
-      .where(
-        and(
-          eq(webhooksInbound.tenant_id, tenant_id),
-          eq(webhooksInbound.workflow_id, workflow_id),
-          eq(webhooksInbound.active, true),
         ),
       ),
     db

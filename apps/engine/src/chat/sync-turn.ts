@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { withSystemScope } from "../db/index.ts";
 import { chatWorkspaces } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import type { ChatAdapter } from "./adapter.ts";
@@ -26,16 +27,18 @@ export async function runChatTurnSync(args: {
   const { db, adapter, event, timeoutMs } = args;
 
   //    tenant-filter:exempt — platform/workspace_id lookup pre-tenant.
-  const [workspace] = await db
-    .select()
-    .from(chatWorkspaces)
-    .where(
-      and(
-        eq(chatWorkspaces.platform, event.platform),
-        eq(chatWorkspaces.workspace_id, event.workspace_id),
-      ),
-    )
-    .limit(1);
+  const [workspace] = await withSystemScope(db, "chat workspace lookup by platform id", (tx) =>
+    tx
+      .select()
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.platform, event.platform),
+          eq(chatWorkspaces.workspace_id, event.workspace_id),
+        ),
+      )
+      .limit(1),
+  );
   if (!workspace) return { deliver: "defer" };
 
   if (event.event_key) {

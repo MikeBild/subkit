@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb, type Transaction } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import {
   authIdentities,
   chatWorkspaces,
@@ -196,10 +197,12 @@ export async function eraseExpiredTenant(
       .select({ id: events.id })
       .from(events)
       .where(eq(events.tenant_id, tenantId));
-    const workspaces = await db
-      .select({ platform: chatWorkspaces.platform, workspace_id: chatWorkspaces.workspace_id })
-      .from(chatWorkspaces)
-      .where(eq(chatWorkspaces.tenant_id, tenantId));
+    const workspaces = await withTenantScope(db, tenantId, (tx) =>
+      tx
+        .select({ platform: chatWorkspaces.platform, workspace_id: chatWorkspaces.workspace_id })
+        .from(chatWorkspaces)
+        .where(eq(chatWorkspaces.tenant_id, tenantId)),
+    );
     await eraseTenantQueueJobs(dependencies.queue, {
       tenant_id: tenantId,
       event_ids: targetEvents.map((event) => event.id),
@@ -222,7 +225,7 @@ export async function eraseExpiredTenant(
     }
     await checkpoint(tenantId, leaseOwner, "objects_cleared", db);
     phase = "database";
-    await db.transaction(async (tx) => {
+    await withTenantScope(db, tenantId, async (tx) => {
       const tenant = await dueTenant(tenantId, tx);
       if (!tenant) throw new Error("tenant_erasure_state_changed");
       const [state] = await tx

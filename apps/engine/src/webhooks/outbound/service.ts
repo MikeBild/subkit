@@ -6,6 +6,7 @@ import { AuditAction } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Executor } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { subscriptions } from "../../db/schema/index.ts";
 
 function aadFor(tenant_id: string, id: string): string {
@@ -60,7 +61,7 @@ export async function createSubscription(
   const db = exec ?? (undefined as never);
   const runner = db ?? undefined;
   const target = runner ?? (await import("../../db/client.ts")).getDb();
-  return await target.transaction(async (tx) => {
+  return await withTenantScope(target, input.tenant_id, async (tx) => {
     const placeholder = encryptSecret("__placeholder__");
     const inserted = await tx
       .insert(subscriptions)
@@ -112,11 +113,13 @@ export async function listSubscriptions(
   exec?: Executor,
 ): Promise<SubscriptionRow[]> {
   const db = exec ?? (await import("../../db/client.ts")).getDb();
-  const rows = await db
-    .select()
-    .from(subscriptions)
-    .where(eq(subscriptions.tenant_id, tenant_id))
-    .orderBy(desc(subscriptions.created_at));
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.tenant_id, tenant_id))
+      .orderBy(desc(subscriptions.created_at)),
+  );
   return rows.map(serialize);
 }
 
@@ -126,11 +129,13 @@ export async function getSubscription(
   exec?: Executor,
 ): Promise<SubscriptionRow | null> {
   const db = exec ?? (await import("../../db/client.ts")).getDb();
-  const rows = await db
-    .select()
-    .from(subscriptions)
-    .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id)))
-    .limit(1);
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id)))
+      .limit(1),
+  );
   const row = rows[0];
   return row ? serialize(row) : null;
 }
@@ -147,11 +152,13 @@ export async function loadSubscriptionSecrets(
   exec?: Executor,
 ): Promise<DecryptedSubscription | null> {
   const db = exec ?? (await import("../../db/client.ts")).getDb();
-  const rows = await db
-    .select()
-    .from(subscriptions)
-    .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id)))
-    .limit(1);
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id)))
+      .limit(1),
+  );
   const row = rows[0];
   if (!row) return null;
   const primary = decryptSecret(
@@ -194,7 +201,7 @@ export async function updateSubscription(
   exec?: Executor,
 ): Promise<SubscriptionRow | null> {
   const db = exec ?? (await import("../../db/client.ts")).getDb();
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, input.tenant_id, async (tx) => {
     const existing = await tx
       .select()
       .from(subscriptions)
@@ -259,9 +266,11 @@ export async function deleteSubscription(
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? (await import("../../db/client.ts")).getDb();
-  const result = await db
-    .delete(subscriptions)
-    .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id)));
+  const result = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .delete(subscriptions)
+      .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id))),
+  );
   const ok = (result as { rowCount?: number }).rowCount
     ? ((result as { rowCount?: number }).rowCount ?? 0) > 0
     : true;

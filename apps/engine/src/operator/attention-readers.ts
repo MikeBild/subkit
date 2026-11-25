@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { connectorCountsAgainstHealth } from "../connectors/health-ratio.ts";
 import { listConnections } from "../credentials/connections/index.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import {
   connectors,
   intakeItems,
@@ -221,30 +222,32 @@ async function readWorkflowFacts(
           sql`${workflows.lifecycle} <> 'archived'`,
         ),
       ),
-    db
-      .select({
-        workflow_id: workflows.id,
-        name: workflows.name,
-        hold: webhooksInbound.admission_hold,
-        slug: webhooksInbound.slug,
-      })
-      .from(webhooksInbound)
-      .innerJoin(
-        workflows,
-        and(
-          eq(workflows.id, webhooksInbound.workflow_id),
-          eq(workflows.tenant_id, webhooksInbound.tenant_id),
+    withTenantScope(db, tenantId, (tx) =>
+      tx
+        .select({
+          workflow_id: workflows.id,
+          name: workflows.name,
+          hold: webhooksInbound.admission_hold,
+          slug: webhooksInbound.slug,
+        })
+        .from(webhooksInbound)
+        .innerJoin(
+          workflows,
+          and(
+            eq(workflows.id, webhooksInbound.workflow_id),
+            eq(workflows.tenant_id, webhooksInbound.tenant_id),
+          ),
+        )
+        .where(
+          and(
+            eq(webhooksInbound.tenant_id, tenantId),
+            eq(webhooksInbound.active, true),
+            sql`${webhooksInbound.admission_hold} IS NOT NULL`,
+            isNull(workflows.deleted_at),
+            sql`${workflows.lifecycle} <> 'archived'`,
+          ),
         ),
-      )
-      .where(
-        and(
-          eq(webhooksInbound.tenant_id, tenantId),
-          eq(webhooksInbound.active, true),
-          sql`${webhooksInbound.admission_hold} IS NOT NULL`,
-          isNull(workflows.deleted_at),
-          sql`${workflows.lifecycle} <> 'archived'`,
-        ),
-      ),
+    ),
     collectFailureGroups(db, tenantId, DECISION_FAILURE_WINDOW_HOURS, now).then(
       failingScheduledGroups,
     ),

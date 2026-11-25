@@ -3,6 +3,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { encryptSecret } from "../../crypto/index.ts";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { vaultItems } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/index.ts";
 import { lockActiveTenant, SelfServiceIdentityError } from "../../identity/index.ts";
@@ -59,7 +60,7 @@ export async function refreshTokenMintIfStale(
         JSON.stringify({ access_token: bundle.access_token, ...config }),
         aadFor(tenant_id, credRow.id),
       );
-      const generation = await db.transaction(async (tx) => {
+      const generation = await withTenantScope(db, tenant_id, async (tx) => {
         await lockActiveTenant(tenant_id, tx);
         const [rotated] = await tx
           .update(vaultItems)

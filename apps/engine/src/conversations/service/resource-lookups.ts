@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import {
   apiKeys,
   connectors,
@@ -53,11 +54,13 @@ export const RESOURCE_LOOKUPS: Readonly<Record<string, ResourceLookup>> = {
     ).length > 0,
   subscription: async (db, tenant_id, id) =>
     (
-      await db
-        .select({ id: subscriptions.id })
-        .from(subscriptions)
-        .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id)))
-        .limit(1)
+      await withTenantScope(db, tenant_id, (tx) =>
+        tx
+          .select({ id: subscriptions.id })
+          .from(subscriptions)
+          .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.id, id)))
+          .limit(1),
+      )
     ).length > 0,
   api_key: async (db, tenant_id, id) =>
     (

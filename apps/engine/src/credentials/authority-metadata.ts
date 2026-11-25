@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { outboundConnections, runtimeSecretVersions, vaultItems } from "../db/schema/index.ts";
 import { authorityScopeSet } from "./authority-scopes.ts";
 import { secretNames } from "./connections/service.ts";
@@ -48,32 +49,34 @@ export async function getCredentialAuthorityMetadataBatch(
 ): Promise<Map<string, CredentialAuthorityMetadata>> {
   const result = new Map<string, CredentialAuthorityMetadata>();
   if (requests.length === 0) return result;
-  const rows = await db
-    .select({
-      connector_id: vaultItems.connector_id,
-      environment: vaultItems.environment,
-      id: vaultItems.id,
-      revision: vaultItems.authority_revision,
-      mode: vaultItems.mode,
-      scopes: vaultItems.granted_scopes,
-      connection_id: vaultItems.connection_id,
-      usable: sql<boolean>`(${vaultItems.mode} <> 'oauth2' OR ${vaultItems.oauth2_expires_at} IS NULL
-      OR ${vaultItems.oauth2_expires_at} > clock_timestamp() OR ${vaultItems.oauth2_refresh_ciphertext} IS NOT NULL)`,
-    })
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenantId),
-        inArray(vaultItems.connector_id, [
-          ...new Set(requests.map((request) => request.connector_id)),
-        ]),
-        inArray(vaultItems.environment, [
-          ...new Set(requests.map((request) => request.environment)),
-        ]),
-        isNull(vaultItems.deleted_at),
-      ),
-    )
-    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id));
+  const rows = await withTenantScope(db, tenantId, async (tx) =>
+    tx
+      .select({
+        connector_id: vaultItems.connector_id,
+        environment: vaultItems.environment,
+        id: vaultItems.id,
+        revision: vaultItems.authority_revision,
+        mode: vaultItems.mode,
+        scopes: vaultItems.granted_scopes,
+        connection_id: vaultItems.connection_id,
+        usable: sql<boolean>`(${vaultItems.mode} <> 'oauth2' OR ${vaultItems.oauth2_expires_at} IS NULL
+        OR ${vaultItems.oauth2_expires_at} > clock_timestamp() OR ${vaultItems.oauth2_refresh_ciphertext} IS NOT NULL)`,
+      })
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenantId),
+          inArray(vaultItems.connector_id, [
+            ...new Set(requests.map((request) => request.connector_id)),
+          ]),
+          inArray(vaultItems.environment, [
+            ...new Set(requests.map((request) => request.environment)),
+          ]),
+          isNull(vaultItems.deleted_at),
+        ),
+      )
+      .orderBy(desc(vaultItems.created_at), desc(vaultItems.id)),
+  );
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     if (row.connector_id === null) continue;

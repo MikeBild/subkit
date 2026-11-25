@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { webhooksInbound, workflows, workflowsSchedules } from "../db/schema/index.ts";
 import type { WorkflowTrigger } from "../workflows/types.ts";
 import { scheduleNeedsActivation } from "./automation-status.ts";
@@ -59,37 +60,34 @@ export async function loadTriggerBindings(
   const out = new Map<string, TriggerBinding>();
   const ids = [...new Set(workflowIds)];
   if (ids.length === 0) return out;
-  const [schedules, webhooks] = await Promise.all([
-    db
-      .select({
-        id: workflowsSchedules.id,
-        workflow_id: workflowsSchedules.workflow_id,
-        cron: workflowsSchedules.cron,
-        timezone: workflowsSchedules.timezone,
-        paused: workflowsSchedules.paused,
-        execution_mode: workflowsSchedules.execution_mode,
-        admission_hold: workflowsSchedules.admission_hold,
-        input: workflowsSchedules.input,
-        last_enqueued_at: workflowsSchedules.last_enqueued_at,
-        created_at: workflowsSchedules.created_at,
-        lifecycle: workflows.lifecycle,
-        current_version_id: workflows.current_version_id,
-      })
-      .from(workflowsSchedules)
-      .innerJoin(
-        workflows,
-        and(
-          eq(workflows.id, workflowsSchedules.workflow_id),
-          eq(workflows.tenant_id, workflowsSchedules.tenant_id),
-        ),
-      )
-      .where(
-        and(
-          eq(workflowsSchedules.tenant_id, tenantId),
-          inArray(workflowsSchedules.workflow_id, ids),
-        ),
+  const schedules = await db
+    .select({
+      id: workflowsSchedules.id,
+      workflow_id: workflowsSchedules.workflow_id,
+      cron: workflowsSchedules.cron,
+      timezone: workflowsSchedules.timezone,
+      paused: workflowsSchedules.paused,
+      execution_mode: workflowsSchedules.execution_mode,
+      admission_hold: workflowsSchedules.admission_hold,
+      input: workflowsSchedules.input,
+      last_enqueued_at: workflowsSchedules.last_enqueued_at,
+      created_at: workflowsSchedules.created_at,
+      lifecycle: workflows.lifecycle,
+      current_version_id: workflows.current_version_id,
+    })
+    .from(workflowsSchedules)
+    .innerJoin(
+      workflows,
+      and(
+        eq(workflows.id, workflowsSchedules.workflow_id),
+        eq(workflows.tenant_id, workflowsSchedules.tenant_id),
       ),
-    db
+    )
+    .where(
+      and(eq(workflowsSchedules.tenant_id, tenantId), inArray(workflowsSchedules.workflow_id, ids)),
+    );
+  const webhooks = await withTenantScope(db, tenantId, (tx) =>
+    tx
       .select({
         workflow_id: webhooksInbound.workflow_id,
         active: sql<number>`count(*)::int`,
@@ -103,7 +101,7 @@ export async function loadTriggerBindings(
         ),
       )
       .groupBy(webhooksInbound.workflow_id),
-  ]);
+  );
   for (const s of schedules) {
     const state = scheduleBindingState(s);
     out.set(s.workflow_id, {

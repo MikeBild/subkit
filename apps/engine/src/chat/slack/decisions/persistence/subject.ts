@@ -7,6 +7,7 @@ import {
   tenants,
   toolApprovals,
   users,
+  withTenantScope,
 } from "../../../../db/index.ts";
 
 export interface HeldTaskRun {
@@ -51,20 +52,22 @@ export async function heldTaskRun(
     .limit(1);
   const approvalId = pending?.approval_id;
   if (!approvalId || !/^[0-9a-f-]{36}$/.test(approvalId)) return { ...base, approval: null };
-  const [approval] = await db
-    .select({ id: toolApprovals.id, tool: toolApprovals.tool })
-    .from(toolApprovals)
-    .where(
-      and(
-        eq(toolApprovals.tenant_id, tenant_id),
-        eq(toolApprovals.id, approvalId),
-        isNull(toolApprovals.granted_at),
-        isNull(toolApprovals.declined_at),
-        isNull(toolApprovals.consumed_at),
-        gt(toolApprovals.expires_at, sql`now()`),
-      ),
-    )
-    .limit(1);
+  const [approval] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({ id: toolApprovals.id, tool: toolApprovals.tool })
+      .from(toolApprovals)
+      .where(
+        and(
+          eq(toolApprovals.tenant_id, tenant_id),
+          eq(toolApprovals.id, approvalId),
+          isNull(toolApprovals.granted_at),
+          isNull(toolApprovals.declined_at),
+          isNull(toolApprovals.consumed_at),
+          gt(toolApprovals.expires_at, sql`now()`),
+        ),
+      )
+      .limit(1),
+  );
   return { ...base, approval: approval ?? null };
 }
 
@@ -73,15 +76,17 @@ export async function grantedByName(
   tenant_id: string,
   approval_id: string,
 ): Promise<string | null> {
-  const [row] = await db
-    .select({ email: users.email, display_name: users.display_name })
-    .from(toolApprovals)
-    .innerJoin(
-      users,
-      and(eq(users.id, toolApprovals.granted_by_user_id), eq(users.tenant_id, tenant_id)),
-    )
-    .where(and(eq(toolApprovals.tenant_id, tenant_id), eq(toolApprovals.id, approval_id)))
-    .limit(1);
+  const [row] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({ email: users.email, display_name: users.display_name })
+      .from(toolApprovals)
+      .innerJoin(
+        users,
+        and(eq(users.id, toolApprovals.granted_by_user_id), eq(users.tenant_id, tenant_id)),
+      )
+      .where(and(eq(toolApprovals.tenant_id, tenant_id), eq(toolApprovals.id, approval_id)))
+      .limit(1),
+  );
   return row ? (row.display_name ?? row.email) : null;
 }
 

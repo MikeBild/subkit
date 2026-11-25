@@ -7,7 +7,7 @@ import {
   verifyBrowserCsrf,
 } from "../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import type { Db, Executor } from "../db/client.ts";
+import { type Db, type Executor, withTenantScope } from "../db/index.ts";
 import {
   sessions,
   taskGrants,
@@ -214,31 +214,33 @@ async function resolveGrantedAdmissionHolds(
 ) {
   if (activeVersion !== authority.workflow_version_id) return;
   if (authority.execution_environment === "prod") {
-    await tx
-      .select({ id: webhooksInbound.id })
-      .from(webhooksInbound)
-      .where(
-        and(
-          eq(webhooksInbound.tenant_id, authority.tenant_id),
-          eq(webhooksInbound.workflow_id, authority.workflow_id),
-        ),
-      )
-      .orderBy(webhooksInbound.id)
-      .for("update");
-    await tx
-      .update(webhooksInbound)
-      .set({ admission_hold: null })
-      .where(
-        and(
-          eq(webhooksInbound.tenant_id, authority.tenant_id),
-          eq(webhooksInbound.workflow_id, authority.workflow_id),
-          sql`${webhooksInbound.admission_hold} IS NOT NULL`,
-          sql`${authority.valid_from}::timestamptz <= clock_timestamp()`,
-          sql`(${authority.valid_until}::timestamptz IS NULL OR ${authority.valid_until}::timestamptz > clock_timestamp())`,
-          sql`(${authority.max_runs}::int IS NULL OR ${authority.reserved_runs}::int < ${authority.max_runs}::int)`,
-          sql`${authority.revoked_at}::timestamptz IS NULL`,
-        ),
-      );
+    await withTenantScope(tx, authority.tenant_id, async (scoped) => {
+      await scoped
+        .select({ id: webhooksInbound.id })
+        .from(webhooksInbound)
+        .where(
+          and(
+            eq(webhooksInbound.tenant_id, authority.tenant_id),
+            eq(webhooksInbound.workflow_id, authority.workflow_id),
+          ),
+        )
+        .orderBy(webhooksInbound.id)
+        .for("update");
+      await scoped
+        .update(webhooksInbound)
+        .set({ admission_hold: null })
+        .where(
+          and(
+            eq(webhooksInbound.tenant_id, authority.tenant_id),
+            eq(webhooksInbound.workflow_id, authority.workflow_id),
+            sql`${webhooksInbound.admission_hold} IS NOT NULL`,
+            sql`${authority.valid_from}::timestamptz <= clock_timestamp()`,
+            sql`(${authority.valid_until}::timestamptz IS NULL OR ${authority.valid_until}::timestamptz > clock_timestamp())`,
+            sql`(${authority.max_runs}::int IS NULL OR ${authority.reserved_runs}::int < ${authority.max_runs}::int)`,
+            sql`${authority.revoked_at}::timestamptz IS NULL`,
+          ),
+        );
+    });
   }
   const schedules = await tx
     .select({ id: workflowsSchedules.id, input: workflowsSchedules.input })

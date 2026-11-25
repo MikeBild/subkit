@@ -11,6 +11,7 @@ import { storedScopes } from "../credentials/authority-scopes.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import {
   catalogGroupOrder,
   type ListResult,
@@ -489,26 +490,28 @@ export async function listConnectorCredentials(
   connector_id: string,
   db: Executor,
 ): Promise<CredentialSummary[]> {
-  const rows = await db
-    .select({
-      id: vaultItems.id,
-      mode: vaultItems.mode,
-      environment: vaultItems.environment,
-      oauth2_refresh_ciphertext: vaultItems.oauth2_refresh_ciphertext,
-      granted_scopes: vaultItems.granted_scopes,
-      oauth2_expires_at: vaultItems.oauth2_expires_at,
-      connection_id: vaultItems.connection_id,
-      created_at: vaultItems.created_at,
-    })
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.connector_id, connector_id),
-        isNull(vaultItems.deleted_at),
-      ),
-    )
-    .orderBy(desc(vaultItems.created_at));
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({
+        id: vaultItems.id,
+        mode: vaultItems.mode,
+        environment: vaultItems.environment,
+        oauth2_refresh_ciphertext: vaultItems.oauth2_refresh_ciphertext,
+        granted_scopes: vaultItems.granted_scopes,
+        oauth2_expires_at: vaultItems.oauth2_expires_at,
+        connection_id: vaultItems.connection_id,
+        created_at: vaultItems.created_at,
+      })
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector_id),
+          isNull(vaultItems.deleted_at),
+        ),
+      )
+      .orderBy(desc(vaultItems.created_at)),
+  );
   return rows.map((r) => ({
     id: r.id,
     mode: r.mode,

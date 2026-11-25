@@ -8,7 +8,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/index.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { withTenantScope } from "../db/index.ts";
+import { type ScopedTx, withTenantScope } from "../db/index.ts";
 import { connectors, outboundConnections, vaultItems } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import { invalidateTenantState } from "../operator/tenant-state.ts";
@@ -80,7 +80,7 @@ type CredentialWriteSource =
   | "unspecified";
 
 async function connectorItemNameFor(
-  tx: Executor,
+  tx: ScopedTx,
   input: { tenant_id: string; connector_id: string; environment: "dev" | "prod"; mode: string },
 ): Promise<string> {
   const [connector] = await tx
@@ -556,16 +556,18 @@ export async function describeConnectorCredentialStates(
   const found = new Map<string, ConnectorCredentialState | null>();
   const ids = targets.map((target) => target.id).filter((id) => isUuid(id));
   if (ids.length === 0) return found;
-  const rows = await db
-    .select({
-      connector_id: vaultItems.connector_id,
-      environment: vaultItems.environment,
-      mode: vaultItems.mode,
-      connection_id: vaultItems.connection_id,
-    })
-    .from(vaultItems)
-    .where(authenticatingCredentials(tenant_id, ids))
-    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id));
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({
+        connector_id: vaultItems.connector_id,
+        environment: vaultItems.environment,
+        mode: vaultItems.mode,
+        connection_id: vaultItems.connection_id,
+      })
+      .from(vaultItems)
+      .where(authenticatingCredentials(tenant_id, ids))
+      .orderBy(desc(vaultItems.created_at), desc(vaultItems.id)),
+  );
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
     const key = `${row.connector_id}:${row.environment}`;
@@ -725,18 +727,20 @@ export async function resolveDefaultEnvironmentForConnector(
   db: Executor,
 ): Promise<"dev" | "prod" | null> {
   if (!isUuid(connector_id)) return null;
-  const rows = await db
-    .select({ environment: vaultItems.environment })
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.connector_id, connector_id),
-        ne(vaultItems.mode, "oauth2_client"),
-        inArray(vaultItems.environment, ["dev", "prod"]),
-      ),
-    )
-    .limit(2);
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({ environment: vaultItems.environment })
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector_id),
+          ne(vaultItems.mode, "oauth2_client"),
+          inArray(vaultItems.environment, ["dev", "prod"]),
+        ),
+      )
+      .limit(2),
+  );
   if (rows.length === 0) return null;
   if (rows.some((r) => r.environment === "dev")) return "dev";
   return "prod";
@@ -900,11 +904,13 @@ export async function credentialExists(
   tenant_id: string,
   credential_id: string,
 ): Promise<boolean> {
-  const rows = await db
-    .select({ id: vaultItems.id })
-    .from(vaultItems)
-    .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, credential_id)))
-    .limit(1);
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, credential_id)))
+      .limit(1),
+  );
   return rows.length > 0;
 }
 

@@ -17,6 +17,7 @@ import {
 } from "@shared/workflow-strip.ts";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import {
   connectors,
   patchCandidates,
@@ -80,7 +81,15 @@ export async function loadWorkflowOperatingStates(
   );
   const { readPatchReadinessBatch } = await import("../self-healing/index.ts");
   const ids = views.map((view) => view.id);
-  const [scheduleRows, hookRows, authorityRows, candidates, connectorRows] = await Promise.all([
+  const hookRows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(webhooksInbound)
+      .where(
+        and(eq(webhooksInbound.tenant_id, tenant_id), inArray(webhooksInbound.workflow_id, ids)),
+      ),
+  );
+  const [scheduleRows, authorityRows, candidates, connectorRows] = await Promise.all([
     access.schedules
       ? db
           .select()
@@ -92,12 +101,6 @@ export async function loadWorkflowOperatingStates(
             ),
           )
       : [],
-    db
-      .select()
-      .from(webhooksInbound)
-      .where(
-        and(eq(webhooksInbound.tenant_id, tenant_id), inArray(webhooksInbound.workflow_id, ids)),
-      ),
     db
       .select()
       .from(workflowExecutionAuthorities)

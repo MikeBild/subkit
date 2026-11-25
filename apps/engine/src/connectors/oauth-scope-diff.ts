@@ -1,6 +1,7 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { parseScopeList } from "../credentials/authority-scopes.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { vaultItems } from "../db/schema/index.ts";
 import type { ConnectorView } from "./types.ts";
 
@@ -50,19 +51,21 @@ export async function computeConnectorScopeDiff(
 ): Promise<ScopeDiff | null> {
   if (connector.auth_type !== "oauth2") return null;
   try {
-    const credRows = await db
-      .select({ granted_scopes: vaultItems.granted_scopes })
-      .from(vaultItems)
-      .where(
-        and(
-          eq(vaultItems.tenant_id, tenant_id),
-          eq(vaultItems.connector_id, connector.id),
-          eq(vaultItems.environment, connector.environment),
-          ne(vaultItems.mode, "oauth2_client"),
-          isNull(vaultItems.deleted_at),
-        ),
-      )
-      .limit(1);
+    const credRows = await withTenantScope(db, tenant_id, (tx) =>
+      tx
+        .select({ granted_scopes: vaultItems.granted_scopes })
+        .from(vaultItems)
+        .where(
+          and(
+            eq(vaultItems.tenant_id, tenant_id),
+            eq(vaultItems.connector_id, connector.id),
+            eq(vaultItems.environment, connector.environment),
+            ne(vaultItems.mode, "oauth2_client"),
+            isNull(vaultItems.deleted_at),
+          ),
+        )
+        .limit(1),
+    );
     const granted = credRows[0]?.granted_scopes ?? null;
     const expected =
       connector.config &&

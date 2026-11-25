@@ -13,6 +13,7 @@ import type { CredentialMode, DecryptedCredential } from "../credentials/types.t
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
+import { type ScopedTx, withTenantScope } from "../db/index.ts";
 import { connectorPromotions, connectors, vaultItems } from "../db/schema/index.ts";
 import { withoutMcpTrustList } from "./mcp-tool-trust.ts";
 
@@ -104,7 +105,7 @@ function copyableCredential(value: DecryptedCredential): CredentialPlaintext {
 }
 
 async function hasPrimaryCredential(
-  tx: Executor,
+  tx: ScopedTx,
   tenant_id: string,
   connector_id: string,
 ): Promise<boolean> {
@@ -138,7 +139,7 @@ export async function promoteConnector(
     }),
   );
 
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, input.tenant_id, async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idempotencyHash}))`);
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${`${input.tenant_id}:${input.source_connector_id}`}))`,

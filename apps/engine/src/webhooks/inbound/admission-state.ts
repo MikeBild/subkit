@@ -1,6 +1,7 @@
 import type { AuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { webhooksInbound } from "../../db/schema/index.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
 import { emitResourceChange } from "../../pubsub/resource-changes.ts";
@@ -13,7 +14,7 @@ export async function recordInboundAdmission(
   context: { tenant_id: string; inbound_id: string; observed_at: Date },
   reason: InboundHoldReason | null,
 ): Promise<boolean> {
-  const changed = await db.transaction(async (tx) => {
+  const changed = await withTenantScope(db, context.tenant_id, async (tx) => {
     if (reason) {
       const [hook] = await tx
         .select()

@@ -1,8 +1,8 @@
 import { AUTHORITY_HOLD_BACKFILL } from "@shared/authority-refusal.ts";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "../logging/index.ts";
-import type { Db } from "./client.ts";
 import { dataMigrations, webhooksInbound, workflowsSchedules } from "./schema/index.ts";
+import type { ScopedTx } from "./tenant-scope.ts";
 
 export const AUTHORITY_HOLD_REASONS_BACKFILL_NAME = "authority_hold_reasons_v1";
 
@@ -14,7 +14,7 @@ export interface AuthorityHoldReasonsBackfillReport {
 }
 
 export async function runAuthorityHoldReasonsBackfill(
-  db: Db,
+  db: ScopedTx,
 ): Promise<AuthorityHoldReasonsBackfillReport> {
   const marker = await db
     .select({ name: dataMigrations.name })

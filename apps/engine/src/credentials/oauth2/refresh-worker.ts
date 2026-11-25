@@ -6,6 +6,7 @@ import { flagConnectorAuthFailure } from "../../connectors/reauth.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { connectors, vaultItems } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/index.ts";
 import { lockActiveTenant, SelfServiceIdentityError } from "../../identity/index.ts";
@@ -38,7 +39,7 @@ export async function refreshIfStale(
     if (connectorId == null) return decrypted;
     const now = Date.now();
     const expiresMs = decrypted.expires_at ? decrypted.expires_at.getTime() : 0;
-    const prepared = await db.transaction(async (tx) => {
+    const prepared = await withTenantScope(db, tenant_id, async (tx) => {
       await lockActiveTenant(tenant_id, tx);
       const [current] = await tx
         .select({ generation: vaultItems.credential_generation })
@@ -178,7 +179,7 @@ export async function refreshIfStale(
           exec: db,
         });
       }
-      const rotated = await db.transaction(async (tx) => {
+      const rotated = await withTenantScope(db, tenant_id, async (tx) => {
         await lockActiveTenant(tenant_id, tx);
         const rotated = await rotateOAuth2Tokens(
           {
@@ -240,7 +241,7 @@ export async function refreshIfStale(
         connector_id: credRow.connector_id,
         ...errorFields(err),
       });
-      await db.transaction(async (tx) => {
+      await withTenantScope(db, tenant_id, async (tx) => {
         await lockActiveTenant(tenant_id, tx);
         const [current] = await tx
           .select({ generation: vaultItems.credential_generation })
@@ -328,11 +329,13 @@ export async function registerOAuth2RefreshHandler(opts: {
 
 export async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
   return withActiveTenantJobContext(data, db, async () => {
-    const rows = await db
-      .select()
-      .from(vaultItems)
-      .where(and(eq(vaultItems.id, data.credential_id), eq(vaultItems.tenant_id, data.tenant_id)))
-      .limit(1);
+    const rows = await withTenantScope(db, data.tenant_id, async (tx) =>
+      tx
+        .select()
+        .from(vaultItems)
+        .where(and(eq(vaultItems.id, data.credential_id), eq(vaultItems.tenant_id, data.tenant_id)))
+        .limit(1),
+    );
     const row = rows[0];
     if (!row) return;
     if (!row.oauth2_refresh_ciphertext) return;

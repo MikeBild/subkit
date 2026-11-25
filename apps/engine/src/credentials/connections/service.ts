@@ -4,6 +4,7 @@ import { type Actor, auditActor } from "../../audit/actor.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import type { Db, Executor } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import {
   connectors,
   outboundConnectionStarts,
@@ -540,27 +541,29 @@ async function usersOfConnections(
 ): Promise<Map<string, ConnectionUser[]>> {
   const out = new Map<string, ConnectionUser[]>();
   if (connectionIds.length === 0) return out;
-  const rows = await db
-    .selectDistinct({
-      connection_id: vaultItems.connection_id,
-      connector_id: connectors.id,
-      slug: connectors.slug,
-      display_name: connectors.display_name,
-    })
-    .from(vaultItems)
-    .innerJoin(
-      connectors,
-      and(eq(connectors.id, vaultItems.connector_id), eq(connectors.tenant_id, tenantId)),
-    )
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenantId),
-        inArray(vaultItems.connection_id, [...connectionIds]),
-        isNull(vaultItems.deleted_at),
-        isNull(connectors.deleted_at),
-      ),
-    )
-    .orderBy(asc(connectors.display_name), asc(connectors.slug));
+  const rows = await withTenantScope(db, tenantId, (tx) =>
+    tx
+      .selectDistinct({
+        connection_id: vaultItems.connection_id,
+        connector_id: connectors.id,
+        slug: connectors.slug,
+        display_name: connectors.display_name,
+      })
+      .from(vaultItems)
+      .innerJoin(
+        connectors,
+        and(eq(connectors.id, vaultItems.connector_id), eq(connectors.tenant_id, tenantId)),
+      )
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenantId),
+          inArray(vaultItems.connection_id, [...connectionIds]),
+          isNull(vaultItems.deleted_at),
+          isNull(connectors.deleted_at),
+        ),
+      )
+      .orderBy(asc(connectors.display_name), asc(connectors.slug)),
+  );
   if (rows.length === 0) return out;
   const workflowsBySlug = new Map<string, number>();
   for (const slugs of (await listConnectorRefs(tenantId, db)).values()) {
@@ -916,10 +919,12 @@ export async function disconnectConnection(
       });
     }
   }
-  const [usage] = await db
-    .select({ n: count() })
-    .from(vaultItems)
-    .where(and(eq(vaultItems.tenant_id, args.tenant_id), eq(vaultItems.connection_id, row.id)));
+  const [usage] = await withTenantScope(db, args.tenant_id, (tx) =>
+    tx
+      .select({ n: count() })
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, args.tenant_id), eq(vaultItems.connection_id, row.id))),
+  );
   await db
     .delete(outboundConnections)
     .where(

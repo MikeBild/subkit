@@ -8,6 +8,7 @@ import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { ConnectorView } from "../connectors/types.ts";
 import type { Db, Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { connectors, toolApprovals } from "../db/schema/index.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import type { ResolvedAuthorityReference } from "../llm/substitution/resolver.ts";
@@ -260,7 +261,7 @@ export async function assertDirectConnectorBinding(p: {
     throw new DirectConnectorBindingError();
   };
   try {
-    return await p.db.transaction(async (tx) => {
+    return await withTenantScope(p.db, p.tenant_id, async (tx) => {
       const parsed = DirectConnectorBindingSchema.safeParse(p.approval.binding);
       if (!parsed.success) throw new DirectConnectorBindingError();
       const binding = parsed.data;

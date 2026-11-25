@@ -13,6 +13,7 @@ import { AuditAction, type AuditActorType } from "../../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../../crypto/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db, Executor } from "../../db/client.ts";
+import { withSystemScope, withTenantScope } from "../../db/index.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
 import { enqueueExecutionRun } from "../../devices/waiting.ts";
 import { assertExecutionAuthorityCurrent } from "../../execution/authority-admission.ts";
@@ -105,7 +106,7 @@ export async function createInbound(input: CreateInboundInput, db: Executor): Pr
 }
 
 async function insertInbound(input: CreateInboundInput, db: Executor): Promise<InboundRow> {
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, input.tenant_id, async (tx) => {
     const placeholder = encryptSecret("__placeholder__");
     const inserted = await tx
       .insert(webhooksInbound)
@@ -157,11 +158,13 @@ async function insertInbound(input: CreateInboundInput, db: Executor): Promise<I
 }
 
 export async function listInbound(tenant_id: string, db: Executor): Promise<InboundRow[]> {
-  const rows = await db
-    .select()
-    .from(webhooksInbound)
-    .where(eq(webhooksInbound.tenant_id, tenant_id))
-    .orderBy(desc(webhooksInbound.created_at));
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(webhooksInbound)
+      .where(eq(webhooksInbound.tenant_id, tenant_id))
+      .orderBy(desc(webhooksInbound.created_at)),
+  );
   return rows.map(serialize);
 }
 
@@ -170,11 +173,13 @@ export async function getInbound(
   id: string,
   db: Executor,
 ): Promise<InboundRow | null> {
-  const rows = await db
-    .select()
-    .from(webhooksInbound)
-    .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, id)))
-    .limit(1);
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(webhooksInbound)
+      .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, id)))
+      .limit(1),
+  );
   const row = rows[0];
   return row ? serialize(row) : null;
 }
@@ -185,9 +190,11 @@ export async function deleteInbound(
   actor_input: string | Actor | null,
   db: Executor,
 ): Promise<boolean> {
-  const result = await db
-    .delete(webhooksInbound)
-    .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, id)));
+  const result = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .delete(webhooksInbound)
+      .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, id))),
+  );
   const ok = (result as { rowCount?: number }).rowCount
     ? ((result as { rowCount?: number }).rowCount ?? 0) > 0
     : true;
@@ -254,11 +261,13 @@ function isInboundSlugCandidate(slug: string, desired: string, tenant_id: string
 
 async function inboundSlugInUse(exec: Executor, slug: string): Promise<boolean> {
   // tenant-filter:exempt — a hook slug is a public path shared by all tenants; only whether it is taken is read, never the holder
-  const rows = await exec
-    .select({ id: webhooksInbound.id })
-    .from(webhooksInbound)
-    .where(eq(webhooksInbound.slug, slug))
-    .limit(1);
+  const rows = await withSystemScope(exec, "inbound hook slugs are unique across tenants", (tx) =>
+    tx
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(eq(webhooksInbound.slug, slug))
+      .limit(1),
+  );
   return rows.length > 0;
 }
 
@@ -304,7 +313,7 @@ export async function bindFromWorkflow(
   };
   if (input.trigger.verify === "none") nativeConfig.skip = true;
 
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, input.tenant_id, async (tx) => {
     const existing = await tx
       .select()
       .from(webhooksInbound)
@@ -442,15 +451,17 @@ export async function rotateInboundSecret(
   db: Executor,
 ): Promise<boolean> {
   const payload = encryptSecret(secret, aadFor(tenant_id, inbound_id));
-  const result = await db
-    .update(webhooksInbound)
-    .set({
-      secret_ciphertext: toBuf(payload.ciphertext),
-      secret_iv: toBuf(payload.iv),
-      secret_auth_tag: toBuf(payload.auth_tag),
-      updated_at: new Date(),
-    })
-    .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, inbound_id)));
+  const result = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .update(webhooksInbound)
+      .set({
+        secret_ciphertext: toBuf(payload.ciphertext),
+        secret_iv: toBuf(payload.iv),
+        secret_auth_tag: toBuf(payload.auth_tag),
+        updated_at: new Date(),
+      })
+      .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, inbound_id))),
+  );
   const rowCount = (result as { rowCount?: number }).rowCount;
   return rowCount === undefined ? true : rowCount > 0;
 }
@@ -462,7 +473,7 @@ export async function unbindFromWorkflow(
   db: Executor,
   origin?: InboundOrigin,
 ): Promise<number> {
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, tenant_id, async (tx) => {
     const rows = await tx
       .delete(webhooksInbound)
       .where(
@@ -563,11 +574,9 @@ export async function handleInbound(
 ): Promise<HandleOutcome> {
   const { db, boss } = opts;
   // tenant-filter:exempt — a public hook path names no tenant; webhooks_inbound_slug_key makes the slug resolve to at most one hook
-  const rows = await db
-    .select()
-    .from(webhooksInbound)
-    .where(eq(webhooksInbound.slug, input.slug))
-    .limit(2);
+  const rows = await withSystemScope(db, "inbound hook routing resolves the tenant by slug", (tx) =>
+    tx.select().from(webhooksInbound).where(eq(webhooksInbound.slug, input.slug)).limit(2),
+  );
   if (rows.length > 1) {
     logger.error({
       module: "webhooks",

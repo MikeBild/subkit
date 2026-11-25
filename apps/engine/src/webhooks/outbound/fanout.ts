@@ -5,6 +5,7 @@ import { SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { ChatPlatform } from "../../chat/types.ts";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { events, subscriptions } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/tenant-work.ts";
 import type { RequestSource } from "../../execution/types.ts";
@@ -127,10 +128,12 @@ function extractRequestSource(payload: unknown): RequestSource | null {
 export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
   const { db, boss, tenant_id, event_type, payload, event_row_id } = input;
   if (tenant_id !== SYSTEM_TENANT_ID) await assertTenantActive(tenant_id, db);
-  const rows = await db
-    .select()
-    .from(subscriptions)
-    .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.active, true)));
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.tenant_id, tenant_id), eq(subscriptions.active, true))),
+  );
 
   let matched = 0;
   let enqueued = 0;

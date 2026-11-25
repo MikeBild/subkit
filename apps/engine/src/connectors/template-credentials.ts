@@ -4,6 +4,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { vaultItems } from "../db/schema/index.ts";
 import { templateClientItemName } from "../vault/index.ts";
 
@@ -31,7 +32,7 @@ export async function upsertTemplateOAuthCredentials(
   },
   db: Executor,
 ): Promise<{ id: string }> {
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, input.tenant_id, async (tx) => {
     const payload = encryptSecret(
       JSON.stringify(input.value),
       aadFor(input.tenant_id, input.template_slug),
@@ -106,17 +107,19 @@ export async function getTemplateOAuthCredentials(
   template_slug: string,
   db: Executor,
 ): Promise<ConnectorTemplateOAuthCredentialValue | null> {
-  const rows = await db
-    .select()
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.kind, "template_client"),
-        eq(vaultItems.template_slug, template_slug),
-      ),
-    )
-    .limit(1);
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.kind, "template_client"),
+          eq(vaultItems.template_slug, template_slug),
+        ),
+      )
+      .limit(1),
+  );
   const row = rows[0];
   if (!row) return null;
   const raw = decryptSecret(

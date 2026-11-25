@@ -8,6 +8,7 @@ import {
   secureEqual,
 } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
+import { withSystemScope } from "../db/index.ts";
 import { readEnv } from "../env.ts";
 import { secretAad } from "./environment.ts";
 import { type RewrapAcknowledgement, rewrapEvidenceDigest } from "./rewrap-evidence.ts";
@@ -106,81 +107,86 @@ export async function rewrapRegistryWithMaintenance(
     ) {
       throw new Error("rewrap_key_pin_mismatch");
     }
-    return await db.transaction(async (tx) => {
-      try {
-        const operation = randomUUID();
-        let cursor: { name: string; version: number } | null = null;
-        let pageNumber = 1;
-        let names = 0;
-        let versions = 0;
-        let lastChangedName: string | null = null;
-        for (;;) {
-          const response = await tx.execute(sql`
+    return await withSystemScope(
+      db,
+      "vault key rewrap checks every tenant's stored secrets",
+      async (tx) => {
+        try {
+          const operation = randomUUID();
+          let cursor: { name: string; version: number } | null = null;
+          let pageNumber = 1;
+          let names = 0;
+          let versions = 0;
+          let lastChangedName: string | null = null;
+          for (;;) {
+            const response = await tx.execute(sql`
             WITH page AS MATERIALIZED (
               SELECT subkit.vault_maintenance_snapshot(${operation}::uuid,${status.key_epoch}::bigint,${targetDigest}::text,${evidence}::text,${cursor?.name ?? null}::text,${cursor?.version ?? null}::integer,128) AS value
             ) SELECT to_jsonb(value) AS page FROM page
           `);
-          const page = pageSchema.parse(response.rows[0]?.page);
-          if (
-            page.operation_id !== operation ||
-            page.page_number !== pageNumber ||
-            page.source_epoch !== status.key_epoch ||
-            (page.has_more && page.rows.length === 0)
-          )
-            throw new Error("rewrap_snapshot_invalid");
-          let replaced = 0;
-          const replacements = page.rows.map((row) => {
-            const payload = {
-              ciphertext: bytes(row.ciphertext),
-              iv: bytes(row.iv),
-              auth_tag: bytes(row.auth_tag),
-            };
-            const aad = secretAad(row.name, row.version);
-            let plaintext: Uint8Array | null = null;
-            try {
-              decryptSecretBytesWithKey(runningKey, payload, aad);
-            } catch {
+            const page = pageSchema.parse(response.rows[0]?.page);
+            if (
+              page.operation_id !== operation ||
+              page.page_number !== pageNumber ||
+              page.source_epoch !== status.key_epoch ||
+              (page.has_more && page.rows.length === 0)
+            )
+              throw new Error("rewrap_snapshot_invalid");
+            let replaced = 0;
+            const replacements = page.rows.map((row) => {
+              const payload = {
+                ciphertext: bytes(row.ciphertext),
+                iv: bytes(row.iv),
+                auth_tag: bytes(row.auth_tag),
+              };
+              const aad = secretAad(row.name, row.version);
+              let plaintext: Uint8Array | null = null;
               try {
-                plaintext = decryptSecretBytesWithKey(previousKey, payload, aad);
+                decryptSecretBytesWithKey(runningKey, payload, aad);
               } catch {
-                throw new Error("rewrap_unreadable_version");
+                try {
+                  plaintext = decryptSecretBytesWithKey(previousKey, payload, aad);
+                } catch {
+                  throw new Error("rewrap_unreadable_version");
+                }
               }
-            }
-            let next: ReturnType<typeof encryptSecretBytesWithKey> | null = null;
-            if (plaintext !== null) {
-              next = encryptSecretBytesWithKey(runningKey, plaintext, aad);
-              if (!secureEqual(plaintext, decryptSecretBytesWithKey(runningKey, next, aad)))
-                throw new Error("rewrap_plaintext_mismatch");
-              replaced++;
-              versions++;
-              if (lastChangedName !== row.name) names++;
-              lastChangedName = row.name;
-            }
-            return sql`ROW(${row.name}::text,${row.version}::integer,${payload.ciphertext}::bytea,${payload.iv}::bytea,${payload.auth_tag}::bytea,${next ? Buffer.from(next.ciphertext) : null}::bytea,${next ? Buffer.from(next.iv) : null}::bytea,${next ? Buffer.from(next.auth_tag) : null}::bytea,${next === null}::boolean)::subkit.vault_cipher_replacement`;
-          });
-          const applied = appliedSchema.parse(
-            (
-              await tx.execute(
-                sql`SELECT * FROM subkit.vault_maintenance_apply(${operation}::uuid,${page.page_sha256}::text,ARRAY[${sql.join(replacements, sql`, `)}]::subkit.vault_cipher_replacement[],${!page.has_more}::boolean)`,
-              )
-            ).rows[0],
-          );
-          if (
-            applied.applied_count !== replaced ||
-            applied.unchanged_count !== page.rows.length - replaced ||
-            applied.result_epoch !== status.key_epoch + (status.key_digest === targetDigest ? 0 : 1)
-          )
-            throw new Error("rewrap_apply_result_invalid");
-          if (!page.has_more) return { names, versions };
-          const last = page.rows.at(-1);
-          if (!last) throw new Error("rewrap_snapshot_invalid");
-          cursor = { name: last.name, version: last.version };
-          pageNumber++;
+              let next: ReturnType<typeof encryptSecretBytesWithKey> | null = null;
+              if (plaintext !== null) {
+                next = encryptSecretBytesWithKey(runningKey, plaintext, aad);
+                if (!secureEqual(plaintext, decryptSecretBytesWithKey(runningKey, next, aad)))
+                  throw new Error("rewrap_plaintext_mismatch");
+                replaced++;
+                versions++;
+                if (lastChangedName !== row.name) names++;
+                lastChangedName = row.name;
+              }
+              return sql`ROW(${row.name}::text,${row.version}::integer,${payload.ciphertext}::bytea,${payload.iv}::bytea,${payload.auth_tag}::bytea,${next ? Buffer.from(next.ciphertext) : null}::bytea,${next ? Buffer.from(next.iv) : null}::bytea,${next ? Buffer.from(next.auth_tag) : null}::bytea,${next === null}::boolean)::subkit.vault_cipher_replacement`;
+            });
+            const applied = appliedSchema.parse(
+              (
+                await tx.execute(
+                  sql`SELECT * FROM subkit.vault_maintenance_apply(${operation}::uuid,${page.page_sha256}::text,ARRAY[${sql.join(replacements, sql`, `)}]::subkit.vault_cipher_replacement[],${!page.has_more}::boolean)`,
+                )
+              ).rows[0],
+            );
+            if (
+              applied.applied_count !== replaced ||
+              applied.unchanged_count !== page.rows.length - replaced ||
+              applied.result_epoch !==
+                status.key_epoch + (status.key_digest === targetDigest ? 0 : 1)
+            )
+              throw new Error("rewrap_apply_result_invalid");
+            if (!page.has_more) return { names, versions };
+            const last = page.rows.at(-1);
+            if (!last) throw new Error("rewrap_snapshot_invalid");
+            cursor = { name: last.name, version: last.version };
+            pageNumber++;
+          }
+        } catch (error) {
+          throw safeFailure(error);
         }
-      } catch (error) {
-        throw safeFailure(error);
-      }
-    });
+      },
+    );
   } catch (error) {
     throw safeFailure(error);
   }

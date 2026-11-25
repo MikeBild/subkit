@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { vaultItems } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
 import { getListener } from "../../pubsub/listener.ts";
@@ -82,17 +83,29 @@ async function credentialExistsWithBoundedPool(
   let deadline: ReturnType<typeof setTimeout> | null = null;
   const timeoutError = new Error("OAuth credential read timed out");
   try {
-    const query = client.query({
-      text: `SELECT id
-               FROM vault_items
-              WHERE tenant_id = $1
-                AND connector_id = $2
-                AND environment = $3
-                AND deleted_at IS NULL
-              LIMIT 1`,
-      values: [tenant_id, connector_id, environment],
-      query_timeout: readTimeoutMs,
-    });
+    const query = (async () => {
+      await client.query({ text: "BEGIN", values: [], query_timeout: readTimeoutMs });
+      await client.query({
+        text: "SELECT set_config('subkit.tenant_id', $1, true), set_config('subkit.rls_scope', 'tenant', true)",
+        values: [tenant_id],
+        query_timeout: readTimeoutMs,
+      });
+      // row-scope-allowed: runs inside the transaction above, which sets the tenant row scope for tenant_id transaction-locally
+      const found = await client.query({
+        text: `SELECT id
+                 FROM vault_items
+                WHERE tenant_id = $1
+                  AND connector_id = $2
+                  AND environment = $3
+                  AND deleted_at IS NULL
+                LIMIT 1`,
+        values: [tenant_id, connector_id, environment],
+        query_timeout: readTimeoutMs,
+      });
+      await client.query({ text: "COMMIT", values: [], query_timeout: readTimeoutMs });
+      return found;
+    })();
+    query.catch(() => undefined);
     const timedOut = new Promise<never>((_resolve, reject) => {
       deadline = setTimeout(() => reject(timeoutError), readTimeoutMs);
       deadline.unref?.();
@@ -126,18 +139,20 @@ async function credentialExists(
       readTimeoutMs,
     );
   }
-  const rows = await db
-    .select({ id: vaultItems.id })
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.connector_id, connector_id),
-        eq(vaultItems.environment, environment),
-        isNull(vaultItems.deleted_at),
-      ),
-    )
-    .limit(1);
+  const rows = await withTenantScope(db, tenant_id, async (tx) =>
+    tx
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector_id),
+          eq(vaultItems.environment, environment),
+          isNull(vaultItems.deleted_at),
+        ),
+      )
+      .limit(1),
+  );
   return rows.length > 0;
 }
 

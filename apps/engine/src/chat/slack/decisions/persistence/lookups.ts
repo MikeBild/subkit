@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { chatIdentities, chatWorkspaces, type Db } from "../../../../db/index.ts";
+import { chatIdentities, chatWorkspaces, type Db, withSystemScope } from "../../../../db/index.ts";
 
 export async function findSlackIdentity(db: Db, workspaceId: string, platformUserId: string) {
   // tenant-filter:exempt — platform user-identity lookup pre-tenant (mirrors dispatcher.ts)
@@ -19,10 +19,14 @@ export async function findSlackIdentity(db: Db, workspaceId: string, platformUse
 
 export async function findSlackWorkspace(db: Db, workspaceId: string) {
   // tenant-filter:exempt — platform/workspace_id lookup pre-tenant (mirrors dispatcher.ts)
-  const [workspace] = await db
-    .select({ id: chatWorkspaces.id, tenant_id: chatWorkspaces.tenant_id })
-    .from(chatWorkspaces)
-    .where(and(eq(chatWorkspaces.platform, "slack"), eq(chatWorkspaces.workspace_id, workspaceId)))
-    .limit(1);
+  const [workspace] = await withSystemScope(db, "slack workspace lookup by platform id", (tx) =>
+    tx
+      .select({ id: chatWorkspaces.id, tenant_id: chatWorkspaces.tenant_id })
+      .from(chatWorkspaces)
+      .where(
+        and(eq(chatWorkspaces.platform, "slack"), eq(chatWorkspaces.workspace_id, workspaceId)),
+      )
+      .limit(1),
+  );
   return workspace ?? null;
 }

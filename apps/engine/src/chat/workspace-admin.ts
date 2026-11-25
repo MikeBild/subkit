@@ -3,6 +3,7 @@ import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { encryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
+import { withSystemScope, withTenantScope } from "../db/index.ts";
 import { chatIdentities, chatWorkspaces } from "../db/schema/index.ts";
 import { chatWorkspaceAad } from "./api.ts";
 import { type InboundChatPlatform, PLATFORM_HAS_GLOBAL_USER_IDS } from "./types.ts";
@@ -39,7 +40,9 @@ interface ChatWorkspaceInstallInput {
 }
 
 export async function listChatWorkspaces(db: Db, tenant_id: string): Promise<ChatWorkspaceRow[]> {
-  return db.select().from(chatWorkspaces).where(eq(chatWorkspaces.tenant_id, tenant_id));
+  return withTenantScope(db, tenant_id, (tx) =>
+    tx.select().from(chatWorkspaces).where(eq(chatWorkspaces.tenant_id, tenant_id)),
+  );
 }
 
 export async function findChatWorkspace(
@@ -47,11 +50,13 @@ export async function findChatWorkspace(
   tenant_id: string,
   id: string,
 ): Promise<ChatWorkspaceRow | null> {
-  const [row] = await db
-    .select()
-    .from(chatWorkspaces)
-    .where(and(eq(chatWorkspaces.tenant_id, tenant_id), eq(chatWorkspaces.id, id)))
-    .limit(1);
+  const [row] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(chatWorkspaces)
+      .where(and(eq(chatWorkspaces.tenant_id, tenant_id), eq(chatWorkspaces.id, id)))
+      .limit(1),
+  );
   return row ?? null;
 }
 
@@ -61,16 +66,18 @@ export async function installChatWorkspace(
 ): Promise<ChatWorkspaceRow | undefined> {
   // tenant-filter:exempt — global uniqueness check spans tenants by
   // design; we never expose the foreign row, only the conflict.
-  const [foreignRow] = await db
-    .select({ tenant_id: chatWorkspaces.tenant_id })
-    .from(chatWorkspaces)
-    .where(
-      and(
-        eq(chatWorkspaces.platform, input.body.platform),
-        eq(chatWorkspaces.workspace_id, input.body.workspace_id),
-      ),
-    )
-    .limit(1);
+  const [foreignRow] = await withSystemScope(db, "chat workspace global uniqueness check", (tx) =>
+    tx
+      .select({ tenant_id: chatWorkspaces.tenant_id })
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.platform, input.body.platform),
+          eq(chatWorkspaces.workspace_id, input.body.workspace_id),
+        ),
+      )
+      .limit(1),
+  );
   if (foreignRow && foreignRow.tenant_id !== input.principal.tenant_id) {
     await auditAwait(
       {
@@ -185,7 +192,7 @@ export async function installChatWorkspace(
   const placeholder = encryptSecret("__placeholder__");
   let row: ChatWorkspaceRow | undefined;
   let installerLinked = false;
-  await db.transaction(async (tx) => {
+  await withTenantScope(db, input.principal.tenant_id, async (tx) => {
     const insertResult = await tx
       .insert(chatWorkspaces)
       .values({
@@ -336,7 +343,7 @@ export async function removeChatWorkspace(
   const row = await findChatWorkspace(db, principal.tenant_id, id);
   if (!row) return null;
 
-  await db.transaction(async (tx) => {
+  await withTenantScope(db, principal.tenant_id, async (tx) => {
     await tx
       .delete(chatWorkspaces)
       .where(and(eq(chatWorkspaces.tenant_id, principal.tenant_id), eq(chatWorkspaces.id, id)));

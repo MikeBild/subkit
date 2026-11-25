@@ -3,6 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { encryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { chatIdentities, chatWorkspaces } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import { chatWorkspaceAad } from "./api.ts";
@@ -59,7 +60,7 @@ export async function ensureDmAutoRegistration(
     return { denied: "hosted_ownership_proof_required" };
 
   let workspace: typeof chatWorkspaces.$inferSelect | undefined;
-  await db.transaction(async (tx) => {
+  await withTenantScope(db, tenant_id, async (tx) => {
     const placeholder = encryptSecret("__placeholder__");
     const inserted = await tx
       .insert(chatWorkspaces)

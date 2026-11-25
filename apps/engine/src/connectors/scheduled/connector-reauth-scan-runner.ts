@@ -3,6 +3,7 @@ import type { PgBoss } from "pg-boss";
 import { catalogMetadataView } from "../../api/catalog-metadata.ts";
 import type { RefreshOAuthJob } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { connectors, vaultItems } from "../../db/schema/index.ts";
 import { errorFields, logger } from "../../logging/index.ts";
 import { probeConnector } from "../drivers/index.ts";
@@ -176,22 +177,24 @@ export async function runOAuth2RefreshKeepAliveForTenant(
   boss: Pick<PgBoss, "send">,
 ): Promise<void> {
   const cutoff = new Date(now.getTime() - OAUTH2_KEEPALIVE_IDLE_MS);
-  const candidates = await db
-    .select({ credential_id: vaultItems.id })
-    .from(vaultItems)
-    .innerJoin(connectors, eq(vaultItems.connector_id, connectors.id))
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.mode, "oauth2"),
-        isNull(vaultItems.deleted_at),
-        isNotNull(vaultItems.connector_id),
-        isNotNull(vaultItems.oauth2_refresh_ciphertext),
-        lt(vaultItems.updated_at, cutoff),
-        isNull(connectors.deleted_at),
-        eq(connectors.needs_reauth, false),
+  const candidates = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({ credential_id: vaultItems.id })
+      .from(vaultItems)
+      .innerJoin(connectors, eq(vaultItems.connector_id, connectors.id))
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.mode, "oauth2"),
+          isNull(vaultItems.deleted_at),
+          isNotNull(vaultItems.connector_id),
+          isNotNull(vaultItems.oauth2_refresh_ciphertext),
+          lt(vaultItems.updated_at, cutoff),
+          isNull(connectors.deleted_at),
+          eq(connectors.needs_reauth, false),
+        ),
       ),
-    );
+  );
 
   let enqueued = 0;
   for (const { credential_id } of candidates) {

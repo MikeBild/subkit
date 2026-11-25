@@ -12,6 +12,10 @@ describe("waitForOAuthCredential database-wide single-flight", () => {
     let maxActiveReads = 0;
     let readCalls = 0;
     const db = {
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+      execute: async () => ({
+        rows: [{ previous_role: "none", previous_tenant: null, previous_scope: null }],
+      }),
       select: () => ({
         from: () => ({
           where: () => ({

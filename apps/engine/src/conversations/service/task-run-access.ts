@@ -2,6 +2,7 @@ import { isOwner, isOwnerOrAdmin } from "@shared/owner.ts";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Executor } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import {
   conversationElicitations,
   conversations,
@@ -199,11 +200,13 @@ export async function taskRunApprovalRefusal(
   exec: Executor,
   p: { tenant_id: string; approval_id: string; user_id: string | null },
 ): Promise<TaskRunApprovalRefusal | null> {
-  const [approval] = await exec
-    .select({ principal_id: toolApprovals.principal_id, surface: toolApprovals.surface })
-    .from(toolApprovals)
-    .where(and(eq(toolApprovals.tenant_id, p.tenant_id), eq(toolApprovals.id, p.approval_id)))
-    .limit(1);
+  const [approval] = await withTenantScope(exec, p.tenant_id, (tx) =>
+    tx
+      .select({ principal_id: toolApprovals.principal_id, surface: toolApprovals.surface })
+      .from(toolApprovals)
+      .where(and(eq(toolApprovals.tenant_id, p.tenant_id), eq(toolApprovals.id, p.approval_id)))
+      .limit(1),
+  );
   if (!approval) return "not_allowed";
   const { linked, scopes } = await linkedRunScopes(exec, p);
   if (linked === 0) {

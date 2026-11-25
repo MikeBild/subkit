@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { connectorEnvironmentKey, getConnectorsForEnvironments } from "../connectors/service.ts";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import {
   webhooksInbound,
   workflows,
@@ -112,17 +113,19 @@ async function triggerEnvironment(
         eq(workflowsSchedules.paused, false),
       ),
     );
-  const [hook] = await db
-    .select({ id: webhooksInbound.id })
-    .from(webhooksInbound)
-    .where(
-      and(
-        eq(webhooksInbound.tenant_id, tenant_id),
-        eq(webhooksInbound.workflow_id, workflow_id),
-        eq(webhooksInbound.active, true),
-      ),
-    )
-    .limit(1);
+  const [hook] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, tenant_id),
+          eq(webhooksInbound.workflow_id, workflow_id),
+          eq(webhooksInbound.active, true),
+        ),
+      )
+      .limit(1),
+  );
   const environments = [
     ...new Set<ExecutionEnvironment>([
       ...schedules.map((schedule) => schedule.environment),

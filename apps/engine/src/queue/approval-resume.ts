@@ -5,6 +5,7 @@ import { type Actor, actorOf } from "../audit/actor.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { ConversationTurnInProgressError } from "../conversations/types.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { executions, toolApprovals } from "../db/schema/index.ts";
 import { rehydrateExecutionPrincipal } from "../execution/authorization-context.ts";
 import { errorFields, logger } from "../logging/index.ts";
@@ -33,11 +34,13 @@ async function approvalOwnerPrincipal(
   db: Db,
   decision: "approve" | "decline",
 ): Promise<ResolvedPrincipal | null> {
-  const [owner] = await db
-    .select()
-    .from(toolApprovals)
-    .where(and(eq(toolApprovals.tenant_id, tenant_id), eq(toolApprovals.id, approval_id)))
-    .limit(1);
+  const [owner] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(toolApprovals)
+      .where(and(eq(toolApprovals.tenant_id, tenant_id), eq(toolApprovals.id, approval_id)))
+      .limit(1),
+  );
   if (
     !owner ||
     owner.consumed_at ||

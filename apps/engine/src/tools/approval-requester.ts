@@ -1,6 +1,7 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { toolApprovals } from "../db/schema/index.ts";
 import { rehydrateExecutionPrincipal } from "../execution/authorization-context.ts";
 import { errorFields, logger } from "../logging/index.ts";
@@ -9,23 +10,25 @@ export async function rehydrateApprovalRequester(
   db: Db,
   p: { tenant_id: string; approval_id: string },
 ): Promise<ResolvedPrincipal | null> {
-  const [approval] = await db
-    .select({
-      principal_id: toolApprovals.principal_id,
-      caller_context: toolApprovals.caller_context,
-      authorization_context: toolApprovals.authorization_context,
-    })
-    .from(toolApprovals)
-    .where(
-      and(
-        eq(toolApprovals.tenant_id, p.tenant_id),
-        eq(toolApprovals.id, p.approval_id),
-        isNull(toolApprovals.declined_at),
-        isNull(toolApprovals.consumed_at),
-        gt(toolApprovals.expires_at, sql`now()`),
-      ),
-    )
-    .limit(1);
+  const [approval] = await withTenantScope(db, p.tenant_id, (tx) =>
+    tx
+      .select({
+        principal_id: toolApprovals.principal_id,
+        caller_context: toolApprovals.caller_context,
+        authorization_context: toolApprovals.authorization_context,
+      })
+      .from(toolApprovals)
+      .where(
+        and(
+          eq(toolApprovals.tenant_id, p.tenant_id),
+          eq(toolApprovals.id, p.approval_id),
+          isNull(toolApprovals.declined_at),
+          isNull(toolApprovals.consumed_at),
+          gt(toolApprovals.expires_at, sql`now()`),
+        ),
+      )
+      .limit(1),
+  );
   if (!approval?.caller_context) return null;
   try {
     const principal = await rehydrateExecutionPrincipal(

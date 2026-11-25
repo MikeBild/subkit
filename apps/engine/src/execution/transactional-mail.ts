@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { transactionalMailReceipts, webhooksInbound } from "../db/schema/index.ts";
 import type { TransactionalDeliveryBoundary } from "../workflows/transactional-delivery-boundary.ts";
 import type { StepResult } from "./types.ts";
@@ -13,18 +14,23 @@ export async function transactionalWebhookAvailable(
   workflow: string,
   boundary: TransactionalDeliveryBoundary,
 ) {
-  const [hook] = await db
-    .select({ verifier: webhooksInbound.verifier, config: webhooksInbound.native_verifier_config })
-    .from(webhooksInbound)
-    .where(
-      and(
-        eq(webhooksInbound.tenant_id, tenant),
-        eq(webhooksInbound.id, boundary.webhook_id),
-        eq(webhooksInbound.workflow_id, workflow),
-        eq(webhooksInbound.active, true),
-      ),
-    )
-    .limit(1);
+  const [hook] = await withTenantScope(db, tenant, (tx) =>
+    tx
+      .select({
+        verifier: webhooksInbound.verifier,
+        config: webhooksInbound.native_verifier_config,
+      })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, tenant),
+          eq(webhooksInbound.id, boundary.webhook_id),
+          eq(webhooksInbound.workflow_id, workflow),
+          eq(webhooksInbound.active, true),
+        ),
+      )
+      .limit(1),
+  );
   const config = hook?.config as { skip?: unknown; events?: unknown; hmac?: unknown } | null;
   if (
     !hook ||

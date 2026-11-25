@@ -1,6 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../../db/client.ts";
+import { withSystemScope } from "../../db/index.ts";
 import { taskGrants, workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { errorFields, logger } from "../../logging/index.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
@@ -41,7 +42,8 @@ export function taskRenewHref(task_id: string): string {
 
 async function notifyWorkflowAuthorities(db: Db, now: Date, horizon: Date): Promise<number> {
   // tenant-filter:exempt — bounded sweep over every live tenant; each row carries its tenant_id into a tenant-keyed claim.
-  const due = await db.execute(sql`
+  const due = await withSystemScope(db, "approval expiry notices sweep every tenant", (tx) =>
+    tx.execute(sql`
     SELECT a.id, a.tenant_id, a.workflow_id, w.name AS workflow_name,
            a.execution_environment AS environment, a.valid_until
     FROM subkit.workflow_execution_authorities a
@@ -80,7 +82,8 @@ async function notifyWorkflowAuthorities(db: Db, now: Date, horizon: Date): Prom
       )
     ORDER BY a.valid_until, a.id
     LIMIT ${APPROVAL_EXPIRY_NOTICE_BATCH}
-  `);
+  `),
+  );
   let notified = 0;
   for (const row of z.array(AuthorityRow).parse(due.rows)) {
     const claimed = await db.transaction(async (tx) => {

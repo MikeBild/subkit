@@ -18,6 +18,7 @@ import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { PLATFORM_HAS_GLOBAL_USER_IDS } from "../../chat/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
+import { withSystemScope } from "../../db/index.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
 import { beginTenantWork } from "../../execution/tenant-work.ts";
 import { assertTenantActive } from "../../identity/self-service.ts";
@@ -58,16 +59,18 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
   // Resolve workspace row → tenant + UUID. tenant-filter:exempt —
   // platform/workspace_id lookup pre-tenant; the dispatcher repeats
   // this lookup, which is harmless and keeps the dispatcher portable.
-  let [workspace] = await db
-    .select()
-    .from(chatWorkspaces)
-    .where(
-      and(
-        eq(chatWorkspaces.platform, event.platform),
-        eq(chatWorkspaces.workspace_id, event.workspace_id),
-      ),
-    )
-    .limit(1);
+  let [workspace] = await withSystemScope(db, "chat workspace lookup by platform id", (tx) =>
+    tx
+      .select()
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.platform, event.platform),
+          eq(chatWorkspaces.workspace_id, event.workspace_id),
+        ),
+      )
+      .limit(1),
+  );
   if (!workspace) {
     const auto = await ensureDmAutoRegistration(db, event);
     if ("workspace" in auto) {

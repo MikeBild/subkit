@@ -3,6 +3,7 @@ import { and, asc, eq, lt, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { conversationElicitations, toolApprovals } from "../db/schema/index.ts";
 import {
   type LocalConfirmationPort,
@@ -36,19 +37,21 @@ async function carryExpiryToApproval(
   handle: string,
   db: Db,
 ): Promise<void> {
-  await db
-    .update(conversationElicitations)
-    .set({
-      expires_at: sql`(select ${toolApprovals.expires_at} from ${toolApprovals} where ${toolApprovals.tenant_id} = ${row.tenant_id} and ${toolApprovals.id} = ${handle})`,
-      updated_at: new Date(),
-    })
-    .where(
-      and(
-        eq(conversationElicitations.tenant_id, row.tenant_id),
-        eq(conversationElicitations.id, row.id),
-        eq(conversationElicitations.status, "pending"),
+  await withTenantScope(db, row.tenant_id, (tx) =>
+    tx
+      .update(conversationElicitations)
+      .set({
+        expires_at: sql`(select ${toolApprovals.expires_at} from ${toolApprovals} where ${toolApprovals.tenant_id} = ${row.tenant_id} and ${toolApprovals.id} = ${handle})`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(conversationElicitations.tenant_id, row.tenant_id),
+          eq(conversationElicitations.id, row.id),
+          eq(conversationElicitations.status, "pending"),
+        ),
       ),
-    );
+  );
 }
 
 const CLAIMING_COMMIT_INTENTS: ReadonlySet<string> = new Set([
@@ -106,16 +109,18 @@ export async function expireDueElicitations(
     const handle = approvalHandleFromElicitationInput(row.input);
     try {
       if (handle) {
-        const [approval] = await db
-          .select({
-            live: sql<boolean>`${toolApprovals.expires_at} > now()`,
-            granted: sql<boolean>`${toolApprovals.granted_at} is not null`,
-            declined: sql<boolean>`${toolApprovals.declined_at} is not null`,
-            consumed: sql<boolean>`${toolApprovals.consumed_at} is not null`,
-          })
-          .from(toolApprovals)
-          .where(and(eq(toolApprovals.tenant_id, row.tenant_id), eq(toolApprovals.id, handle)))
-          .limit(1);
+        const [approval] = await withTenantScope(db, row.tenant_id, (tx) =>
+          tx
+            .select({
+              live: sql<boolean>`${toolApprovals.expires_at} > now()`,
+              granted: sql<boolean>`${toolApprovals.granted_at} is not null`,
+              declined: sql<boolean>`${toolApprovals.declined_at} is not null`,
+              consumed: sql<boolean>`${toolApprovals.consumed_at} is not null`,
+            })
+            .from(toolApprovals)
+            .where(and(eq(toolApprovals.tenant_id, row.tenant_id), eq(toolApprovals.id, handle)))
+            .limit(1),
+        );
 
         if (approval?.granted && !approval.declined && !approval.consumed) {
           const resume = deps?.resume;

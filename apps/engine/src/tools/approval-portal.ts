@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
+import { withSystemScope, withTenantScope } from "../db/index.ts";
 import { systemAccounts, toolApprovals, users } from "../db/schema/index.ts";
 import { CallerContextSchema } from "../execution/caller-context.ts";
 import { sha256Hex } from "../identity/api-key.ts";
@@ -125,20 +126,22 @@ export async function mintApprovalGrantUrl(
   if (!origin) return { ok: false, error: "engine_public_url_missing" };
 
   const { plaintext, hash } = generateApprovalGrant();
-  const updated = await db
-    .update(toolApprovals)
-    .set({ portal_token_sha256: hash })
-    .where(
-      and(
-        eq(toolApprovals.id, approval.id),
-        eq(toolApprovals.tenant_id, approval.tenant_id),
-        isNull(toolApprovals.granted_at),
-        isNull(toolApprovals.declined_at),
-        isNull(toolApprovals.consumed_at),
-        gt(toolApprovals.expires_at, sql`now()`),
-      ),
-    )
-    .returning({ expires_at: toolApprovals.expires_at });
+  const updated = await withTenantScope(db, approval.tenant_id, (tx) =>
+    tx
+      .update(toolApprovals)
+      .set({ portal_token_sha256: hash })
+      .where(
+        and(
+          eq(toolApprovals.id, approval.id),
+          eq(toolApprovals.tenant_id, approval.tenant_id),
+          isNull(toolApprovals.granted_at),
+          isNull(toolApprovals.declined_at),
+          isNull(toolApprovals.consumed_at),
+          gt(toolApprovals.expires_at, sql`now()`),
+        ),
+      )
+      .returning({ expires_at: toolApprovals.expires_at }),
+  );
 
   const row = updated[0];
   if (!row) return { ok: false, error: "approval_not_pending" };
@@ -272,28 +275,30 @@ export async function resolveApprovalPortalToken(
 
   // tenant-filter:exempt — this is the browser-facing unauthenticated route.
   // The tenant is derived from the matched row ONLY.
-  const rows = await db
-    .select({
-      id: toolApprovals.id,
-      tenant_id: toolApprovals.tenant_id,
-      principal_id: toolApprovals.principal_id,
-      caller_context: toolApprovals.caller_context,
-      tool: toolApprovals.tool,
-      surface: toolApprovals.surface,
-      execution_mode: toolApprovals.execution_mode,
-      expires_at: toolApprovals.expires_at,
-      granted_at: toolApprovals.granted_at,
-      declined_at: toolApprovals.declined_at,
-      consumed_at: toolApprovals.consumed_at,
-      preview_ciphertext: toolApprovals.preview_ciphertext,
-      preview_iv: toolApprovals.preview_iv,
-      preview_auth_tag: toolApprovals.preview_auth_tag,
-    })
-    .from(toolApprovals)
-    .where(
-      and(eq(toolApprovals.portal_token_sha256, hash), gt(toolApprovals.expires_at, sql`now()`)),
-    )
-    .limit(1);
+  const rows = await withSystemScope(db, "approval portal lookup by grant hash", (tx) =>
+    tx
+      .select({
+        id: toolApprovals.id,
+        tenant_id: toolApprovals.tenant_id,
+        principal_id: toolApprovals.principal_id,
+        caller_context: toolApprovals.caller_context,
+        tool: toolApprovals.tool,
+        surface: toolApprovals.surface,
+        execution_mode: toolApprovals.execution_mode,
+        expires_at: toolApprovals.expires_at,
+        granted_at: toolApprovals.granted_at,
+        declined_at: toolApprovals.declined_at,
+        consumed_at: toolApprovals.consumed_at,
+        preview_ciphertext: toolApprovals.preview_ciphertext,
+        preview_iv: toolApprovals.preview_iv,
+        preview_auth_tag: toolApprovals.preview_auth_tag,
+      })
+      .from(toolApprovals)
+      .where(
+        and(eq(toolApprovals.portal_token_sha256, hash), gt(toolApprovals.expires_at, sql`now()`)),
+      )
+      .limit(1),
+  );
 
   const row = rows[0];
   if (!row) return null;

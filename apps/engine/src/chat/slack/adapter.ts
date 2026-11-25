@@ -1,6 +1,7 @@
 import { WebClient } from "@slack/web-api";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
+import { withSystemScope } from "../../db/index.ts";
 import { chatWorkspaces, conversationElicitations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
 import type { ChatAdapter } from "../adapter.ts";
@@ -331,16 +332,18 @@ export class SlackAdapter implements ChatAdapter {
 
     // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
     // (mirrors dispatcher.ts:handleChatEvent and chat-event handler).
-    const [workspace] = await db
-      .select({ tenant_id: chatWorkspaces.tenant_id })
-      .from(chatWorkspaces)
-      .where(
-        and(
-          eq(chatWorkspaces.platform, "slack"),
-          eq(chatWorkspaces.workspace_id, event.workspace_id),
-        ),
-      )
-      .limit(1);
+    const [workspace] = await withSystemScope(db, "slack workspace lookup by platform id", (tx) =>
+      tx
+        .select({ tenant_id: chatWorkspaces.tenant_id })
+        .from(chatWorkspaces)
+        .where(
+          and(
+            eq(chatWorkspaces.platform, "slack"),
+            eq(chatWorkspaces.workspace_id, event.workspace_id),
+          ),
+        )
+        .limit(1),
+    );
     if (!workspace) {
       logger.warn({
         module: "chat",

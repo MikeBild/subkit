@@ -18,6 +18,7 @@ import {
   upsertCredential,
 } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { mcpOauthStates, vaultItems } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
@@ -435,22 +436,27 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
         this.db,
       );
       if (resolved) {
-        await this.db
-          .delete(vaultItems)
-          .where(and(eq(vaultItems.tenant_id, this.tenant_id), eq(vaultItems.id, resolved.row.id)));
+        const row_id = resolved.row.id;
+        await withTenantScope(this.db, this.tenant_id, (tx) =>
+          tx
+            .delete(vaultItems)
+            .where(and(eq(vaultItems.tenant_id, this.tenant_id), eq(vaultItems.id, row_id))),
+        );
       }
     }
     if (scope === "client" || scope === "all") {
-      await this.db
-        .delete(vaultItems)
-        .where(
-          and(
-            eq(vaultItems.tenant_id, this.tenant_id),
-            eq(vaultItems.connector_id, this.connector_id),
-            eq(vaultItems.environment, this.environment),
-            eq(vaultItems.mode, "oauth2_client"),
+      await withTenantScope(this.db, this.tenant_id, (tx) =>
+        tx
+          .delete(vaultItems)
+          .where(
+            and(
+              eq(vaultItems.tenant_id, this.tenant_id),
+              eq(vaultItems.connector_id, this.connector_id),
+              eq(vaultItems.environment, this.environment),
+              eq(vaultItems.mode, "oauth2_client"),
+            ),
           ),
-        );
+      );
       const next: McpAuthConfig = { kind: "oauth2" };
       if (this.auth.issuer !== undefined) next.issuer = this.auth.issuer;
       if (this.auth.scope !== undefined) next.scope = this.auth.scope;

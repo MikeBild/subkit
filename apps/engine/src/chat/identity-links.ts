@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { chatIdentities, chatWorkspaces, users } from "../db/schema/index.ts";
 import type { InboundChatPlatform } from "./types.ts";
 
@@ -39,17 +40,19 @@ export async function linkChatIdentity(
   input: ChatIdentityLinkInput,
 ): Promise<ChatIdentityRow | undefined> {
   const { principal, body } = input;
-  const [ws] = await db
-    .select({ id: chatWorkspaces.id })
-    .from(chatWorkspaces)
-    .where(
-      and(
-        eq(chatWorkspaces.tenant_id, principal.tenant_id),
-        eq(chatWorkspaces.platform, body.platform),
-        eq(chatWorkspaces.workspace_id, body.workspace_id),
-      ),
-    )
-    .limit(1);
+  const [ws] = await withTenantScope(db, principal.tenant_id, (tx) =>
+    tx
+      .select({ id: chatWorkspaces.id })
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.tenant_id, principal.tenant_id),
+          eq(chatWorkspaces.platform, body.platform),
+          eq(chatWorkspaces.workspace_id, body.workspace_id),
+        ),
+      )
+      .limit(1),
+  );
   if (!ws) throw new ChatIdentityLinkRefusedError("workspace_not_found", "chat_workspace");
 
   const [user] = await db

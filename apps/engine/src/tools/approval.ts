@@ -5,7 +5,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { withTenantScope } from "../db/index.ts";
+import { type ScopedTx, withTenantScope } from "../db/index.ts";
 import { toolApprovals } from "../db/schema/index.ts";
 import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../execution/caller-context.ts";
@@ -431,7 +431,7 @@ type DecisionMiss =
     };
 
 async function classifyDecisionMiss(
-  executor: Executor,
+  executor: ScopedTx,
   tenant_id: string,
   approval_id: string,
 ): Promise<DecisionMiss> {
@@ -823,7 +823,7 @@ function environmentMismatch(
 }
 
 async function classifyClaimMiss(
-  executor: Executor,
+  executor: ScopedTx,
   principal: ResolvedPrincipal,
   approval_id: string,
   tool: string,

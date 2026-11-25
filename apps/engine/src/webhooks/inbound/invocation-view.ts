@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { webhooksInbound } from "../../db/schema/index.ts";
 import { HmacVerifierConfig } from "./verifiers/hmac.ts";
 
@@ -61,19 +62,21 @@ export async function listWorkflowInboundHooks(
   workflow_id: string,
   db: Executor,
 ): Promise<WorkflowInboundHookView[]> {
-  const rows = await db
-    .select({
-      slug: webhooksInbound.slug,
-      verifier: webhooksInbound.verifier,
-      native_verifier_config: webhooksInbound.native_verifier_config,
-      active: webhooksInbound.active,
-      admission_hold: webhooksInbound.admission_hold,
-    })
-    .from(webhooksInbound)
-    .where(
-      and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.workflow_id, workflow_id)),
-    )
-    .orderBy(webhooksInbound.slug);
+  const rows = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({
+        slug: webhooksInbound.slug,
+        verifier: webhooksInbound.verifier,
+        native_verifier_config: webhooksInbound.native_verifier_config,
+        active: webhooksInbound.active,
+        admission_hold: webhooksInbound.admission_hold,
+      })
+      .from(webhooksInbound)
+      .where(
+        and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.workflow_id, workflow_id)),
+      )
+      .orderBy(webhooksInbound.slug),
+  );
   return rows.map((row) => ({
     slug: row.slug,
     verifier: row.verifier,

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import type { Executor } from "../../db/client.ts";
+import { withSystemScope } from "../../db/index.ts";
 import { errorFields, logger } from "../../logging/index.ts";
 
 const TOOL_APPROVAL_CLEANUP_BATCH_SIZE = 256;
@@ -15,7 +16,7 @@ export async function runToolApprovalsCleanup(started: Date, db: Executor): Prom
   let expired_deleted = 0;
   let consumed_deleted = 0;
   try {
-    const counts = await db.transaction(async (tx) => {
+    const counts = await withSystemScope(db, "tool approval retention sweep", async (tx) => {
       // tenant-filter:exempt — bounded global retention locks keys and rechecks each owner and expiry.
       const expired = await tx.execute(sql`
         WITH candidates AS MATERIALIZED (

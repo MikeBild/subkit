@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, or, type SQL, sql } from "drizzle-orm";
 import { AuditAction, ChatMessageDeniedMetadataSchema, SYSTEM_TENANT_ID } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
+import { withSystemScope } from "../db/index.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { chatIdentities, chatWorkspaces } from "../db/schema/index.ts";
 import {
@@ -87,10 +88,12 @@ export async function listPendingSpacesForPrincipal(
   // tenant-filter:exempt — deliberate global existence check; the
   // isolation guard is the caller-owned identity join in step 3, not a
   // tenant predicate here.
-  const installed = await db
-    .select({ platform: chatWorkspaces.platform, workspace_id: chatWorkspaces.workspace_id })
-    .from(chatWorkspaces)
-    .where(inArray(chatWorkspaces.workspace_id, candidateWorkspaceIds));
+  const installed = await withSystemScope(db, "pending chat space global install check", (tx) =>
+    tx
+      .select({ platform: chatWorkspaces.platform, workspace_id: chatWorkspaces.workspace_id })
+      .from(chatWorkspaces)
+      .where(inArray(chatWorkspaces.workspace_id, candidateWorkspaceIds)),
+  );
   const installedKeys = new Set(installed.map((r) => `${r.platform}:${r.workspace_id}`));
 
   return [...byWorkspace.values()].filter(

@@ -21,6 +21,7 @@ import {
 } from "../conversations/public/lifecycle.ts";
 import type { RunLoopResult } from "../conversations/types.ts";
 import type { Db } from "../db/client.ts";
+import { withSystemScope } from "../db/index.ts";
 import { chatIdentities, chatSessions, chatWorkspaces } from "../db/schema/index.ts";
 import { errorFields, log, logger } from "../logging/index.ts";
 import { tryAcquire } from "../notifications/rate-limit.ts";
@@ -403,16 +404,18 @@ async function handleChatEventImpl(
   const { db, adapter } = deps;
 
   // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
-  const [workspace] = await db
-    .select()
-    .from(chatWorkspaces)
-    .where(
-      and(
-        eq(chatWorkspaces.platform, ev.platform),
-        eq(chatWorkspaces.workspace_id, ev.workspace_id),
-      ),
-    )
-    .limit(1);
+  const [workspace] = await withSystemScope(db, "chat workspace lookup by platform id", (tx) =>
+    tx
+      .select()
+      .from(chatWorkspaces)
+      .where(
+        and(
+          eq(chatWorkspaces.platform, ev.platform),
+          eq(chatWorkspaces.workspace_id, ev.workspace_id),
+        ),
+      )
+      .limit(1),
+  );
   if (!workspace) return { status: "workspace_not_found" };
   const tenant_id = workspace.tenant_id;
   if (await requiresHostedChatOwnership(db, tenant_id)) {

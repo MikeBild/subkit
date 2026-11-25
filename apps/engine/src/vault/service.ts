@@ -10,7 +10,7 @@ import { deserializePlain, serializePlain } from "../credentials/credential-valu
 import { deleteCredential } from "../credentials/service.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Executor } from "../db/client.ts";
-import { withTenantScope } from "../db/index.ts";
+import { type ScopedTx, withTenantScope } from "../db/index.ts";
 import { auditLog, connectors, vaultItems } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import { can } from "../rbac/evaluator.ts";
@@ -189,7 +189,7 @@ function visibleTo(viewer: VaultViewer) {
     : own;
 }
 
-function selectItems(db: Executor, tenant_id: string, ...conditions: (SQL | undefined)[]) {
+function selectItems(db: ScopedTx, tenant_id: string, ...conditions: (SQL | undefined)[]) {
   return db
     .select(COLUMNS)
     .from(vaultItems)
@@ -223,7 +223,7 @@ export async function listVaultItems(
 }
 
 async function loadItem(
-  db: Executor,
+  db: ScopedTx,
   tenant_id: string,
   id: string,
   viewer: VaultViewer,
@@ -443,7 +443,7 @@ export async function deleteVaultItem(
 }
 
 async function mergedRotationValue(
-  db: Executor,
+  db: ScopedTx,
   tenant_id: string,
   row: ItemRow,
   patch: VaultLoginPatch,
@@ -457,7 +457,7 @@ async function mergedRotationValue(
 }
 
 async function openRow(
-  db: Executor,
+  db: ScopedTx,
   tenant_id: string,
   row: ItemRow,
   lock = false,
@@ -596,7 +596,7 @@ export async function resolveVaultHandle(
 }
 
 async function resolveScopedHandle(
-  db: Executor,
+  db: ScopedTx,
   input: ResolveVaultHandleInput,
 ): Promise<VaultResolution> {
   const candidates = (await selectItems(
