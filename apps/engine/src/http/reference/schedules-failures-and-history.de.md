@@ -141,7 +141,7 @@ Gut zu wissen:
 
 - Wiederholt sich derselbe Grund, fasst SubKit die Termine in einem Eintrag zusammen. „Steht für 12 Termine“ nennt die Zahl.
 - Der Verlauf reicht 90 Tage zurück. Ältere Einträge löscht SubKit.
-- Ein Zeitplan, der häufiger als einmal pro Minute läuft, schreibt für pünktliche Runs keinen Eintrag.
+- Ein Zeitplan, der häufiger als einmal pro Minute läuft, schreibt für pünktliche Runs keinen Eintrag. Ein nachgeholter Run, der verpasste Zeiten vertritt, wird trotzdem erfasst.
 
 ### Eine Freigabe erneuern, bevor sie endet
 

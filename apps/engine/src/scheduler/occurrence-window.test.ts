@@ -5,6 +5,7 @@ import {
   everyDueWindow,
   onceDueWindow,
   planOccurrenceWrite,
+  shouldRecordRun,
 } from "./occurrence-window.ts";
 
 const at = (iso: string) => new Date(iso);
@@ -163,5 +164,27 @@ describe("planOccurrenceWrite", () => {
     expect(planOccurrenceWrite(null, { state: "skipped", reason_code: "calendar_gate" })).toEqual({
       kind: "insert",
     });
+  });
+});
+
+describe("shouldRecordRun", () => {
+  const now = at("2026-11-20T06:44:24Z");
+  const since = (ms: number) => new Date(now.getTime() - ms);
+
+  test("a sub-minute catch-up run after an outage is recorded as merged missed", () => {
+    const window = everyDueWindow(15, since(65_000), now);
+    expect(window?.count).toBe(4);
+    expect(shouldRecordRun(15, window, now)).toBe(true);
+    if (window) expect(classifyRun(window, now)).toMatchObject({ skipped_count: 3 });
+  });
+
+  test("a sub-minute run on time writes no entry", () => {
+    expect(shouldRecordRun(15, everyDueWindow(15, since(15_000), now), now)).toBe(false);
+    expect(shouldRecordRun(25, null, now)).toBe(false);
+  });
+
+  test("cron and minute-or-slower schedules always record their run", () => {
+    expect(shouldRecordRun(undefined, null, now)).toBe(true);
+    expect(shouldRecordRun(60, everyDueWindow(60, since(60_000), now), now)).toBe(true);
   });
 });

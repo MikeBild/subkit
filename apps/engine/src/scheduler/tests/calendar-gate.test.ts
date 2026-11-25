@@ -295,8 +295,16 @@ describe("interval schedules honour the calendar gate", () => {
     await tick(new Date("2026-11-24T02:01:00Z"));
     expect(fired).toHaveLength(1);
     const after = await occurrences();
-    expect(after).toHaveLength(1);
-    expect(after.some((entry) => entry.state === "ran")).toBe(false);
+    expect(after).toHaveLength(2);
+    expect(after.find((entry) => entry.state === "skipped")).toEqual(skipped[0]);
+    expect(after.find((entry) => entry.state === "ran")).toMatchObject({
+      reason_code: null,
+      skipped_count: 0,
+      due_at: new Date("2026-11-24T02:01:00Z"),
+    });
+    await tick(new Date("2026-11-24T02:01:15Z"));
+    expect(fired).toHaveLength(2);
+    expect(await occurrences()).toHaveLength(2);
   });
 
   test("an every:15 business-day schedule does not run on a local weekend", async () => {
