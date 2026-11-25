@@ -1,8 +1,8 @@
+import { CronDate } from "cron-parser";
 import { calendarGateSkipReason, readCalendarGates } from "./calendar-gates.ts";
 import { nextCronOccurrence, parseCronExpression, previousCronOccurrence } from "./cron.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_OCCURRENCE_STEPS = 100_000;
 export const GATE_SEARCH_DAYS = 60;
 
 interface NextFireSchedule {
@@ -22,13 +22,11 @@ function firstOpenOccurrence(
 ): Date | null {
   const limit = Math.max(first.getTime(), now.getTime()) + GATE_SEARCH_DAYS * DAY_MS;
   let occurrence: Date | null = first;
-  for (
-    let step = 0;
-    occurrence && occurrence.getTime() <= limit && step < MAX_OCCURRENCE_STEPS;
-    step++
-  ) {
+  while (occurrence && occurrence.getTime() <= limit) {
     if (calendarGateSkipReason(occurrence, tz, gates) === null) return occurrence;
-    occurrence = nextCronOccurrence(cron, occurrence, tz);
+    const nextDay = new CronDate(occurrence, tz);
+    nextDay.addDay();
+    occurrence = nextCronOccurrence(cron, new Date(nextDay.getTime() - 1), tz);
   }
   return null;
 }

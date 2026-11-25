@@ -6,6 +6,46 @@ import { isCronDue } from "./reconciler.ts";
 const created = new Date("2026-01-01T00:00:00.000Z");
 
 describe("nextScheduleFire", () => {
+  test.each([
+    {
+      timezone: "UTC",
+      input: { business_days_only: true },
+      last: "2026-03-14T00:00:00.000Z",
+      now: "2026-03-14T00:00:01.000Z",
+      expected: "2026-03-16T00:00:00.000Z",
+    },
+    {
+      timezone: "Europe/Berlin",
+      input: { business_days_only: true },
+      last: "2026-03-27T23:00:00.000Z",
+      now: "2026-03-27T23:00:01.000Z",
+      expected: "2026-03-29T22:00:00.000Z",
+    },
+    {
+      timezone: "Asia/Kathmandu",
+      input: { skip_dates: ["2026-03-14", "2026-03-15"] },
+      last: "2026-03-13T18:15:00.000Z",
+      now: "2026-03-13T18:15:01.000Z",
+      expected: "2026-03-15T18:15:00.000Z",
+    },
+  ])(
+    "a second-resolution schedule crosses blocked dates in $timezone",
+    ({ timezone, input, last, now, expected }) => {
+      expect(
+        nextScheduleFire(
+          {
+            cron: "* * * * * *",
+            timezone,
+            input,
+            last_enqueued_at: new Date(last),
+            created_at: created,
+          },
+          new Date(now),
+        ),
+      ).toBe(expected);
+    },
+  );
+
   test.each<{ input: Parameters<typeof calendarGateSkipReason>[2] }>([
     { input: { business_days_only: true } },
     { input: { skip_dates: ["2026-03-14"] } },
