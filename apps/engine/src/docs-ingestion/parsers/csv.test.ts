@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decodeCsvText, detectCsvDelimiter, parseCsvRows } from "./csv.ts";
+import { decodeCsvText, detectCsvDelimiter, parseCsvRows, resolveDelimiter } from "./csv.ts";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
@@ -142,6 +142,50 @@ describe("detectCsvDelimiter", () => {
     const text = line.repeat(20_000);
     expect(text.length).toBeGreaterThan(65_536);
     expect(detectCsvDelimiter(text)).toBe(";");
+  });
+});
+
+describe("resolveDelimiter", () => {
+  test("a named delimiter wins over the detected one", () => {
+    expect(resolveDelimiter(";", "a,b\n1,2\n")).toBe(";");
+    expect(resolveDelimiter("\t", "a;b\n1;2\n")).toBe("\t");
+  });
+
+  test("without a named delimiter the sample decides", () => {
+    expect(resolveDelimiter(undefined, "a;b\n1;2\n")).toBe(";");
+    expect(resolveDelimiter(undefined, "single\n1\n")).toBe(",");
+  });
+});
+
+describe("parseCsvRows with a named delimiter", () => {
+  const ambiguous = encode("code,region;amount\nA,North;12\nB,South;7\n");
+
+  test("detection reads an ambiguous file with commas", () => {
+    expect(parseCsvRows(ambiguous, { max_rows: 10 })).toMatchObject({
+      ok: true,
+      rows: [{ code: "A", "region;amount": "North;12" }, { code: "B" }],
+    });
+  });
+
+  test("a semicolon named by the workflow splits the same file at semicolons", () => {
+    expect(parseCsvRows(ambiguous, { max_rows: 10, delimiter: ";" })).toEqual({
+      ok: true,
+      rows: [
+        { "code,region": "A,North", amount: "12" },
+        { "code,region": "B,South", amount: "7" },
+      ],
+      row_count: 2,
+      truncated: false,
+    });
+  });
+
+  test("a named delimiter that does not fit the file gives one column per line", () => {
+    expect(parseCsvRows(encode("a,b\n1,2\n"), { max_rows: 10, delimiter: "|" })).toEqual({
+      ok: true,
+      rows: [{ "a,b": "1,2" }],
+      row_count: 1,
+      truncated: false,
+    });
   });
 });
 

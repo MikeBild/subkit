@@ -18,6 +18,28 @@ function reader(source: string, extra: Partial<TransformStep> = {}): TransformSt
 const ids = new Set(["download", "read"]);
 
 describe("parseFileValidationErrors", () => {
+  test("a delimiter is accepted for CSV and for a format detected at run time", () => {
+    const csv = reader("download.data", {
+      file: { source: "download.data", format: "csv", delimiter: ";" },
+    });
+    const detected = reader("download.data", {
+      file: { source: "download.data", delimiter: "\t" },
+    });
+    expect(parseFileValidationErrors(csv, ids, false)).toEqual([]);
+    expect(parseFileValidationErrors(detected, ids, false)).toEqual([]);
+  });
+
+  test("a delimiter next to a spreadsheet or document format is refused", () => {
+    for (const format of ["xlsx", "pdf"] as const) {
+      const step = reader("download.data", {
+        file: { source: "download.data", format, delimiter: ";" },
+      });
+      const errors = parseFileValidationErrors(step, ids, false);
+      expect(errors.map((error) => error.path)).toEqual(["steps.read.file.delimiter"]);
+      expect(errors[0]?.message).toContain(`\`format\` is \`${format}\``);
+    }
+  });
+
   test("run inputs, run state and known steps are accepted", () => {
     expect(parseFileValidationErrors(reader("$input.invoice"), ids, false)).toEqual([]);
     expect(parseFileValidationErrors(reader("$input"), ids, false)).toEqual([]);

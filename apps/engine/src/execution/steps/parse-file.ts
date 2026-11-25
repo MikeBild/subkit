@@ -1,4 +1,9 @@
-import { detectBinaryFormat, parseBinaryFile, parseTableFile } from "../../docs-ingestion/index.ts";
+import {
+  detectBinaryFormat,
+  parseBinaryFile,
+  parseTableFile,
+  type TableParseOptions,
+} from "../../docs-ingestion/index.ts";
 import type { ResolvedFile } from "../../files/index.ts";
 import type { TransformStep } from "../../workflows/index.ts";
 import { SYSTEM_CLOCK } from "../clock.ts";
@@ -33,7 +38,7 @@ async function readAll(file: ResolvedFile): Promise<Buffer> {
 async function parse(
   format: ParseFileFormat,
   bytes: Buffer,
-  table: { max_rows: number; sheet: string | undefined; signal: AbortSignal },
+  table: Omit<TableParseOptions, "format"> & { signal: AbortSignal },
 ): Promise<ParseFileDecision<ParsedFile>> {
   if (format === "csv" || format === "xlsx") {
     return parseFileTable(await parseTableFile(bytes, { format, ...table }), table.sheet);
@@ -80,6 +85,7 @@ export async function runParseFile(p: RunParseFileParams): Promise<StepResult> {
     const parsed = await parse(format.value, bytes, {
       max_rows: parseFileRowLimit(config.max_rows),
       sheet: config.sheet,
+      delimiter: config.delimiter,
       signal: p.ctx.signal,
     });
     if (!parsed.ok) return failed(parsed.failure);

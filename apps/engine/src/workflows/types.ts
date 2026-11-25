@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { CSV_DELIMITERS } from "@shared/files-constants.ts";
 import { FileRefSchema } from "../api/files-schemas.ts";
 import { isSafeRegex, SAFE_REGEX_REMEDY } from "../utils/safe-regex.ts";
 import { WORKFLOW_MAX_STEPS } from "./core/definition.ts";
@@ -791,6 +792,10 @@ export const ParseFileConfigSchema = z
     }),
     max_rows: z.number().int().min(1).max(PARSE_FILE_MAX_ROWS).optional().openapi({
       description: "Upper bound for table rows returned from a CSV or spreadsheet file.",
+    }),
+    delimiter: z.enum(CSV_DELIMITERS).optional().openapi({
+      description:
+        "Field delimiter of a CSV file: comma, semicolon, tab (`\\t`) or pipe. Without it the delimiter is detected from the first lines. Only for `format` `csv` or a detected format; a spreadsheet ignores it.",
     }),
   })
   .openapi("ParseFileConfig");

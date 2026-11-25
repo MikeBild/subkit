@@ -11,6 +11,25 @@ export function parseFileValidationErrors(
   knownStepIds: ReadonlySet<string>,
   allowForwardRefs: boolean,
 ): ValidationError[] {
+  return [...sourceErrors(step, knownStepIds, allowForwardRefs), ...delimiterErrors(step)];
+}
+
+function delimiterErrors(step: TransformStep): ValidationError[] {
+  const format = step.file?.format;
+  if (step.file?.delimiter === undefined || format === undefined || format === "csv") return [];
+  return [
+    {
+      path: `steps.${step.id}.file.delimiter`,
+      message: `\`delimiter\` only applies to CSV files, but \`format\` is \`${format}\`. Remove \`delimiter\` or set \`format\` to \`csv\`.`,
+    },
+  ];
+}
+
+function sourceErrors(
+  step: TransformStep,
+  knownStepIds: ReadonlySet<string>,
+  allowForwardRefs: boolean,
+): ValidationError[] {
   const source = step.file?.source;
   if (source === undefined) return [];
   const path = `steps.${step.id}.file.source`;

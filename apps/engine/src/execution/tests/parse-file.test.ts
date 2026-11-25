@@ -130,6 +130,19 @@ describe("transform language parse-file", () => {
     expect(result.output).toMatchObject({ rows: [{ customer: "Renée", amount: "12,50" }] });
   });
 
+  test("a delimiter named in the step overrides detection", async () => {
+    const doc = await upload(
+      "codes.csv",
+      "text/csv",
+      new TextEncoder().encode("code,region;amount\nA,North;12\n"),
+    );
+    const detected = await parse({ source: "$input.doc" }, { doc });
+    expect(detected.output).toMatchObject({ rows: [{ code: "A", "region;amount": "North;12" }] });
+    const named = await parse({ source: "$input.doc", delimiter: ";" }, { doc });
+    expect(named.status).toBe("succeeded");
+    expect(named.output).toMatchObject({ rows: [{ "code,region": "A,North", amount: "12" }] });
+  });
+
   test("a spreadsheet is read sheet by sheet", async () => {
     const doc = await upload(
       "report.xlsx",

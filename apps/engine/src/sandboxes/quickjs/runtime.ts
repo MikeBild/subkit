@@ -6,6 +6,7 @@ import {
   type QuickJSWASMModule,
 } from "quickjs-emscripten-core";
 import { getConfig } from "../../config/loader.ts";
+import type { TableParseOptions } from "../../docs-ingestion/index.ts";
 import { readEnv } from "../../env.ts";
 import { getContext } from "../../logging/context.ts";
 import { logger } from "../../logging/index.ts";
@@ -369,16 +370,13 @@ type SandboxWorkerJob =
       priority?: "default" | "hook";
       signal?: AbortSignal;
     }
-  | {
+  | ({
       op: "parse_table";
-      format: "csv" | "xlsx";
       buffer: string;
-      max_rows: number;
-      sheet?: string;
       wall_ms: number;
       priority?: "default" | "hook";
       signal?: AbortSignal;
-    };
+    } & TableParseOptions);
 
 export async function runSandboxWorkerJob<T>(request: SandboxWorkerJob): Promise<T> {
   const lane = request.priority === "hook" ? hookLane : defaultPool;

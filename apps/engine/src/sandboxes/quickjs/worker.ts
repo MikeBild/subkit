@@ -39,13 +39,7 @@ const WorkerRequestSchema = z.discriminatedUnion("op", [
     format: z.enum(["pdf", "docx", "xlsx", "xls", "pptx", "zip", "gzip"]),
     buffer: z.string(),
   }),
-  z.object({
-    op: z.literal("parse_table"),
-    format: z.enum(["csv", "xlsx"]),
-    buffer: z.string(),
-    max_rows: z.number().int().positive(),
-    sheet: z.string().min(1).optional(),
-  }),
+  z.object({ op: z.literal("parse_table"), buffer: z.string() }).passthrough(),
 ]);
 
 type WorkerRequest = z.infer<typeof WorkerRequestSchema>;
@@ -128,11 +122,7 @@ async function parseFileInCurrentProcess(
   const buffer = Buffer.from(request.buffer, "base64");
   return request.op === "parse_binary"
     ? parsers.parseBinaryFileInCurrentProcess(buffer, request.format)
-    : parsers.parseTableInCurrentProcess(buffer, {
-        format: request.format,
-        max_rows: request.max_rows,
-        sheet: request.sheet,
-      });
+    : parsers.parseTableInCurrentProcess(buffer, parsers.TableParseOptionsSchema.parse(request));
 }
 
 function workerRunOptions(opts: {

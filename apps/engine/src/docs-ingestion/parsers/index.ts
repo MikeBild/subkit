@@ -12,14 +12,8 @@ import {
   FileStrategyRegistry,
   PARSER_TIMEOUT_MS,
 } from "./strategy.ts";
-import {
-  type PackedTable,
-  packTable,
-  parseTable,
-  type TableFormat,
-  type TableResult,
-  unpackTable,
-} from "./table.ts";
+import { type PackedTable, packTable, parseTable, type TableResult, unpackTable } from "./table.ts";
+import type { TableParseOptions } from "./table-options.ts";
 import { type XlsxParseOutput, xlsStrategy, xlsxStrategy } from "./xlsx.ts";
 
 export type {
@@ -28,7 +22,7 @@ export type {
   ArchiveSkip,
 } from "./archive.ts";
 export type { CsvRowError, CsvRowsResult } from "./csv.ts";
-export { decodeCsvText, detectCsvDelimiter, parseCsvRows } from "./csv.ts";
+export { decodeCsvText, detectCsvDelimiter, parseCsvRows, resolveDelimiter } from "./csv.ts";
 export type { DocxParseOutput } from "./docx.ts";
 export type { PdfParseOutput } from "./pdf.ts";
 export { PDF_PAGE_SEPARATOR } from "./pdf.ts";
@@ -36,6 +30,11 @@ export type { PptxParseOutput, PptxSlide } from "./pptx.ts";
 export type { BinaryFormat, FileParsingStrategy } from "./strategy.ts";
 export { BinaryParseError } from "./strategy.ts";
 export type { PackedTable, TableFormat, TableResult } from "./table.ts";
+export {
+  TABLE_FORMATS,
+  type TableParseOptions,
+  TableParseOptionsSchema,
+} from "./table-options.ts";
 export type { XlsxFormat, XlsxParseOutput, XlsxTableResult } from "./xlsx.ts";
 
 type BinaryParseResult =
@@ -179,12 +178,7 @@ export const TABLE_PARSER_TIMEOUT_MS = 60_000;
 
 export async function parseTableFile(
   buffer: Buffer,
-  options: {
-    format: TableFormat;
-    max_rows: number;
-    sheet?: string | undefined;
-    signal?: AbortSignal;
-  },
+  options: TableParseOptions & { signal?: AbortSignal },
 ): Promise<TableResult> {
   const { signal, ...table } = options;
   if (process.argv.includes("--sandbox-worker")) return parseTable(buffer, table);
@@ -193,10 +187,8 @@ export async function parseTableFile(
   }
   const packed = await runSandboxWorkerJob<PackedTable>({
     op: "parse_table",
-    format: table.format,
+    ...table,
     buffer: buffer.toString("base64"),
-    max_rows: table.max_rows,
-    ...(table.sheet !== undefined ? { sheet: table.sheet } : {}),
     wall_ms: TABLE_PARSER_TIMEOUT_MS,
     ...(signal ? { signal } : {}),
   });
@@ -205,7 +197,7 @@ export async function parseTableFile(
 
 export function parseTableInCurrentProcess(
   buffer: Buffer,
-  options: { format: TableFormat; max_rows: number; sheet?: string | undefined },
+  options: TableParseOptions,
 ): PackedTable {
   return packTable(parseTable(buffer, options));
 }

@@ -47,6 +47,15 @@ test("a wide CSV comes back through worker IPC with every row and column", async
   expect(result.rows[9_999]?.column_name_number_119).toBe(`${9_999 % 97}9`);
 }, 60_000);
 
+test("a named delimiter reaches the CSV parser through worker IPC", async () => {
+  const result = await parseTableFile(Buffer.from("code,region;amount\nA,North;12\n"), {
+    format: "csv",
+    max_rows: 10,
+    delimiter: ";",
+  });
+  expect(result).toMatchObject({ ok: true, rows: [{ "code,region": "A,North", amount: "12" }] });
+}, 30_000);
+
 test("a long spreadsheet comes back through worker IPC cut at max_rows with its real length", async () => {
   const rows = Array.from({ length: 12_000 }, (_, i) => ({ id: i + 1, name: `row ${i + 1}` }));
   const result = await parseTableFile(buildXlsxFixture({ Data: rows }), {

@@ -10,3 +10,7 @@ export const FILE_LINK_RESOURCE_TYPES = [
 ] as const;
 
 export type FileLinkResourceType = (typeof FILE_LINK_RESOURCE_TYPES)[number];
+
+export const CSV_DELIMITERS = [",", ";", "\t", "|"] as const;
+
+export type CsvDelimiter = (typeof CSV_DELIMITERS)[number];

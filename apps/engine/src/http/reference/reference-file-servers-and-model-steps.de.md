@@ -122,6 +122,7 @@ Ein Transform-Step mit `language: "parse-file"` liest eine Datei aus dem Run und
 | `format` | `csv`, `xlsx`, `pdf`, `docx` oder `zip`. Ohne Angabe liest der Step den Typ aus der Datei selbst. |
 | `sheet` | Tabellenblatt, das gelesen wird. Ohne Angabe das erste. |
 | `max_rows` | Obergrenze für Tabellenzeilen aus einer CSV- oder Tabellendatei, höchstens 10.000. |
+| `delimiter` | Trennzeichen einer CSV-Datei: `","`, `";"`, `"\t"` (Tab) oder `"\|"`. Ohne Angabe erkennt der Step das Trennzeichen selbst. Neben einem anderen `format` als `csv` lehnt das Speichern es ab; bei erkanntem Format ignoriert eine Tabellendatei es. |
 
 | Format | Ausgabe |
 | --- | --- |
@@ -135,7 +136,7 @@ Jede Ausgabe enthält außerdem `format` und `filename`.
 
 Tabellenformate liefern höchstens `max_rows` Zeilen, ohne Angabe 10.000. `row_count` ist die Zahl der gelesenen Datenzeilen, und `truncated` ist `true`, wenn Zeilen weggelassen wurden.
 
-- **CSV:** Die erste Zeile ist der Header, jede weitere Zeile wird ein Objekt mit diesen Schlüsseln und Text-Werten. Leere Zeilen werden übersprungen, und eine Byte Order Mark wird ignoriert. Das Trennzeichen erkennt der Step an den ersten Zeilen: Komma, Semikolon, Tab oder senkrechter Strich; passt keins, gilt das Komma. Eine Datei, die kein gültiges UTF-8 ist, liest der Step als Windows-1252. So kommt auch ein deutscher Excel-Export mit Semikolons und Umlauten mit sauberen Spalten an. Der Step liest die ganze Datei, daher zählt `row_count` jede Zeile, auch über `max_rows` hinaus. Ein nicht geschlossenes Anführungszeichen oder eine Zeile mit zu wenigen oder zu vielen Feldern lässt den Step mit `parse_file_failed` scheitern; die Meldung nennt die erste fehlerhafte Zeile.
+- **CSV:** Die erste Zeile ist der Header, jede weitere Zeile wird ein Objekt mit diesen Schlüsseln und Text-Werten. Leere Zeilen werden übersprungen, und eine Byte Order Mark wird ignoriert. Ohne `delimiter` erkennt der Step das Trennzeichen an den ersten Zeilen: Komma, Semikolon, Tab oder senkrechter Strich; passt keins, gilt das Komma. Gib es mit `delimiter` an, wenn die Erkennung danebenliegt, zum Beispiel wenn eine Spalte Kommas enthält, die Datei aber an Semikolons getrennt ist. Eine Datei, die kein gültiges UTF-8 ist, liest der Step als Windows-1252. So kommt auch ein deutscher Excel-Export mit Semikolons und Umlauten mit sauberen Spalten an. Der Step liest die ganze Datei, daher zählt `row_count` jede Zeile, auch über `max_rows` hinaus. Ein nicht geschlossenes Anführungszeichen oder eine Zeile mit zu wenigen oder zu vielen Feldern lässt den Step mit `parse_file_failed` scheitern; die Meldung nennt die erste fehlerhafte Zeile.
 - **XLSX:** Der Step liest nur das gewählte Tabellenblatt, bis zu `max_rows` Zeilen. `row_count` stammt aus dem belegten Bereich des Blatts und nennt bei einem längeren Blatt die volle Länge, auch wenn nur `max_rows` Zeilen zurückkommen.
 
 Eine Datei darf höchstens 25 MB groß sein. Der Step nimmt keine `expression`; alles steht im Block `file`.

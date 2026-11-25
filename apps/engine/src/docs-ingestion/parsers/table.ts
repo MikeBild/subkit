@@ -1,7 +1,8 @@
 import { type CsvRowError, parseCsvRows } from "./csv.ts";
+import type { TableParseOptions } from "./table-options.ts";
 import { parseXlsxTable } from "./xlsx.ts";
 
-export type TableFormat = "csv" | "xlsx";
+export type TableFormat = TableParseOptions["format"];
 
 interface TableMeta {
   row_count: number;
@@ -22,12 +23,9 @@ export type PackedTable =
   | ({ ok: true; format: TableFormat; fields: string[]; rows_json: string } & TableMeta)
   | TableFailure;
 
-export function parseTable(
-  buffer: Buffer,
-  options: { format: TableFormat; max_rows: number; sheet?: string | undefined },
-): TableResult {
+export function parseTable(buffer: Buffer, options: TableParseOptions): TableResult {
   if (options.format === "csv") {
-    const csv = parseCsvRows(buffer, { max_rows: options.max_rows });
+    const csv = parseCsvRows(buffer, options);
     if (!csv.ok)
       return { ok: false, reason: "malformed", message: csv.message, errors: csv.errors };
     return {
