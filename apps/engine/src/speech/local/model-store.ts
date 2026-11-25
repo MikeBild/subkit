@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { sha256OfFile } from "../../crypto/index.ts";
 import { readEnv } from "../../env.ts";
 import { logger } from "../../logging/index.ts";
 import {
@@ -31,18 +32,11 @@ export const speechModelDir = (): string =>
     temporary: tmpdir(),
   });
 
-async function sha256Of(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of Bun.file(path).stream() as unknown as AsyncIterable<Uint8Array>)
-    hash.update(chunk);
-  return hash.digest("hex");
-}
-
 async function fileOnDisk(dir: string, file: ModelFile): Promise<boolean> {
   const path = join(dir, file.path);
   try {
     if ((await stat(path)).size !== file.bytes) return false;
-    return (await sha256Of(path)) === file.sha256;
+    return (await sha256OfFile(path)) === file.sha256;
   } catch {
     return false;
   }
