@@ -2,7 +2,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { approvalChoice } from "@shared/approval-choice.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Checkbox } from "@ui/atoms/checkbox";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type ApiResponse, apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
@@ -36,6 +36,11 @@ import {
   proposalsModel,
   readBoundaryProposals,
 } from "@/features/grants/model/authority-proposals";
+import {
+  authorityReviewReducer,
+  initialAuthorityReview,
+  trialElapsedSeconds,
+} from "@/features/grants/model/authority-review-flow";
 import {
   authorityReviewModel,
   replacedVersion,
@@ -76,6 +81,7 @@ import { RunWorkflowDialog } from "@/features/workflows";
 import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { useNow } from "@/lib/use-now";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { OPENS_APPROVAL } from "../model/opens-approval";
 import { ApprovalDeviceRow } from "./approval-device-row";
@@ -196,23 +202,9 @@ export function GrantWorkflowAuthority({
       }
     },
   });
-  const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [trialElsewhere, setTrialElsewhere] = useState(false);
-  useEffect(() => {
-    if (trialStartedAt === null) {
-      setElapsed(0);
-      return;
-    }
-    setElapsed(0);
-    const tick = setInterval(
-      () => setElapsed(Math.floor((Date.now() - trialStartedAt) / 1000)),
-      1000,
-    );
-    return () => clearInterval(tick);
-  }, [trialStartedAt]);
-  const [review, setReview] = useState<WorkflowAuthorityPreview | null>(null);
-  const [decision, setDecision] = useState<WorkflowAuthorityPreview | null>(null);
+  const [flow, dispatch] = useReducer(authorityReviewReducer, initialAuthorityReview);
+  const { review, decision, trial } = flow;
+  const elapsed = trialElapsedSeconds(trial, useNow(trial.kind === "running"));
   const latestReview = useRef(0);
   const isLatest = (token: number) => token === latestReview.current;
   const [sample, setSample] = useState<{
@@ -220,8 +212,6 @@ export function GrantWorkflowAuthority({
     versionId: string;
     trial: boolean;
   } | null>(null);
-  const [trialAsked, setTrialAsked] = useState(false);
-  const [trialSkipped, setTrialSkipped] = useState(false);
   const mounted = useRef(true);
   const savedVersion = useRef<string | null>(null);
   const followedVersion = useRef(versionId);
@@ -316,7 +306,7 @@ export function GrantWorkflowAuthority({
       let skipped = false;
       if (mayRun && (trial || prepares)) {
         notePreparation(preparationKey, Date.now());
-        setTrialStartedAt(Date.now());
+        dispatch({ type: "trial_started", at: Date.now() });
         let outcome: PrepareOutcome;
         try {
           outcome = await apiCall(
@@ -327,15 +317,20 @@ export function GrantWorkflowAuthority({
               body: { environment: asked, ...(input !== undefined ? { input } : {}) },
             },
           );
-          if (isLatest(token)) setTrialElsewhere(outcome.reason === "preparation_in_flight");
-          skipped =
-            trial &&
-            !outcome.prepared &&
-            outcome.reason !== "preparation_in_flight" &&
-            outcome.reason !== "input_required";
-        } finally {
-          if (isLatest(token)) setTrialStartedAt(null);
+        } catch (error) {
+          if (isLatest(token)) dispatch({ type: "trial_finished" });
+          throw error;
         }
+        if (isLatest(token))
+          dispatch({
+            type: "trial_finished",
+            elsewhere: outcome.reason === "preparation_in_flight",
+          });
+        skipped =
+          trial &&
+          !outcome.prepared &&
+          outcome.reason !== "preparation_in_flight" &&
+          outcome.reason !== "input_required";
         if (!isLatest(token)) throw superseded();
         if (outcome.reason === "input_required" && outcome.trigger)
           return {
@@ -378,13 +373,8 @@ export function GrantWorkflowAuthority({
   ) {
     const token = latestReview.current + 1;
     latestReview.current = token;
-    setReview(null);
-    if (!pinned) setDecision(null);
+    dispatch({ type: "review_started", pinned, trial });
     setMayRunOnDevice(true);
-    setTrialElsewhere(false);
-    setTrialStartedAt(null);
-    setTrialAsked(trial);
-    setTrialSkipped(false);
     prepare.reset();
     prepare.mutate(
       { env, token, version, input, pinned, trial },
@@ -393,10 +383,14 @@ export function GrantWorkflowAuthority({
           if (answer.trial)
             void client.invalidateQueries({ queryKey: ["boundary-proposals", workflowId] });
           if (!isLatest(answer.token)) return;
-          setTrialSkipped(answer.skipped === true);
+          dispatch({
+            type: "review_answered",
+            decision: answer.decision,
+            review: answer.sample ? null : answer.review,
+            skipped: answer.skipped === true,
+          });
           setReviewVersionId(answer.versionId);
           setEnvironment(answer.environment);
-          setDecision(answer.decision);
           if (answer.sample) {
             setSample({
               slug: answer.sample.slug,
@@ -407,8 +401,6 @@ export function GrantWorkflowAuthority({
             return;
           }
           setSample(null);
-          if (!answer.review) return;
-          setReview(answer.review);
         },
       },
     );
@@ -672,9 +664,7 @@ export function GrantWorkflowAuthority({
     activateOnly.reset();
     setSample(null);
     latestReview.current += 1;
-    setReview(null);
-    setDecision(null);
-    setTrialStartedAt(null);
+    dispatch({ type: "left" });
     prepare.reset();
   }
   function openDialog(value: boolean) {
@@ -1021,7 +1011,7 @@ export function GrantWorkflowAuthority({
             busy={busy}
             applying={repair.isPending}
             applyFailed={Boolean(repair.error)}
-            trialSkipped={trialSkipped}
+            trialSkipped={trial.kind === "idle" && trial.skipped}
             mayApply={session.permissions.includes("workflow:write")}
             mayTry={session.permissions.includes("workflow:run") && !blocked}
             onApply={() => repair.mutate()}
@@ -1070,7 +1060,7 @@ export function GrantWorkflowAuthority({
           )}
         </FieldGroup>
         {prepare.isPending &&
-          (trialStartedAt === null ? (
+          (trial.kind !== "running" ? (
             <GrantEffectReview model={null} growth={undefined} problems={[]} loading />
           ) : (
             <p
@@ -1082,11 +1072,11 @@ export function GrantWorkflowAuthority({
               {" · "}
               {t("authority.trial.elapsed", { seconds: elapsed })}
               <ContextHelp label={t("authority.trial.title")} testId="authority-trial-help">
-                {t(trialAsked ? "authorityProposals.trial.what" : "authority.trial.what")}
+                {t(trial.asked ? "authorityProposals.trial.what" : "authority.trial.what")}
               </ContextHelp>
             </p>
           ))}
-        {trialElsewhere && !prepare.isPending && (
+        {trial.kind === "idle" && trial.elsewhere && !prepare.isPending && (
           <p role="status" className="text-sm" data-testid="authority-trial-elsewhere">
             {t("authority.trial.alreadyRunning")}
           </p>

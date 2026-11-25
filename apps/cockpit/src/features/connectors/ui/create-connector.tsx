@@ -8,7 +8,7 @@ import {
   PencilLine,
   UserCheck,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useReducer, useRef } from "react";
 import { apiCall } from "@/api/call";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
@@ -45,6 +45,12 @@ import { currentHost, serviceIdentity, templateIdentity } from "@/lib/service-ic
 import { credentialBody } from "../model/connector-detail-model";
 import { popularTemplates, serviceHost, signInChipKey } from "../model/connector-view-model";
 import {
+  type ConnectorWizard,
+  type ConnectorWizardEvent,
+  connectorWizardReducer,
+  type FieldValue,
+} from "../model/connector-wizard";
+import {
   afterCreateTab,
   type ConnectorSignIn,
   type ConnectorTarget,
@@ -74,6 +80,45 @@ export type ConnectorWizardStart =
 
 type Step = "how" | "service" | "signin" | "review";
 type Way = "template" | "manual";
+
+interface CreateFields {
+  way: Way;
+  chosen: string | null;
+  query: string;
+  address: string;
+  secret: string;
+  header: string;
+  target: ConnectorTarget;
+  signIn: ConnectorSignIn;
+  name: string;
+  description: string;
+  oauth: OAuthClientFields;
+}
+type CreateWizard = ConnectorWizard<CreateFields, Step, DialogError>;
+type CreateEvent = ConnectorWizardEvent<CreateFields, Step, DialogError>;
+const createWizardReducer = (state: CreateWizard, event: CreateEvent) =>
+  connectorWizardReducer(state, event);
+
+function freshCreateWizard(from: ConnectorWizardStart): CreateWizard {
+  return {
+    step:
+      from.way === "how" ? "how" : from.way === "template" && from.template ? "signin" : "service",
+    error: null,
+    fields: {
+      way: from.way === "manual" ? "manual" : "template",
+      chosen: from.way === "template" ? (from.template ?? null) : null,
+      query: "",
+      address: "",
+      secret: "",
+      header: "",
+      target: "web",
+      signIn: DEFAULT_SIGN_IN,
+      name: "",
+      description: "",
+      oauth: EMPTY_OAUTH_CLIENT,
+    },
+  };
+}
 
 const STEPS: readonly Step[] = ["how", "service", "signin", "review"];
 
@@ -201,23 +246,17 @@ export function CreateConnectorDialog({
   const session = useSession();
   const callbackUrl = session.oauth_callback_url;
   const finish = useConnectorFinish();
-  const initialStep = (from: ConnectorWizardStart): Step =>
-    from.way === "how" ? "how" : from.way === "template" && from.template ? "signin" : "service";
-  const [step, setStep] = useState<Step>(() => initialStep(start));
-  const [way, setWay] = useState<Way>(start.way === "manual" ? "manual" : "template");
-  const [chosen, setChosen] = useState<string | null>(
-    start.way === "template" ? (start.template ?? null) : null,
-  );
-  const [query, setQuery] = useState("");
-  const [address, setAddress] = useState("");
-  const [secret, setSecret] = useState("");
-  const [header, setHeader] = useState("");
-  const [target, setTarget] = useState<ConnectorTarget>("web");
-  const [signIn, setSignIn] = useState<ConnectorSignIn>(DEFAULT_SIGN_IN);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [oauth, setOAuth] = useState<OAuthClientFields>(EMPTY_OAUTH_CLIENT);
-  const [error, setError] = useState<DialogError>(null);
+  const [wizard, dispatch] = useReducer(createWizardReducer, start, freshCreateWizard);
+  const { step, error } = wizard;
+  const { way, chosen, query, address, secret, header, target, signIn, name, description, oauth } =
+    wizard.fields;
+  const edit = <K extends keyof CreateFields>(key: K, value: FieldValue<CreateFields, K>) =>
+    dispatch({ type: "edit", key, value } as CreateEvent);
+  const set =
+    <K extends keyof CreateFields>(key: K) =>
+    (value: CreateFields[K]) =>
+      edit(key, value);
+  const fail = (problem: DialogError) => dispatch({ type: "fail", error: problem });
   const templates = useQuery({ queryKey: TEMPLATES_KEY, enabled: open, queryFn: fetchTemplates });
   const existing = useQuery({
     queryKey: ["connectors", "templates-in-use"],
@@ -231,24 +270,12 @@ export function CreateConnectorDialog({
   useEffect(() => {
     if (!template || prefilled.current === template.slug) return;
     prefilled.current = template.slug;
-    setAddress((current) => current || (template.base_url ?? ""));
+    edit("address", (current) => current || (template.base_url ?? ""));
   }, [template]);
   const refuse = (failure: unknown) => createRefusal(failure, t("create.connector.taken"), t);
   const reset = () => {
     prefilled.current = null;
-    setStep(initialStep(start));
-    setWay(start.way === "manual" ? "manual" : "template");
-    setChosen(start.way === "template" ? (start.template ?? null) : null);
-    setQuery("");
-    setAddress("");
-    setSecret("");
-    setHeader("");
-    setTarget("web");
-    setSignIn(DEFAULT_SIGN_IN);
-    setName("");
-    setDescription("");
-    setOAuth(EMPTY_OAUTH_CLIENT);
-    setError(null);
+    dispatch({ type: "reset", to: freshCreateWizard(start) });
   };
   const connectTemplate = useMutation({
     mutationFn: async (picked: ConnectorTemplate) => {
@@ -278,7 +305,7 @@ export function CreateConnectorDialog({
       reset();
       await finish(connector, { keyed, tab });
     },
-    onError: (failure) => setError(dialogFailure(refuse(failure), failure)),
+    onError: (failure) => fail(dialogFailure(refuse(failure), failure)),
   });
   const connectManual = useMutation({
     mutationFn: async () => {
@@ -301,7 +328,7 @@ export function CreateConnectorDialog({
       reset();
       await finish(connector, { keyed: needsSecret(signIn), tab: afterCreateTab(target) });
     },
-    onError: (failure) => setError(dialogFailure(refuse(failure), failure)),
+    onError: (failure) => fail(dialogFailure(refuse(failure), failure)),
   });
   const pending = connectTemplate.isPending || connectManual.isPending;
   const close = (next: boolean) => {
@@ -310,8 +337,7 @@ export function CreateConnectorDialog({
     if (!next) reset();
   };
   const goTo = (next: Step) => {
-    setError(null);
-    setStep(next);
+    dispatch({ type: "go", step: next });
   };
 
   const asksHeader = (picked: ConnectorTemplate) =>
@@ -399,7 +425,7 @@ export function CreateConnectorDialog({
               title: t("create.template.card"),
               line: t("create.connector.templateLine"),
               onSelect: () => {
-                setWay("template");
+                edit("way", "template");
                 goTo("service");
               },
               testId: "create-connector-template",
@@ -409,7 +435,7 @@ export function CreateConnectorDialog({
               title: t("create.byHand"),
               line: t("create.connector.byHandLine"),
               onSelect: () => {
-                setWay("manual");
+                edit("way", "manual");
                 goTo("service");
               },
               testId: "create-connector-manual",
@@ -427,21 +453,21 @@ export function CreateConnectorDialog({
           templates={sorted}
           chosen={chosen}
           onChoose={(slug) => {
-            setChosen(slug);
-            setAddress(sorted.find((item) => item.slug === slug)?.base_url ?? "");
-            setSecret("");
-            setHeader("");
-            setError(null);
+            edit("chosen", slug);
+            edit("address", sorted.find((item) => item.slug === slug)?.base_url ?? "");
+            edit("secret", "");
+            edit("header", "");
+            fail(null);
           }}
           query={query}
-          onQuery={setQuery}
+          onQuery={set("query")}
           pending={templates.isPending}
           failed={templates.isError}
           onRetry={() => void templates.refetch()}
         />
       ),
       submit: { label: t("wizard.next"), disabled: !chosen },
-      onSubmit: () => (chosen ? goTo("signin") : setError(t("connectorWizard.serviceMissing"))),
+      onSubmit: () => (chosen ? goTo("signin") : fail(t("connectorWizard.serviceMissing"))),
     });
 
   if (step === "service")
@@ -452,7 +478,7 @@ export function CreateConnectorDialog({
           <ChoiceField<ConnectorTarget>
             label={t("create.connector.target")}
             value={target}
-            onChange={setTarget}
+            onChange={set("target")}
             help={t("create.connector.targetHelp")}
             testId="create-connector-target"
             options={[
@@ -465,13 +491,13 @@ export function CreateConnectorDialog({
             label={t("create.name")}
             placeholder={t("create.connector.namePlaceholder")}
             value={name}
-            onChange={setName}
+            onChange={set("name")}
           />
           <TextField
             id="create-connector-description"
             label={t("create.connector.description")}
             value={description}
-            onChange={setDescription}
+            onChange={set("description")}
           />
           <TextField
             id="create-connector-address"
@@ -481,16 +507,16 @@ export function CreateConnectorDialog({
               target === "mcp" ? "https://mcp.example.com/mcp" : "https://api.example.com"
             }
             value={address}
-            onChange={setAddress}
+            onChange={set("address")}
             mono
           />
         </>
       ),
       submit: { label: t("wizard.next") },
       onSubmit: () => {
-        if (!slugify(name)) return setError(t("create.nameMissing"));
+        if (!slugify(name)) return fail(t("create.nameMissing"));
         if (!/^https:\/\/\S+\.\S+/.test(address.trim()))
-          return setError(t("create.connector.addressInvalid"));
+          return fail(t("create.connector.addressInvalid"));
         goTo("signin");
       },
     });
@@ -546,7 +572,7 @@ export function CreateConnectorDialog({
               type="url"
               label={t("create.connector.address")}
               value={address}
-              onChange={setAddress}
+              onChange={set("address")}
               mono
             />
           ) : null}
@@ -555,7 +581,7 @@ export function CreateConnectorDialog({
               id="create-template-header"
               label={t("create.template.header")}
               value={header}
-              onChange={setHeader}
+              onChange={set("header")}
               mono
             />
           ) : null}
@@ -567,7 +593,7 @@ export function CreateConnectorDialog({
               placeholder={t("create.connector.secretPlaceholder")}
               help={t("create.template.secretHelp")}
               value={secret}
-              onChange={setSecret}
+              onChange={set("secret")}
             />
           ) : null}
           {template.recipes.length > 0 ? (
@@ -585,7 +611,7 @@ export function CreateConnectorDialog({
       submit: { label: t("wizard.next") },
       onSubmit: () => {
         const problem = templateProblem(template);
-        if (problem) return setError(t(problem));
+        if (problem) return fail(t(problem));
         goTo("review");
       },
     });
@@ -604,7 +630,7 @@ export function CreateConnectorDialog({
                 service: name.trim() || t("connectorWizard.theService"),
               }),
               selected: signIn === entry,
-              onSelect: () => setSignIn(entry),
+              onSelect: () => edit("signIn", entry),
               testId: `create-connector-signin-${entry}`,
             }))}
           />
@@ -613,13 +639,13 @@ export function CreateConnectorDialog({
             testId="create-connector-signin"
             target={target}
             signIn={signIn}
-            onSignIn={(next) => setSignIn(next ?? DEFAULT_SIGN_IN)}
+            onSignIn={(next) => edit("signIn", next ?? DEFAULT_SIGN_IN)}
             secret={secret}
-            onSecret={setSecret}
+            onSecret={set("secret")}
             keepsKey={false}
             keepsClientSecret={false}
             oauth={oauth}
-            onOAuth={setOAuth}
+            onOAuth={set("oauth")}
             callbackUrl={callbackUrl}
             choice={false}
           />
@@ -628,7 +654,7 @@ export function CreateConnectorDialog({
       submit: { label: t("wizard.next") },
       onSubmit: () => {
         const problem = manualProblem();
-        if (problem) return setError(t(problem));
+        if (problem) return fail(t(problem));
         goTo("review");
       },
     });
@@ -673,14 +699,14 @@ export function CreateConnectorDialog({
     ),
     submit: { label: t("create.template.connect"), pending },
     onSubmit: () => {
-      setError(null);
+      fail(null);
       if (template) {
         const problem = templateProblem(template);
-        if (problem) return setError(t(problem));
+        if (problem) return fail(t(problem));
         return connectTemplate.mutate(template);
       }
       const problem = manualProblem();
-      if (problem) return setError(t(problem));
+      if (problem) return fail(t(problem));
       connectManual.mutate();
     },
   });

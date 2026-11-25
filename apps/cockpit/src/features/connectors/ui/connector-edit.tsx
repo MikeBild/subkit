@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { ApiError, apiRequest } from "@/api/client";
@@ -28,6 +28,12 @@ import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { offersKeyReplacement } from "../model/connector-detail-model";
 import {
+  type ConnectorWizard,
+  type ConnectorWizardEvent,
+  connectorWizardReducer,
+  type FieldValue,
+} from "../model/connector-wizard";
+import {
   type ConnectorEditDraft,
   type ConnectorEditPrior,
   type ConnectorSignIn,
@@ -49,6 +55,25 @@ type RecordValue = Record<string, unknown>;
 
 const text = (record: RecordValue, key: string): string =>
   typeof record[key] === "string" ? (record[key] as string) : "";
+
+interface EditFields {
+  name: string;
+  address: string;
+  signIn: ConnectorSignIn | null;
+  secret: string;
+  oauth: OAuthClientFields;
+  signedJwt: ReturnType<typeof signedJwtFieldsOf>;
+  typedHeader: string | null;
+  headerValues: Record<string, string>;
+  missingHeaders: readonly string[];
+  description: string;
+  choice: string;
+  fresh: string;
+}
+type EditWizard = ConnectorWizard<EditFields, "edit", DialogError>;
+type EditEvent = ConnectorWizardEvent<EditFields, "edit", DialogError>;
+const editWizardReducer = (state: EditWizard, event: EditEvent) =>
+  connectorWizardReducer(state, event);
 
 export function ConnectorEditDialog({
   open,
@@ -76,26 +101,57 @@ export function ConnectorEditDialog({
   };
   const target = connectorTargetOf(prior.driver);
   const priorSignIn = signInOf(prior.authType);
-  const [name, setName] = useState(prior.name);
-  const [address, setAddress] = useState(prior.address);
-  const [signIn, setSignIn] = useState<ConnectorSignIn | null>(priorSignIn);
-  const [secret, setSecret] = useState("");
-  const [oauth, setOAuth] = useState<OAuthClientFields>(() => oauthClientOf(prior.config));
-  const [signedJwt, setSignedJwt] = useState(() => signedJwtFieldsOf(prior.config));
-  const [typedHeader, setHeader] = useState<string | null>(null);
+  const [wizard, dispatch] = useReducer(
+    editWizardReducer,
+    null,
+    (): EditWizard => ({
+      step: "edit",
+      error: null,
+      fields: {
+        name: prior.name,
+        address: prior.address,
+        signIn: priorSignIn,
+        secret: "",
+        oauth: oauthClientOf(prior.config),
+        signedJwt: signedJwtFieldsOf(prior.config),
+        typedHeader: null,
+        headerValues: {},
+        missingHeaders: [],
+        description: recordDescription(record),
+        choice: recordCategory(record),
+        fresh: "",
+      },
+    }),
+  );
+  const { error } = wizard;
+  const {
+    name,
+    address,
+    signIn,
+    secret,
+    oauth,
+    signedJwt,
+    typedHeader,
+    headerValues,
+    missingHeaders,
+    description,
+    choice,
+    fresh,
+  } = wizard.fields;
+  const edit = <K extends keyof EditFields>(key: K, value: FieldValue<EditFields, K>) =>
+    dispatch({ type: "edit", key, value } as EditEvent);
+  const set =
+    <K extends keyof EditFields>(key: K) =>
+    (value: EditFields[K]) =>
+      edit(key, value);
+  const fail = (problem: DialogError) => dispatch({ type: "fail", error: problem });
   const header = typedHeader ?? headerNames[0] ?? "";
-  const [headerValues, setHeaderValues] = useState<Record<string, string>>({});
-  const [missingHeaders, setMissingHeaders] = useState<readonly string[]>([]);
   const everyHeader = replacesEveryHeader(prior);
-  const [error, setError] = useState<DialogError>(null);
-  const [description, setDescription] = useState(() => recordDescription(record));
-  const [choice, setChoice] = useState(() => recordCategory(record));
-  const [fresh, setFresh] = useState("");
   useEffect(() => {
     if (!open) return;
-    setDescription(recordDescription(record));
-    setChoice(recordCategory(record));
-    setFresh("");
+    edit("description", recordDescription(record));
+    edit("choice", recordCategory(record));
+    edit("fresh", "");
   }, [open, record]);
   const vocabulary = useQuery({
     queryKey: ["catalog-categories"],
@@ -151,8 +207,8 @@ export function ConnectorEditDialog({
       };
     },
     onSuccess: async ({ replaced, route }) => {
-      setSecret("");
-      setHeaderValues({});
+      edit("secret", "");
+      edit("headerValues", {});
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
       await client.invalidateQueries({ queryKey: ["connector-credential", id] });
       await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
@@ -177,7 +233,7 @@ export function ConnectorEditDialog({
       toast.success(t(replaced ? "connectorEdit.savedWithKey" : "connectorEdit.saved"));
     },
     onError: (failure) =>
-      setError(
+      fail(
         dialogFailure(
           failure instanceof ApiError && failure.message
             ? t("stepEditor.refused", { reason: failure.message })
@@ -194,12 +250,12 @@ export function ConnectorEditDialog({
       submit={{ label: t("common.save"), pending: save.isPending }}
       onSubmit={() => {
         if (choice === NEW_CATEGORY && !freshCategory)
-          return setError(t("catalogMeta.invalidCategory"));
+          return fail(t("catalogMeta.invalidCategory"));
         const problem = connectorEditProblem(prior, draft, callbackUrl);
-        setMissingHeaders(missingHeaderValues(prior, draft));
-        if (problem === "connectorEdit.headersIncomplete") return setError(null);
-        if (problem) return setError(t(problem));
-        setError(null);
+        edit("missingHeaders", missingHeaderValues(prior, draft));
+        if (problem === "connectorEdit.headersIncomplete") return fail(null);
+        if (problem) return fail(t(problem));
+        fail(null);
         save.mutate();
       }}
       error={error}
@@ -209,13 +265,13 @@ export function ConnectorEditDialog({
         id="connector-edit-name"
         label={t("create.name")}
         value={name}
-        onChange={setName}
+        onChange={set("name")}
       />
       <TextAreaField
         id="connector-edit-description"
         label={t("catalogMeta.description")}
         value={description}
-        onChange={setDescription}
+        onChange={set("description")}
         rows={3}
         help={t("catalogMeta.descriptionHelp")}
         placeholder={t("catalogMeta.empty")}
@@ -242,7 +298,7 @@ export function ConnectorEditDialog({
         id="connector-edit-category"
         label={t("catalogMeta.category")}
         value={choice}
-        onChange={setChoice}
+        onChange={set("choice")}
         help={t("catalogMeta.categoryHelp")}
         options={[
           ...choices.map((value) => ({
@@ -257,7 +313,7 @@ export function ConnectorEditDialog({
           id="connector-edit-new-category"
           label={t("catalogMeta.newCategoryName")}
           value={fresh}
-          onChange={setFresh}
+          onChange={set("fresh")}
           error={fresh.trim() && !freshCategory ? t("catalogMeta.invalidCategory") : null}
         />
       ) : null}
@@ -267,7 +323,7 @@ export function ConnectorEditDialog({
           type="url"
           label={t("create.connector.address")}
           value={address}
-          onChange={setAddress}
+          onChange={set("address")}
           mono
         />
       ) : null}
@@ -277,16 +333,16 @@ export function ConnectorEditDialog({
           testId="connector-edit-signin"
           target={target}
           signIn={signIn}
-          onSignIn={setSignIn}
+          onSignIn={set("signIn")}
           currentDetail={
             priorSignIn === null ? authLabel(prior.authType, headerNames, t) : undefined
           }
           secret={secret}
-          onSecret={setSecret}
+          onSecret={set("secret")}
           keepsKey={unchangedKind}
           keepsClientSecret={unchangedKind}
           oauth={oauth}
-          onOAuth={setOAuth}
+          onOAuth={set("oauth")}
           callbackUrl={callbackUrl}
         />
       ) : null}
@@ -301,8 +357,8 @@ export function ConnectorEditDialog({
               help={t("connectorEdit.secretHelp")}
               value={headerValues[headerName] ?? ""}
               onChange={(value) => {
-                setHeaderValues((current) => ({ ...current, [headerName]: value }));
-                setMissingHeaders((current) => current.filter((name) => name !== headerName));
+                edit("headerValues", (current) => ({ ...current, [headerName]: value }));
+                edit("missingHeaders", (current) => current.filter((name) => name !== headerName));
               }}
               error={
                 missingHeaders.includes(headerName) ? t("connectorEdit.headersIncomplete") : null
@@ -315,7 +371,7 @@ export function ConnectorEditDialog({
           id="connector-edit-header"
           label={t("connectorCredentials.headerName")}
           value={header}
-          onChange={setHeader}
+          onChange={set("typedHeader")}
           mono
         />
       ) : null}
@@ -325,21 +381,21 @@ export function ConnectorEditDialog({
             id="connector-edit-signed-jwt-issuer"
             label={t("connectorEdit.signedJwtIssuer")}
             value={signedJwt.issuer}
-            onChange={(issuer) => setSignedJwt((current) => ({ ...current, issuer }))}
+            onChange={(issuer) => edit("signedJwt", (current) => ({ ...current, issuer }))}
             mono
           />
           <TextField
             id="connector-edit-signed-jwt-key-id"
             label={t("connectorEdit.signedJwtKeyId")}
             value={signedJwt.keyId}
-            onChange={(keyId) => setSignedJwt((current) => ({ ...current, keyId }))}
+            onChange={(keyId) => edit("signedJwt", (current) => ({ ...current, keyId }))}
             mono
           />
           <TextField
             id="connector-edit-signed-jwt-subject"
             label={t("connectorEdit.signedJwtSubject")}
             value={signedJwt.subject}
-            onChange={(subject) => setSignedJwt((current) => ({ ...current, subject }))}
+            onChange={(subject) => edit("signedJwt", (current) => ({ ...current, subject }))}
             mono
           />
         </>
@@ -356,7 +412,7 @@ export function ConnectorEditDialog({
           placeholder={t("connectorEdit.secretPlaceholder")}
           help={t("connectorEdit.secretHelp")}
           value={secret}
-          onChange={setSecret}
+          onChange={set("secret")}
         />
       ) : null}
     </FormDialog>
