@@ -1,0 +1,14 @@
+# Burndown allowlist for the audit-invariants `backoff_helpers` check.
+# Rule: local backoff or Retry-After helper outside packages/shared/src/backoff.ts; use the shared helper.
+# Format: <path from repo root>  <budget in helpers>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/execution/steps/request/retry.ts         2
+apps/engine/src/http/middleware/browser-page-refusal.ts  1
+apps/engine/src/http/middleware/error.ts                 1
+apps/engine/src/http/routes/executions/run.ts            1
+apps/engine/src/mcp/client/pool.ts                       1
+apps/engine/src/mcp/client/registry.ts                   1
+apps/engine/src/scheduler/failure-backoff.ts             1

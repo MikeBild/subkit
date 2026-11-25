@@ -1,0 +1,14 @@
+# Burndown allowlist for the audit-invariants `status_single_writer` check.
+# Rule: `.update(table).set({ status })` for a table with a transition table (STATUS_WRITERS in audit/code-shape.ts) outside its guarded writer; call the writer so the move is checked against the table.
+# Format: <path from repo root>  <budget in writes>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/conversations/elicitations.ts                                  3
+apps/engine/src/conversations/persistence/persist-authoring-workflow-draft.ts  1
+apps/engine/src/conversations/service/elicit.ts                                1
+apps/engine/src/conversations/service/lifecycle.ts                             1
+apps/engine/src/conversations/workflow-review.ts                               1
+apps/engine/src/knowledge/intake.ts                                            1
+apps/engine/src/workflows/catalog-view.ts                                      1

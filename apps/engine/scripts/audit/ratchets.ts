@@ -9,6 +9,15 @@ import {
   renderBudgets,
   shrinkBudgets,
 } from "./budgets.ts";
+import {
+  backoffHelperHits,
+  canonicalHashHelperHits,
+  emptyCatchHits,
+  httpErrorThrowHits,
+  isApiInternalImport,
+  statusWriterHits,
+  thenWithAwaitHits,
+} from "./code-shape.ts";
 import { listFiles } from "./files.ts";
 import { germanTextLines, isGermanTextScope } from "./german-text.ts";
 import { parseTsconfigPaths } from "./import-graph.ts";
@@ -304,6 +313,98 @@ export const RATCHETS: readonly Ratchet[] = [
       countBy(
         cache.list(["apps", "packages", "tests", "scripts"], (rel) => !/\.test\.tsx?$/.test(rel)),
         (rel) => lintSuppressionHits(cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "status_single_writer",
+    allowlist: "status-writers.txt",
+    rule: "`.update(table).set({ status })` for a table with a transition table (STATUS_WRITERS in audit/code-shape.ts) outside its guarded writer; call the writer so the move is checked against the table",
+    unit: "writes",
+    measure: (cache) =>
+      countBy(
+        cache.list([ENGINE], (rel) => !isTestPath(rel)),
+        (rel) => statusWriterHits(rel, cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "no_empty_catch",
+    allowlist: "empty-catch.txt",
+    rule: "empty `catch {}` block or `.catch(() => {})` in engine production code; log the error through the logger or return it as a value",
+    unit: "catches",
+    measure: (cache) =>
+      countBy(
+        cache.list([ENGINE], (rel) => !isTestPath(rel)),
+        (rel) => emptyCatchHits(cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "no_then_with_await",
+    allowlist: "then-with-await.txt",
+    rule: "`.then(` in an engine production file that also uses `await`; write the chain with await",
+    unit: "thens",
+    measure: (cache) =>
+      countBy(
+        cache.list([ENGINE], (rel) => !isTestPath(rel)),
+        (rel) => thenWithAwaitHits(cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "canonical_json_and_sha256",
+    allowlist: "canonical-json-sha256.txt",
+    rule: "local canonical-JSON helper (JSON.stringify over sorted object keys) or sha256 helper outside crypto/; reuse the shared helper once crypto/ owns it",
+    unit: "helpers",
+    measure: (cache) =>
+      countBy(
+        cache.list(
+          [ENGINE, "packages"],
+          (rel) => !isTestPath(rel) && !rel.startsWith(`${ENGINE}/crypto/`),
+        ),
+        (rel) => canonicalHashHelperHits(cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "backoff_helpers",
+    allowlist: "backoff-helpers.txt",
+    rule: "local backoff or Retry-After helper outside packages/shared/src/backoff.ts; use the shared helper",
+    unit: "helpers",
+    measure: (cache) =>
+      countBy(
+        cache.list(
+          [ENGINE, "packages"],
+          (rel) => !isTestPath(rel) && rel !== "packages/shared/src/backoff.ts",
+        ),
+        (rel) => backoffHelperHits(cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "http_error_outside_http",
+    allowlist: "http-error-outside-http.txt",
+    rule: "`new HttpError` in engine production code outside http/ and api/; return the outcome as a value and let the operation translate it",
+    unit: "throws",
+    measure: (cache) =>
+      countBy(
+        cache.list(
+          [ENGINE],
+          (rel) =>
+            !isTestPath(rel) &&
+            !rel.startsWith(`${ENGINE}/http/`) &&
+            !rel.startsWith(`${ENGINE}/api/`),
+        ),
+        (rel) => httpErrorThrowHits(cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "routes_through_api_entry",
+    allowlist: "routes-api-internals.txt",
+    rule: "http/routes/** importing api/ internals instead of api/index.ts; import the api subsystem through its index.ts",
+    unit: "imports",
+    measure: (cache) =>
+      countBy(
+        cache.list([`${ENGINE}/http/routes`], (rel) => !isTestPath(rel)),
+        (rel) =>
+          cache
+            .resolvedImports(rel)
+            .filter((imp) => !imp.typeOnly && isApiInternalImport(imp.resolved)).length,
       ),
   },
   {

@@ -1,0 +1,34 @@
+# Burndown allowlist for the audit-invariants `canonical_json_and_sha256` check.
+# Rule: local canonical-JSON helper (JSON.stringify over sorted object keys) or sha256 helper outside crypto/; reuse the shared helper once crypto/ owns it.
+# Format: <path from repo root>  <budget in helpers>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/auth/providers/oidc-session.ts                       1
+apps/engine/src/connectors/oauth-start-grant.ts                      1
+apps/engine/src/conversations/core/tool-invoke.ts                    1
+apps/engine/src/conversations/persistence/draft-diff.ts              1
+apps/engine/src/conversations/text-line-diff.ts                      1
+apps/engine/src/conversations/tools/dry-run-cache.ts                 1
+apps/engine/src/conversations/tools/manage-service-package-skill.ts  1
+apps/engine/src/conversations/tools/probe-connector-draft.ts         1
+apps/engine/src/conversations/tools/sdk-wrap/invoke/memory.ts        1
+apps/engine/src/credentials/connections/service.ts                   1
+apps/engine/src/db/seed.ts                                           1
+apps/engine/src/execution/pagination.ts                              1
+apps/engine/src/http/routes/tool-approvals.ts                        1
+apps/engine/src/identity/api-key.ts                                  1
+apps/engine/src/identity/portability/format.ts                       1
+apps/engine/src/mcp/client/manifest.ts                               1
+apps/engine/src/onboarding/bootstrap.ts                              1
+apps/engine/src/sandboxes/quickjs/stdlib/tools/records.ts            1
+apps/engine/src/scheduler/repo.ts                                    1
+apps/engine/src/self-healing/core/terminal-dedup.ts                  1
+apps/engine/src/skill-candidates/authoring-capability.ts             1
+apps/engine/src/skills/conventions.ts                                1
+apps/engine/src/webhooks/inbound/service.ts                          1
+apps/engine/src/workflows/authority-request-review.ts                1
+apps/engine/src/workflows/canonical-json.ts                          1
+apps/engine/src/workflows/sample-to-schema.ts                        1
+packages/shared/src/device/files.ts                                  1

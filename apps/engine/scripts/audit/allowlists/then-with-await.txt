@@ -1,0 +1,50 @@
+# Burndown allowlist for the audit-invariants `no_then_with_await` check.
+# Rule: `.then(` in an engine production file that also uses `await`; write the chain with await.
+# Format: <path from repo root>  <budget in thens>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/agent/briefing.ts                                           2
+apps/engine/src/agent/domains.ts                                            2
+apps/engine/src/api/operations/connector-templates.ts                       1
+apps/engine/src/api/operations/conversation-attachments.ts                  1
+apps/engine/src/api/operations/task-runs.ts                                 2
+apps/engine/src/auth/browser-session.ts                                     1
+apps/engine/src/auth/providers/browser-session.ts                           1
+apps/engine/src/auth/providers/oidc-session.ts                              1
+apps/engine/src/chat/sync-turn.ts                                           3
+apps/engine/src/config/loader.ts                                            2
+apps/engine/src/connectors/discovery/playwright-crawl.ts                    1
+apps/engine/src/connectors/drivers/postgres.ts                              2
+apps/engine/src/conversations/authoring-preflight.ts                        1
+apps/engine/src/conversations/persistence/auto-persist/held-writes-kind.ts  1
+apps/engine/src/conversations/tools/engine-api/tasks.ts                     1
+apps/engine/src/conversations/turns.ts                                      1
+apps/engine/src/conversations/workflow-review.ts                            1
+apps/engine/src/db/issue-admin-key.ts                                       1
+apps/engine/src/docs-ingestion/parsers/strategy.ts                          1
+apps/engine/src/embeddings/embedding-worker.ts                              1
+apps/engine/src/engine-boot-lifetime.ts                                     8
+apps/engine/src/execution/offload.ts                                        1
+apps/engine/src/execution/recovery.ts                                       1
+apps/engine/src/execution/run/prepare.ts                                    1
+apps/engine/src/http/middleware/cockpit-installation-stream.ts              1
+apps/engine/src/http/routes/executions/run.ts                               1
+apps/engine/src/http/shutdown.ts                                            1
+apps/engine/src/mcp/capabilities/conversation-native-elicitation.ts         1
+apps/engine/src/mcp/capabilities/tools.ts                                   1
+apps/engine/src/mcp/server.ts                                               2
+apps/engine/src/observability/runtime-diagnostics.ts                        1
+apps/engine/src/observability/tracing.ts                                    5
+apps/engine/src/operator/ai-access-attention.ts                             1
+apps/engine/src/operator/attention-readers.ts                               1
+apps/engine/src/operator/attention.ts                                       11
+apps/engine/src/queue/handlers/conversation-run-turn.ts                     1
+apps/engine/src/queue/handlers/task-run-turn.ts                             1
+apps/engine/src/queue/hosted-work.ts                                        1
+apps/engine/src/sandboxes/quickjs/runtime.ts                                3
+apps/engine/src/scheduler/cleanup-queue-reader.ts                           1
+apps/engine/src/scheduler/every-schedule-sweep.ts                           2
+apps/engine/src/scheduler/reconciler.ts                                     4
+apps/engine/src/storage/hosted-object-reconciliation.ts                     2
