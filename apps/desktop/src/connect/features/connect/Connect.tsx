@@ -13,7 +13,7 @@ import { useState } from "react";
 import { useSignIn } from "../../adapter/index.ts";
 import type { Problem } from "../../domain/index.ts";
 import { factRows } from "../../lib/text.ts";
-import { adminMessage, problemCode } from "./connect-model.ts";
+import { type AskOutcome, adminMessage, askAdmin, askLine, problemCode } from "./connect-model.ts";
 import { ConnectionOk, ConnectionProblem } from "./connection-result.tsx";
 import { useConnect } from "./use-connect.ts";
 
@@ -26,8 +26,8 @@ function ProblemNotice({
   onRetry: () => void;
   onExample: (address: string) => void;
 }) {
-  const { t } = useSignIn();
-  const [asked, setAsked] = useState(false);
+  const { t, copyText } = useSignIn();
+  const [asked, setAsked] = useState<AskOutcome>("idle");
   const message = adminMessage(problem, t);
   const retry = { label: t("err.retry"), onClick: onRetry, testId: "connection-retry" };
   const { example } = problem;
@@ -46,10 +46,7 @@ function ProblemNotice({
                 label: t("notice.ask"),
                 testId: "connect-ask-admin",
                 onClick: () => {
-                  void navigator.clipboard
-                    ?.writeText(message)
-                    .then(() => setAsked(true))
-                    .catch(() => setAsked(false));
+                  void askAdmin(message, copyText).then(setAsked);
                 },
               }
             : retry
@@ -68,7 +65,7 @@ function ProblemNotice({
       />
       {message && (
         <p role="status" className="min-h-5 text-sm text-muted-foreground">
-          {asked ? t("notice.asked") : null}
+          {askLine(asked, t)}
         </p>
       )}
     </div>

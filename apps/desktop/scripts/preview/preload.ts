@@ -30,6 +30,7 @@ const connect: ConnectBridge = {
   updateAction: async () => {},
   reportProblem: async () => {},
   copyDiagnostics: async () => {},
+  copyText: async () => true,
   saveDiagnostics: async () => {},
   submitReport: async () => {},
   openLogs: async () => {},

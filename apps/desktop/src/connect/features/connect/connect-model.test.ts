@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { dictionary } from "../../../shared/i18n.ts";
 import type { Command, Problem, Screen } from "../../domain/index.ts";
-import { adminMessage, connectActions, problemCode } from "./connect-model.ts";
+import { translator } from "../../lib/text.ts";
+import { adminMessage, askAdmin, askLine, connectActions, problemCode } from "./connect-model.ts";
 
 const screen = (canContinue: boolean, back = false): Extract<Screen, { kind: "connect" }> => ({
   kind: "connect",
@@ -70,5 +72,30 @@ describe("asking the admin", () => {
 
   test("a problem without an admin ask has no message", () => {
     expect(adminMessage(unreachable, t)).toBeNull();
+  });
+
+  test("asking copies the message through the bridge and confirms it", async () => {
+    const english = translator(dictionary("en"));
+    const ask = { host: "old.example.com", version: "12.0.0", needs: "12.1.0" };
+    const message = adminMessage({ ...unreachable, ask }, english) ?? "";
+    const copied: string[] = [];
+    const outcome = await askAdmin(message, (text) => {
+      copied.push(text);
+      return Promise.resolve(true);
+    });
+    expect(copied).toEqual([
+      "Please update the SubKit server old.example.com from version 12.0.0 to 12.1.0 or later so SubKit Desktop can connect.",
+    ]);
+    expect(outcome).toBe("copied");
+    expect(askLine(outcome, english)).toBe("Message for your administrator copied");
+  });
+
+  test("a refused or failed copy says so instead of staying silent", async () => {
+    const english = translator(dictionary("en"));
+    expect(await askAdmin("text", () => Promise.resolve(false))).toBe("failed");
+    expect(await askAdmin("text", () => Promise.reject(new Error("denied")))).toBe("failed");
+    expect(askLine("failed", english)).toBe(dictionary("en")["notice.askFailed"]);
+    expect(askLine("failed", english)).not.toBe("");
+    expect(askLine("idle", english)).toBeNull();
   });
 });

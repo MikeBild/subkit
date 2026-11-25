@@ -8,6 +8,7 @@ import {
   CONNECT_CHANNELS,
   type ConnectState,
   type ConnectView,
+  clipboardText,
   type DesktopSettingsView,
   isConnectView,
   type ReportInput,
@@ -40,6 +41,7 @@ export interface ShellIpcHost {
   updateSettings(input: Record<string, unknown>): void;
   diagnostics(profile: Profile): Promise<DesktopDiagnostics>;
   copyDiagnostics(): Promise<void>;
+  copyText(text: string): boolean;
   openLogs(): Promise<void>;
   cockpitStatus(): ShellStatus;
   captureForCockpit(): Promise<string | null>;
@@ -113,6 +115,10 @@ export function registerShellIpc(host: ShellIpcHost): void {
   handle(CONNECT_CHANNELS.updateAction, () => host.checkUpdates());
   handle(CONNECT_CHANNELS.reportProblem, () => host.reportProblem());
   handle(CONNECT_CHANNELS.copyDiagnostics, () => host.copyDiagnostics());
+  handle(CONNECT_CHANNELS.copyText, (text) => {
+    const allowed = clipboardText(text);
+    return allowed === null ? false : host.copyText(allowed);
+  });
   handle(CONNECT_CHANNELS.saveDiagnostics, () => host.saveDiagnostics());
   handle(CONNECT_CHANNELS.submitReport, (input) => host.submitReport(reportInput(input)));
   handle(CONNECT_CHANNELS.openLogs, () => host.openLogs());

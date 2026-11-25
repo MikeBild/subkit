@@ -56,6 +56,7 @@ export function shellIpcHost(core: ShellCore): ShellIpcHost {
     runUpdateAction: () => core.updates.runAction(),
     diagnostics: async (profile) => diagnosticsBundle(await profiles.diagnosticsContext(profile)),
     copyDiagnostics: () => profiles.copyDiagnostics(),
+    copyText: (text) => profiles.copyText(text),
     openLogs: () => profiles.openLogs(),
     cockpitStatus: () => presenter.cockpitStatus(),
     captureForCockpit: () => windows.captureForCockpit(),

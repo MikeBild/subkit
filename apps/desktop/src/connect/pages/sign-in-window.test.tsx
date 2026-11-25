@@ -90,6 +90,7 @@ function storeAt(current: SignInState): SignInStore {
     getState: () => current,
     getView: () => view,
     dispatch: () => {},
+    copyText: () => Promise.resolve(true),
     subscribe: () => () => {},
   };
 }

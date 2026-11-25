@@ -32,6 +32,20 @@ export function problemCode(problem: Problem): string {
   return SIGN_IN_ERRORS[problem.error].code;
 }
 
+export type AskOutcome = "idle" | "copied" | "failed";
+
+export const askAdmin = (
+  message: string,
+  copyText: (text: string) => Promise<boolean>,
+): Promise<AskOutcome> =>
+  copyText(message).then(
+    (copied): AskOutcome => (copied ? "copied" : "failed"),
+    (): AskOutcome => "failed",
+  );
+
+export const askLine = (outcome: AskOutcome, t: Translate): string | null =>
+  outcome === "copied" ? t("notice.asked") : outcome === "failed" ? t("notice.askFailed") : null;
+
 export function adminMessage(problem: Problem, t: Translate): string | null {
   return problem.ask ? tooOldCopy(problem.ask, t).message : null;
 }
