@@ -40,8 +40,9 @@ async function initialize(): Promise<void> {
   initialEngineUrl = initialUrl || "";
   if (engineUrl) engineUrl.value = initialUrl || "";
   if (apiKey) apiKey.value = settings.apiKey || "";
-  if (language) language.value = settings.language || "de";
-  applyLanguage(settings.language);
+  const selectedLanguage = resolveLanguage(settings.language);
+  if (language) language.value = selectedLanguage;
+  applyLanguage(selectedLanguage);
   showHelpLink(help, initialUrl);
   void showUpdateNotice(settings.engineUrl, text);
   if (settings.engineUrl && settings.apiKey) {

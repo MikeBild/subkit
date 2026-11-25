@@ -11,6 +11,7 @@ import {
   intakeReviewPrompt,
   isCapturablePageUrl,
   isSourceWindow,
+  language,
   offersHelp,
   previewBlocks,
   previewText,
@@ -207,4 +208,23 @@ test("service worker messages come from the translated worker copy", () => {
   expect(worker).not.toMatch(/new Error\(\s*["'`]/);
   expect(workerCopy.de.pageChanged).toContain("Erfasse");
   expect(workerCopy.en.pageChanged).toContain("Capture it again");
+});
+
+test("language follows the browser when unset and keeps a stored choice", () => {
+  const originalNavigator = globalThis.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    value: { language: "en-US" },
+    configurable: true,
+    writable: true,
+  });
+  try {
+    expect(language(undefined)).toBe("en");
+    expect(language("de")).toBe("de");
+    expect(language("en")).toBe("en");
+  } finally {
+    Object.defineProperty(globalThis, "navigator", {
+      value: originalNavigator,
+      configurable: true,
+    });
+  }
 });
