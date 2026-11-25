@@ -1,11 +1,16 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { callerBudgetUnits, executions } from "../../db/schema/index.ts";
 import { retryCatalogConflict } from "../../test-helpers/catalog-retry.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
-import { assertInputByteLimits, callerUsage, reserveCallerBudget } from "../caller-budget.ts";
+import {
+  assertInputByteLimits,
+  bucketUsageToday,
+  callerUsage,
+  reserveCallerBudget,
+} from "../caller-budget.ts";
 import { callerFromPrincipal } from "../caller-context.ts";
 import { settledOutcome } from "../core/status.ts";
 import { runExecution } from "../engine.ts";
@@ -387,6 +392,65 @@ describe("settlement when the run ends", () => {
     expect(await unit(principal, "tools")).toMatchObject({ state: "reserved", billable: true });
     await admit(principal, { turn_id: "tools", round: 2 });
     expect((await usage(principal)).usedToday).toBe(1);
+  });
+});
+
+describe("operator budget summary", () => {
+  function summary(now: Date) {
+    return bucketUsageToday(
+      ctx.testDb.db,
+      {
+        tenant_id: ctx.tenantId,
+        product_id: "testapp",
+        bucket: "brain",
+        tz: "Europe/Berlin",
+        workflow_ids: [],
+      },
+      now,
+    );
+  }
+
+  test("expired leases are shown as settled before the caller reads its budget", async () => {
+    const principal = await productUser();
+    const caller = callerFromPrincipal(principal, ctx.tenantId, "testapp");
+    const admittedAt = new Date("2026-09-02T10:00:00.000Z");
+    const later = new Date(admittedAt.getTime() + 11 * 60_000);
+    await ctx.testDb.db.transaction(async (tx) => {
+      for (const turn_id of ["summary-paid", "summary-free", "summary-busy"])
+        await reserveCallerBudget(tx, roundDef, caller, { turn_id, round: 1 }, admittedAt);
+      await reserveCallerBudget(
+        tx,
+        roundDef,
+        caller,
+        { turn_id: "summary-live", round: 1 },
+        new Date(later.getTime() - 60_000),
+      );
+    });
+    await ctx.testDb.db
+      .update(callerBudgetUnits)
+      .set({ billable: true })
+      .where(
+        and(
+          eq(callerBudgetUnits.tenant_id, ctx.tenantId),
+          eq(callerBudgetUnits.principal_id, principal.id),
+          inArray(callerBudgetUnits.unit_key, ["summary-paid", "summary-busy"]),
+        ),
+      );
+    await ctx.testDb.db.insert(executions).values({
+      tenant_id: ctx.tenantId,
+      status: "running",
+      request_source: "api",
+      execution_mode: "dev",
+      caller_origin: "principal",
+      caller_context: caller,
+      guard_bucket: "brain",
+      guard_unit_key: `${principal.id}/summary-busy`,
+    });
+    expect(await summary(later)).toMatchObject({ day: "2026-09-02", consumed: 1, reserved: 2 });
+    expect((await unit(principal, "summary-paid"))?.state).toBe("reserved");
+    expect((await unit(principal, "summary-free"))?.state).toBe("reserved");
+    expect((await usage(principal, 50, later)).usedToday).toBe(3);
+    expect(await summary(later)).toMatchObject({ consumed: 1, reserved: 2 });
   });
 });
 
