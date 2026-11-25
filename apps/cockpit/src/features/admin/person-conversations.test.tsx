@@ -40,9 +40,9 @@ function markup(locale: "de" | "en") {
 
 test("a foreign private conversation shows that it exists and can be deleted, not what it says", () => {
   const html = markup("de");
-  expect(html).toContain('data-testid="people-conversation-c-private"');
+  expect(html).toContain('data-testid="people-conversation-0"');
   expect(html).toContain(translate("de", "chat.visibility.hiddenTitle"));
-  expect(html).toContain('data-testid="people-conversation-delete-c-private"');
+  expect(html).toContain('data-testid="people-conversation-delete-0"');
   expect(html).toContain("Q4 numbers");
   expect(html).toContain(translate("de", "people.conversations.help"));
   expect(markup("en")).toContain(translate("en", "chat.visibility.hiddenTitle"));
