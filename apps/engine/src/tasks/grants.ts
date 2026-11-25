@@ -5,7 +5,8 @@ import type { Db, Executor } from "../db/client.ts";
 import { connectors, taskGrants, tasks } from "../db/schema/index.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
-import { can, connectorAccessLevel, hasBuiltinAdminRole } from "../rbac/evaluator.ts";
+import { isOwnerOrAdmin, ownerFactsOf } from "../rbac/core/owner.ts";
+import { can, connectorAccessLevel } from "../rbac/evaluator.ts";
 import { AUTHORITY_WINDOW_MAX_DAYS, windowValid } from "../workflows/core/authority.ts";
 import { readDatabaseNow } from "../workflows/database-clock.ts";
 import {
@@ -53,7 +54,7 @@ async function visibleTask(
     .where(and(eq(tasks.tenant_id, principal.tenant_id), eq(tasks.id, task_id)))
     .limit(1);
   const [task] = lock ? await query.for("update") : await query;
-  if (!task || (task.owner_id !== principal.id && !hasBuiltinAdminRole(principal)))
+  if (!task || !isOwnerOrAdmin(ownerFactsOf(principal), task.owner_id))
     fail("task_not_found", "task unavailable");
   return task;
 }

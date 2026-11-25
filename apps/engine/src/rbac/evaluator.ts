@@ -26,6 +26,7 @@ import {
   matchesPortalTokenAllowlist,
   type PermissionFacts,
 } from "./core/evaluator.ts";
+import { isBuiltinAdmin } from "./core/owner.ts";
 import { isOperatorPrincipal } from "./operator.ts";
 
 export type DecisionSource =
@@ -211,7 +212,7 @@ async function hasResourceGrant(
 }
 
 export function hasBuiltinAdminRole(principal: ResolvedPrincipal): boolean {
-  return principal.roles?.includes("admin") === true;
+  return isBuiltinAdmin(principal.roles);
 }
 
 const rbacCtx = (check: PermissionCheck) => ({
