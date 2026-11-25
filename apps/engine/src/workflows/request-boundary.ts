@@ -14,8 +14,8 @@ import { onlyVaultHandles } from "./core/vault-uses.ts";
 import type { McpBoundaryRefusal } from "./mcp-boundary.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import {
+  bodyPagingRefusal,
   describePagedBodyViolation,
-  isPlainRecord,
   type PagedBodyViolation,
   pagedBodyParts,
 } from "./request-boundary-paging.ts";
@@ -350,20 +350,6 @@ function paginationShape(
     max_requests: pagination.max_pages,
     ...(pagination.parameter_location === "body" ? { location: "body" as const } : {}),
   };
-}
-
-function bodyPagingRefusal(
-  step: RequestStep,
-  params: readonly string[],
-): RequestBoundaryRefusal | null {
-  const method = (step.method ?? "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") return "pagination_body_unsupported";
-  if (step.form !== undefined) return "pagination_body_unsupported";
-  if (step.body === undefined || step.body === null) return null;
-  if (!isPlainRecord(step.body)) return "pagination_body_unsupported";
-  const keys = Object.keys(step.body);
-  if (keys.some((key) => hasRuntimeValue(key))) return "pagination_body_unsupported";
-  return keys.some((key) => params.includes(key)) ? "pagination_param_conflict" : null;
 }
 
 function idempotencyHeader(
