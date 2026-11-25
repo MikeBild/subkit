@@ -1,4 +1,4 @@
-import { dialog } from "electron";
+import { type BrowserWindow, dialog } from "electron";
 import { type Locale, t } from "../shared/i18n.ts";
 import {
   type StatusNotification,
@@ -7,6 +7,7 @@ import {
 } from "../shared/status-model.ts";
 import type { MenuUpdateItem } from "../shared/tray-model.ts";
 import { type UpdateState, updateAction, updateMenuLabel } from "../shared/updates.ts";
+import { appLog } from "./app-log.ts";
 import { UpdateController } from "./updates.ts";
 
 export interface UpdateHost {
@@ -18,6 +19,7 @@ export interface UpdateHost {
   beforeQuit(): void;
   cancelQuit(): void;
   onError(scope: string, error: unknown): void;
+  dialogParent?(): BrowserWindow | null;
 }
 
 export class UpdateFlow {
@@ -71,7 +73,8 @@ export class UpdateFlow {
     this.host.render();
     if (state.phase !== "ready" || this.offered === state.version) return;
     this.offered = state.version;
-    void this.offerRestart(state.version);
+    const readyVersion = state.version;
+    setImmediate(() => void this.offerRestart(readyVersion));
   }
 
   private restart(): void {
@@ -91,14 +94,19 @@ export class UpdateFlow {
 
   private async offerRestart(version: string): Promise<void> {
     const locale = this.host.locale();
-    const choice = await dialog.showMessageBox({
-      type: "info",
+    const options = {
+      type: "info" as const,
       message: t(locale, "updates.ready.title"),
       detail: t(locale, "updates.ready.body", { version }),
       buttons: [t(locale, "updates.restart"), t(locale, "updates.later")],
       defaultId: 0,
       cancelId: 1,
-    });
+    };
+    const parent = this.host.dialogParent?.() ?? null;
+    appLog.info("update.prompt", { version, attached: parent !== null });
+    const choice = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options);
     if (choice.response === 0) this.restart();
   }
 }
