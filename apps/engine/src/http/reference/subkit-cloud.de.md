@@ -206,7 +206,7 @@ Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen ersc
 
 | Was du siehst | Was du tust |
 | --- | --- |
-| Der Einladungslink oder die Anmeldung funktioniert nicht | Melde dich mit der E-Mail-Adresse an, für die die Einladung gilt. Ist der Link abgelaufen oder schon benutzt, bitte um einen neuen. |
+| Der Einladungslink oder die Anmeldung funktioniert nicht | Melde dich mit der E-Mail-Adresse an, für die die Einladung gilt. Ist der Link abgelaufen, bitte um einen neuen. Ist er schon benutzt, gibt es dein Konto bereits: Melde dich an. |
 | Du hast dein Passwort vergessen | Upraft Auth schickt dir eine E-Mail, mit der du es zurücksetzt. |
 | Du willst ein anderes Konto nutzen | Folge „Konto wechseln“. |
 | Du wirst unerwartet abgemeldet | Deine Sitzung ist nach 8 Stunden Inaktivität oder 24 Stunden abgelaufen. Melde dich erneut an. |

@@ -42,6 +42,15 @@ describe("invitation view", () => {
     }
   });
 
+  test("an invitation already used sends the person to sign in, the others ask for a new one", () => {
+    const bodyOf = (status: "expired" | "withdrawn" | "used" | "invalid") =>
+      inviteView({ link, preview: { status, origin: ORIGIN } }, "en").body;
+    expect(bodyOf("used")).toBe("invite.signInInstead");
+    expect(bodyOf("expired")).toBe("invite.askNew");
+    expect(bodyOf("withdrawn")).toBe("invite.askNew");
+    expect(bodyOf("invalid")).toBe("invite.askNew");
+  });
+
   test("an unreadable date stays as it came", () => {
     expect(untilDate("soon", "de")).toBe("soon");
   });
