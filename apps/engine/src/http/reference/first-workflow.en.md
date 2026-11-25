@@ -87,10 +87,11 @@ If the chat offers an approval, it opens the same dialog.
 2. Check the list and select **Apply limits**. SubKit saves a new version and shows it for approval. Values that a limit lists are saved in the workflow, so check them before you approve.
 3. If the step has never run, select **Start trial run**. A trial run reads from your systems for real and holds back every request that would change something, so nothing is written.
 
-Three kinds of steps can get a limit that they could not get before:
+Four kinds of steps can get a limit that they could not get before:
 
 - **A connector that adds its own query parameters.** The fixed parameters of the connector count as part of the address. The dialog names them, but not their values.
 - **Paging in the content a step sends.** The limit contains the highest number of pages. From page to page only the paging fields change.
+- **A header whose value changes per run, such as `Idempotency-Key`.** The limit names the header and the rule its value must meet. The name of the header stays fixed. If the name or the rule changes, you review the step again.
 - **A tool call on an MCP server.** The limit names the one tool, which argument values may vary, and whether the call reads or changes data. A call that may change data is never repeated automatically; its step carries `max_retries: 0`. SubKit checks the description of the tool before every call. If the server describes the tool differently later, the next run stops and you review it again.
 
 Some things stay outside every limit, because the limit would no longer say anything:

@@ -400,3 +400,54 @@ function collectKinds(value: unknown, path: string, offenders: string[]): void {
     }
   }
 }
+
+const CONTROL_FLOW_KIND_PATTERN = /"kind"\s*:\s*"(branch|parallel)"/;
+const STRUCTURES_SKILL_FILE = join(SKILLS_DIR, "workflow-authoring-structures.md");
+
+function collectControlFlowSteps(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.flatMap(collectControlFlowSteps);
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  const nested = Object.values(record).flatMap(collectControlFlowSteps);
+  return record.kind === "branch" || record.kind === "parallel" ? [record, ...nested] : nested;
+}
+
+const parsedControlFlowSteps = parseableBlocks.flatMap((block) => {
+  try {
+    return collectControlFlowSteps(JSON.parse(block.body)).map((step) => ({ block, step }));
+  } catch {
+    return [];
+  }
+});
+
+describe("seed/skills/*.md · branch and parallel examples match the engine contract", () => {
+  test("the structures skill shows a parseable branch and a parseable parallel example", () => {
+    const structuresKinds = parsedControlFlowSteps
+      .filter(({ block }) => block.file === STRUCTURES_SKILL_FILE)
+      .map(({ step }) => step.kind);
+    expect(structuresKinds).toContain("branch");
+    expect(structuresKinds).toContain("parallel");
+  });
+
+  for (const { block, step } of parsedControlFlowSteps) {
+    test(`${block.file.replace(`${SKILLS_DIR}/`, "")}#${block.index} ${String(step.id)} parses with StepSchema`, () => {
+      expect(StepSchema.safeParse(step).success).toBe(true);
+    });
+  }
+
+  test("no json block wraps a branch or parallel step in a config object", () => {
+    const offenders = allBlocks
+      .filter(
+        (block) => CONTROL_FLOW_KIND_PATTERN.test(block.body) && /"config"\s*:/.test(block.body),
+      )
+      .map((block) => `${block.file.replace(`${SKILLS_DIR}/`, "")}#${block.index}`);
+    expect(offenders).toEqual([]);
+  });
+
+  test("the structures skill documents no multi-case branch or join keys", () => {
+    const structuresBody = readFileSync(STRUCTURES_SKILL_FILE, "utf-8");
+    expect(structuresBody).not.toContain('"cases"');
+    expect(structuresBody).not.toMatch(/"default"\s*:\s*\[/);
+    expect(structuresBody).not.toMatch(/"join"\s*:/);
+  });
+});

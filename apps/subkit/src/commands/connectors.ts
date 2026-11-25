@@ -22,6 +22,7 @@ import {
   parseCredentialFile,
 } from "./connector-credential-file-model.ts";
 import { saveConnectorFromFile } from "./connector-save.ts";
+import { connectorCheckFailure } from "./connector-save-model.ts";
 import { readDefinitionFile } from "./definition-file.ts";
 import { CONNECTOR_LIST_COLUMNS } from "./list-columns.ts";
 
@@ -242,6 +243,7 @@ const createCommand = defineCommand({
           args.name ? { name: args.name } : {},
         );
         printJson(created);
+        const createdOutcome = { created: true, id: created.id, slug: created.slug } as const;
 
         const skip = Boolean(args["skip-checks"]);
         let probe: ConnectorSummary["probe"];
@@ -260,19 +262,25 @@ const createCommand = defineCommand({
                 },
               ];
               await renderTaskList(phases, { jsonMode });
+              if (jsonMode) {
+                printJson(
+                  connectorCheckFailure(createdOutcome, "probe", probeFailureDetail(result), {
+                    probe: result,
+                  }),
+                );
+              }
               process.exit(64);
             }
           } catch (err) {
+            const probeErrorDetail = err instanceof Error ? err.message : String(err);
             const phases: PlanStep[] = [
               { id: "create", label: "Create", status: "succeeded" },
-              {
-                id: "probe",
-                label: "Probe",
-                status: "failed",
-                detail: err instanceof Error ? err.message : String(err),
-              },
+              { id: "probe", label: "Probe", status: "failed", detail: probeErrorDetail },
             ];
             await renderTaskList(phases, { jsonMode });
+            if (jsonMode) {
+              printJson(connectorCheckFailure(createdOutcome, "probe", probeErrorDetail, {}));
+            }
             process.exit(exitCodeFor(err));
           }
         } else if (skip && !jsonMode) {

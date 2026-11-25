@@ -110,6 +110,8 @@ Damit SubKit die Zugangsdaten prüfen kann, gib dem Connector eine Probe. Das is
 "config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}
 ```
 
+`expected_status` ist ein inklusiver Statusbereich `[min, max]`: `[200, 200]` akzeptiert nur 200, `[200, 299]` jeden 2xx-Status. Lässt du ihn weg, gilt `[200, 299]`. Ein einzelner Status wie `[200]` wird abgelehnt.
+
 Führe dann `subkit connectors test <id>` aus.
 Antwortet die Probe mit 401 oder 403, gilt der Connector als abgemeldet. Seine Workflows sind dann blockiert.
 

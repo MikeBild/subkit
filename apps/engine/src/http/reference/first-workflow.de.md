@@ -87,10 +87,11 @@ Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 2. Prüfe die Liste und wähle **Grenzen übernehmen**. SubKit speichert eine neue Version und zeigt sie dir zur Freigabe. Werte, die eine Grenze auflistet, werden im Workflow gespeichert, prüfe sie deshalb vor der Freigabe.
 3. Ist der Schritt noch nie gelaufen, wähle **Probe-Run starten**. Ein Probe-Run liest wirklich aus deinen Systemen und hält jede Anfrage zurück, die etwas ändern würde. So wird nichts geschrieben.
 
-Drei Arten von Schritten können eine Grenze bekommen, die sie bisher nicht bekommen konnten:
+Vier Arten von Schritten können eine Grenze bekommen, die sie bisher nicht bekommen konnten:
 
 - **Ein Connector, der eigene Query-Parameter anhängt.** Die festen Parameter des Connectors zählen zur Adresse. Der Dialog nennt sie, aber nicht ihre Werte.
 - **Blättern im Inhalt, den ein Schritt sendet.** Die Grenze enthält die höchste Zahl von Seiten. Von Seite zu Seite ändern sich nur die Felder zum Blättern.
+- **Ein Kopffeld, dessen Wert sich je Run ändert, etwa `Idempotency-Key`.** Die Grenze nennt das Kopffeld und die Regel, die sein Wert erfüllen muss. Der Name des Kopffelds bleibt fest. Ändern sich Name oder Regel, prüfst du den Schritt erneut.
 - **Ein Tool-Aufruf an einem MCP-Server.** Die Grenze nennt das eine Tool, welche Argumentwerte sich ändern dürfen und ob der Aufruf liest oder Daten ändert. Ein Aufruf, der Daten ändern kann, wird nie automatisch wiederholt. Sein Schritt trägt `max_retries: 0`. SubKit prüft die Beschreibung des Tools vor jedem Aufruf. Beschreibt der Server das Tool später anders, hält der nächste Run an, und du prüfst erneut.
 
 Manches bleibt außerhalb jeder Grenze, weil die Grenze sonst nichts mehr aussagen würde:

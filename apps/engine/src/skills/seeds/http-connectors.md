@@ -154,9 +154,21 @@ keeps its own header and ignores `idempotency_key`:
 ```
 
 Under a `boundary`, only a whole placeholder such as `"${input.request_reference}"`
-can be reviewed; declare it in `boundary.variables` with a value rule. A composite
-key like `"customer-${input.email}"` is refused with `runtime_header`, exactly like a
-composite `Idempotency-Key` header.
+can be reviewed; bound it with `boundary.headers`, keyed by the literal header name.
+The rule is an `enum` or a value `class`, exactly as in `boundary.variables`:
+
+```json
+{ "id": "create", "kind": "request", "method": "POST", "connector_id": "<stripe_connector_id>",
+  "path": "/customers", "form": { "email": "${input.email}" },
+  "headers": { "Idempotency-Key": "${input.body.workId}" },
+  "boundary": { "variables": {}, "headers": { "Idempotency-Key": { "class": "identifier" } },
+    "max_body_bytes": 1024, "max_calls": 1 } }
+```
+
+Any other header value that is one whole placeholder is bounded the same way. A
+composite value like `"customer-${input.email}"`, a placeholder in a header name, or a
+placeholder header without a `boundary.headers` entry is refused with `runtime_header`.
+An `Idempotency-Key` placeholder declared in `boundary.variables` keeps working.
 
 ## Typed JSON bodies and arrays
 
