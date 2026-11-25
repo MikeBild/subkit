@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { readEnv } from "../../env.ts";
@@ -31,12 +31,31 @@ export const speechModelDir = (): string =>
     temporary: tmpdir(),
   });
 
+async function sha256Of(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of Bun.file(path).stream() as unknown as AsyncIterable<Uint8Array>)
+    hash.update(chunk);
+  return hash.digest("hex");
+}
+
 async function fileOnDisk(dir: string, file: ModelFile): Promise<boolean> {
+  const path = join(dir, file.path);
   try {
-    return (await stat(join(dir, file.path))).size === file.bytes;
+    if ((await stat(path)).size !== file.bytes) return false;
+    return (await sha256Of(path)) === file.sha256;
   } catch {
     return false;
   }
+}
+
+export async function ensurePrivateDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const info = await lstat(dir);
+  if (info.isSymbolicLink() || !info.isDirectory())
+    throw new Error(`the speech model folder ${dir} is not a plain folder`);
+  const uid = process.getuid?.();
+  if (uid !== undefined && info.uid !== uid)
+    throw new Error(`the speech model folder ${dir} belongs to another user`);
 }
 
 async function downloadFile(
@@ -47,7 +66,7 @@ async function downloadFile(
 ): Promise<void> {
   const target = join(dir, file.path);
   const partial = `${target}.partial`;
-  await mkdir(dirname(target), { recursive: true });
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
   const response = await fetcher(modelFileUrl(file));
   if (!response.ok || !response.body)
     throw new Error(`download of ${file.path} failed with HTTP ${response.status}`);
@@ -104,6 +123,7 @@ export function createModelStore({
       total_bytes: totalBytes,
     });
     try {
+      await ensurePrivateDir(dir);
       for (const file of files) {
         if (await fileOnDisk(dir, file)) {
           receivedBytes += file.bytes;

@@ -57,6 +57,12 @@ describe("model store", () => {
     expect(await createModelStore({ dir, files: [good] }).state()).toEqual({ kind: "missing" });
   });
 
+  test("a file of the right size but foreign content is not taken as ready", async () => {
+    const dir = await tempDir();
+    await Bun.write(join(dir, good.path), new TextEncoder().encode("model-bytez"));
+    expect(await createModelStore({ dir, files: [good] }).state()).toEqual({ kind: "missing" });
+  });
+
   test("keeps the HTTP status of a failed download", async () => {
     const dir = await tempDir();
     const fetcher = (async () => new Response(null, { status: 503 })) as unknown as typeof fetch;
