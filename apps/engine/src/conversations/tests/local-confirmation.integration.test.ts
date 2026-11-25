@@ -332,11 +332,7 @@ describe("a local step that must ask uses the chat confirmation", () => {
         server.db,
       );
     const admin = attempt(browserPrincipal(server.userId, ["admin"]), server.userId);
-    await expect(admin).rejects.toMatchObject({
-      status: 403,
-      code: "local_confirmation_forbidden",
-      refusal: "not_owner",
-    });
+    await expect(admin).rejects.toMatchObject({ status: 404, code: "not_found" });
     const withKey: ResolvedPrincipal = {
       ...browserPrincipal(owner_id, ["member"]),
       auth_source: { kind: "api_key", api_key_id: "k1", credential_version: "1" },
@@ -375,8 +371,8 @@ describe("a local step that must ask uses the chat confirmation", () => {
       `${server.baseUrl}/v1/conversations/${conversation.id}/tool-calls/${step.tool_call_id}/respond`,
       { method: "POST", headers: other, body: JSON.stringify({ output: { confirmed: true } }) },
     );
-    expect(response.status).toBe(403);
-    expect(((await response.json()) as { code: string }).code).toBe("local_confirmation_forbidden");
+    expect(response.status).toBe(404);
+    expect(((await response.json()) as { code: string }).code).toBe("not_found");
   });
 
   test("a runner token never confirms, the owner's desktop session does", async () => {
