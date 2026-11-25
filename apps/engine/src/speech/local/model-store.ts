@@ -31,11 +31,13 @@ export const speechModelDir = (): string =>
     temporary: tmpdir(),
   });
 
-const fileOnDisk = async (dir: string, file: ModelFile): Promise<boolean> =>
-  stat(join(dir, file.path)).then(
-    (info) => info.size === file.bytes,
-    () => false,
-  );
+async function fileOnDisk(dir: string, file: ModelFile): Promise<boolean> {
+  try {
+    return (await stat(join(dir, file.path))).size === file.bytes;
+  } catch {
+    return false;
+  }
+}
 
 async function downloadFile(
   dir: string,
@@ -139,11 +141,14 @@ export function createModelStore({
     },
     prepare(): Promise<LocalModelState> {
       if (current.kind === "ready") return Promise.resolve(current);
-      inFlight ??= refresh()
-        .then((state) => (state.kind === "ready" ? state : download()))
-        .finally(() => {
+      inFlight ??= (async () => {
+        try {
+          const state = await refresh();
+          return state.kind === "ready" ? state : await download();
+        } finally {
           inFlight = null;
-        });
+        }
+      })();
       return inFlight;
     },
   };

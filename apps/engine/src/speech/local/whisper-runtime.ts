@@ -61,12 +61,13 @@ async function importWebBuild(dir: string): Promise<TransformersWeb> {
 function recognizerFor(dir: string): Promise<Recognizer> {
   const existing = recognizers.get(dir);
   if (existing) return existing;
-  const loading = importWebBuild(dir).then(({ pipeline }) =>
-    pipeline("automatic-speech-recognition", LOCAL_SPEECH_MODEL, {
+  const loading = (async () => {
+    const { pipeline } = await importWebBuild(dir);
+    return pipeline("automatic-speech-recognition", LOCAL_SPEECH_MODEL, {
       dtype: "q8",
       session_options: { graphOptimizationLevel: "basic" },
-    }),
-  );
+    });
+  })();
   loading.catch(() => recognizers.delete(dir));
   recognizers.set(dir, loading);
   return loading;
