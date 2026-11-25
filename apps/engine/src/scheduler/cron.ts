@@ -8,16 +8,23 @@ interface CronValidationResult {
 }
 
 const EVERY_PREFIX = "every:";
+const EVERY_SECONDS_PATTERN = /^\d+(?:\.\d+)?$/;
+
+function parseEverySeconds(rest: string): number | null {
+  const trimmedRest = rest.trim();
+  if (!EVERY_SECONDS_PATTERN.test(trimmedRest)) return null;
+  const seconds = Number(trimmedRest);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
 
 export function parseCronExpression(expr: string): CronValidationResult {
   const trimmed = expr.trim();
   if (trimmed.startsWith(EVERY_PREFIX)) {
-    const rest = trimmed.slice(EVERY_PREFIX.length).trim();
-    const n = Number.parseFloat(rest);
-    if (!Number.isFinite(n) || n <= 0) {
+    const everySeconds = parseEverySeconds(trimmed.slice(EVERY_PREFIX.length));
+    if (everySeconds === null) {
       return { ok: false, mode: "every", reason: `invalid every expression: ${expr}` };
     }
-    return { ok: true, mode: "every", everySeconds: n };
+    return { ok: true, mode: "every", everySeconds };
   }
   try {
     CronExpressionParser.parse(trimmed, { strict: false });
@@ -65,9 +72,9 @@ export function previousCronOccurrence(cron: string, atOrBefore: Date, tz?: stri
 
 export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?: string): boolean {
   const trimmed = cron.trim();
-  if (trimmed.startsWith("every:")) {
-    const seconds = Number.parseFloat(trimmed.slice("every:".length));
-    if (!Number.isFinite(seconds) || seconds <= 0) return false;
+  if (trimmed.startsWith(EVERY_PREFIX)) {
+    const seconds = parseEverySeconds(trimmed.slice(EVERY_PREFIX.length));
+    if (seconds === null) return false;
     if (!lastFiredAt) return true;
     return now.getTime() - lastFiredAt.getTime() >= seconds * 1000;
   }
