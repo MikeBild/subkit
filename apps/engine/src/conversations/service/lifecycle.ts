@@ -12,6 +12,7 @@ import {
   conversations,
   fileLinks,
   mcpTasks,
+  taskRuns,
   workflows,
 } from "../../db/schema/index.ts";
 import {
@@ -19,8 +20,9 @@ import {
   type TaskRunConversationFilter,
   taskRunConversationCond,
 } from "../../db/task-run-conversations.ts";
+import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
-import { now } from "../../utils/clock.ts";
+import { now } from "../../utils/index.ts";
 import { cancelConversationAbort, hasConversationAbort } from "../abort.ts";
 import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
@@ -70,6 +72,82 @@ export async function cancelConversation(
   );
   await cancelConversationTurns(exec, tenant_id, conversation_id);
   cancelConversationAbort(tenant_id, conversation_id);
+  return rowToRecord(row);
+}
+
+const TURN_STOP_RUN_STATES = ["running", "waiting", "sleeping", "result_ready"] as const;
+
+async function activeTaskRun(exec: Executor, tenant_id: string, conversation_id: string) {
+  const [run] = await exec
+    .select({ id: taskRuns.id, state: taskRuns.state })
+    .from(taskRuns)
+    .where(
+      and(
+        eq(taskRuns.tenant_id, tenant_id),
+        eq(taskRuns.conversation_id, conversation_id),
+        inArray(taskRuns.state, [...TURN_STOP_RUN_STATES]),
+      ),
+    )
+    .limit(1);
+  return run;
+}
+
+export async function interruptTaskRunTurn(
+  tenant_id: string,
+  conversation_id: string,
+  actor_id: string | null,
+  exec: Db,
+  actor_type?: "user" | "system_account" | "system" | "unknown",
+  principal?: ResolvedPrincipal | null,
+): Promise<ConversationRecord | null> {
+  const run = await activeTaskRun(exec, tenant_id, conversation_id);
+  if (!run) return null;
+  await assertTaskRunWriter(exec, { tenant_id, conversation_id, actor_id, principal });
+  const [row] = await exec
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
+    .limit(1);
+  if (!row) return null;
+  await auditAwait(
+    {
+      tenant_id,
+      ...resolveActor({
+        tenant_id,
+        actor_id,
+        actor_type: actor_type ?? (actor_id === null ? "system" : "unknown"),
+      }),
+      action: AuditAction.CONVERSATION_CANCELLED,
+      resource_type: "conversation",
+      resource_id: conversation_id,
+      result: "success",
+      metadata: { scope: "turn" },
+    },
+    exec,
+  );
+  if (run.state === "running" || run.state === "sleeping") {
+    const { observeTaskRun } = await import("../../tasks/run-driver.ts");
+    await observeTaskRun(exec, {
+      tenant_id,
+      task_run_id: run.id,
+      turn: {
+        id: null,
+        driver: "task",
+        failure: { code: "turn_stopped", retry_at: null },
+        interrupted: false,
+      },
+      source: "chat",
+    });
+  }
+  await cancelConversationTurns(exec, tenant_id, conversation_id);
+  cancelConversationAbort(tenant_id, conversation_id);
+  logger.info({
+    module: "conversation",
+    action: "turn.stopped",
+    msg: "stopped the current turn of a task run conversation and kept the run open",
+    tenant_id,
+    conversation_id,
+  });
   return rowToRecord(row);
 }
 

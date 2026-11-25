@@ -76,6 +76,14 @@ export interface ConversationLifecycleServices {
     actor_type?: "user" | "system_account" | "system" | "unknown",
     principal?: ResolvedPrincipal | null,
   ): Promise<ConversationRecord | null>;
+  interruptTaskRunTurn(
+    tenant_id: string,
+    conversation_id: string,
+    actor_id: string | null,
+    exec: Db,
+    actor_type?: "user" | "system_account" | "system" | "unknown",
+    principal?: ResolvedPrincipal | null,
+  ): Promise<ConversationRecord | null>;
   deleteConversation(
     p: {
       tenant_id: string;
@@ -166,14 +174,16 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
     async handler(scope, { id }) {
       const principal = scope.principal;
       if (!principal) return reject.unauthorized();
-      const row = await svc.cancelConversation(
+      const args = [
         scope.tenant_id,
         id,
         principal.id,
         scope.db,
         actorType(principal),
         principal,
-      );
+      ] as const;
+      const row =
+        (await svc.interruptTaskRunTurn(...args)) ?? (await svc.cancelConversation(...args));
       return row ?? reject.notFound("conversation");
     },
     http: {

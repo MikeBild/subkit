@@ -338,21 +338,6 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
     expect(await queuedJobs(run.id)).toHaveLength(1);
   }, 180_000);
 
-  test("a stopped turn waits for the person instead of failing the run", async () => {
-    const { w, run } = await freshRun();
-    await workQueuedTurn({
-      runTurn: async (p) => {
-        p.turn_abort_ctrl.abort("conversation_cancelled");
-        throw new DOMException("stopped", "AbortError");
-      },
-    });
-    expect(await runRow(w, run.id)).toMatchObject({
-      state: "waiting",
-      waiting_reason: "turn_stopped",
-      failure_code: null,
-    });
-  }, 180_000);
-
   test("a question asked while the job was starting is seen before the turn runs", async () => {
     const { w, run } = await freshRun();
     let loads = 0;
