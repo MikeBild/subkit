@@ -131,6 +131,8 @@ export const settingsHelpEn = {
     "Small model that proposes the next questions after a reply. It runs often, so a cheap model keeps costs down.",
   "settings.help.llm.summarize_model":
     "Model for summaries. A small, cheap model is usually enough.",
+  "settings.help.llm.result_question_check":
+    "Has the model check every question of a task run that the exact comparison lets through, and holds it back when it asks for the result in other words. Costs an extra call per question; if the call fails, the question gets through.",
   "settings.help.llm.summarize_provider":
     "Provider for summarising long conversations. Not set uses the primary provider.",
   "settings.help.llm.web_search":
@@ -297,6 +299,8 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Kleines Modell, das nach einer Antwort nächste Fragen vorschlägt. Es läuft oft; ein günstiges Modell hält die Kosten niedrig.",
   "settings.help.llm.summarize_model":
     "Modell für Zusammenfassungen. Meist genügt ein kleines, günstiges Modell.",
+  "settings.help.llm.result_question_check":
+    "Lässt das Modell jede Frage eines Aufgaben-Runs prüfen, die der wörtliche Vergleich durchlässt, und hält sie zurück, wenn sie mit anderen Worten nach dem Ergebnis fragt. Kostet einen Aufruf je Frage; schlägt der Aufruf fehl, kommt die Frage durch.",
   "settings.help.llm.summarize_provider":
     "Anbieter für Zusammenfassungen langer Gespräche. Nicht gesetzt: der Hauptanbieter.",
   "settings.help.llm.web_search":

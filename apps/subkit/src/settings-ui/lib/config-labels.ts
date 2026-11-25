@@ -34,6 +34,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.suggestion_model": "Suggestion model",
   "llm.context_1m": "Enable 1M context",
   "llm.web_search": "AI web search",
+  "llm.result_question_check": "Check task-run result questions",
   "llm.output_guard": "Output safety mode",
   "llm.reasoning_effort": "Reasoning effort",
 

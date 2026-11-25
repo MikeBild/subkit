@@ -2712,7 +2712,7 @@ An open question blocks the next scheduled start, because the run is still open.
 
 ### Review the result
 
-When all steps are done, the state reads **result ready** and you get a notice. The run is meant to hand the result over by ending its round, not to ask you whether it is right. SubKit holds such a question back when it is bound to the reserved `confirm-result` step, matches that step’s confirmation question, or repeats the goal of the task word for word; capitalization, spacing and closing punctuation do not count when comparing question text. A question that asks the same in other words can still reach you, even while a step is open. Answering it does not confirm the result: only **Looks good** under **Review result** does. It writes to you in the language you used when you last saved the task.
+When all steps are done, the state reads **result ready** and you get a notice. The run is meant to hand the result over by ending its round, not to ask you whether it is right. SubKit holds such a question back when it is bound to the reserved `confirm-result` step, matches that step’s confirmation question, or repeats the goal of the task word for word; capitalization, spacing and closing punctuation do not count when comparing question text. A question that asks the same in other words can still reach you, even while a step is open, unless you switch on the setting `llm.result_question_check`: then the configured AI model also checks every other question of a run and SubKit holds it back when it asks for the result, at the cost of one extra model call per question, and a question still gets through when that call fails. Answering it does not confirm the result: only **Looks good** under **Review result** does. It writes to you in the language you used when you last saved the task.
 
 1. Select **Review result**.
 2. Read what the run did. Each step shows its evidence.
@@ -8547,6 +8547,7 @@ LLM configuration
 | `llm.providers.vertex.private_key` | string | `""` | global | yes | no |  |
 | `llm.providers.vertex.project` | string | `""` | global | no | no |  |
 | `llm.reasoning_effort` | enum("default" \| "none" \| "low" \| "medium" \| "high") | `"default"` | tenant | no | no | Reasoning effort in authoring turns. default: thinking only in late stages on supported Claude models. none, low, medium or high: every stage on OpenAI reasoning and supported Claude models. |
+| `llm.result_question_check` | boolean | `false` | tenant | no | no | Ask the configured AI model (judge route) whether a question of a task run asks for the run's result in other words, and hold it back when it does (one extra call per question; a failed call lets the question through) |
 | `llm.suggestion_model` | string | `""` | tenant | no | no | Small model used to generate post-turn suggestions; empty uses the primary provider's default |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |

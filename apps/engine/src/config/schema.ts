@@ -374,6 +374,13 @@ const LlmSection = z
         "Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings.",
       )
       .meta(tenant()),
+    result_question_check: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Ask the configured AI model (judge route) whether a question of a task run asks for the run's result in other words, and hold it back when it does (one extra call per question; a failed call lets the question through)",
+      )
+      .meta(tenant()),
     reasoning_effort: z
       .enum(["default", "none", "low", "medium", "high"])
       .default("default")
@@ -1610,6 +1617,7 @@ const TenantOverlaySchema = z
         suggestion_model: z.string().optional(),
         context_1m: z.boolean().optional(),
         web_search: z.boolean().optional(),
+        result_question_check: z.boolean().optional(),
         providers: z
           .object({
             anthropic: z

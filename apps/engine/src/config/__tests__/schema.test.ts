@@ -320,6 +320,20 @@ describe("ConfigSchema — llm.web_search leaf", () => {
     expect(leaf!.meta.scope).toBe("tenant");
   });
 
+  test("llm.result_question_check is an opt-in tenant boolean a tenant overlay keeps", () => {
+    const leaf = findLeafByPath("llm.result_question_check");
+    expect(leaf?.kind).toBe("boolean");
+    expect(leaf?.meta.scope).toBe("tenant");
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      tenants: { "tenant-x": { llm: { result_question_check: true } } },
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.llm.result_question_check).toBe(false);
+    expect(r.data.tenants["tenant-x"]?.llm?.result_question_check).toBe(true);
+  });
+
   describe("oidc_bearer provider", () => {
     const provider = {
       protocol: "oidc_bearer",
