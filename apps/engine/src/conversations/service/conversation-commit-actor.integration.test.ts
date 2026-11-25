@@ -36,7 +36,7 @@ afterAll(async () => {
 test("committed turn audit preserves the typed system-account principal", async () => {
   const [conversation] = await testDb.db
     .insert(conversations)
-    .values({ tenant_id, status: "active" })
+    .values({ tenant_id, status: "active", owner_id: SYSTEM_ACCOUNT_ID })
     .returning({ id: conversations.id });
   if (!conversation) throw new Error("conversation seed failed");
 

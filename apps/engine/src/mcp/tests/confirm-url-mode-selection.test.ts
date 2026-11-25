@@ -29,20 +29,23 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-function principal(): ResolvedPrincipal {
+function principal(id: string): ResolvedPrincipal {
   return {
     kind: "user",
-    id: uuid(),
+    id,
     tenant_id,
     roles: [],
     scopes: [],
   } as unknown as ResolvedPrincipal;
 }
 
-async function seedPendingConfirm(p: { lastError?: string }): Promise<string> {
+async function seedPendingConfirm(p: {
+  lastError?: string;
+}): Promise<{ id: string; owner: ResolvedPrincipal }> {
+  const owner = principal(uuid());
   const [conv] = await ctx.db
     .insert(conversations)
-    .values({ tenant_id, status: "awaiting_input" })
+    .values({ tenant_id, status: "awaiting_input", owner_id: owner.id })
     .returning({ id: conversations.id });
   const [row] = await ctx.db
     .insert(conversationElicitations)
@@ -65,7 +68,7 @@ async function seedPendingConfirm(p: { lastError?: string }): Promise<string> {
       ...(p.lastError ? { delivery_last_error: p.lastError } : {}),
     })
     .returning({ id: conversationElicitations.id });
-  return row!.id;
+  return { id: row!.id, owner };
 }
 
 function recordingTransport(kinds: { form?: boolean; url?: boolean }): {
@@ -102,7 +105,7 @@ function recordingTransport(kinds: { form?: boolean; url?: boolean }): {
 }
 
 async function deliverAndSettle(
-  id: string,
+  { id, owner }: { id: string; owner: ResolvedPrincipal },
   transport: NativeElicitationTransport,
 ): Promise<{ resumeCalls: number }> {
   let resumeCalls = 0;
@@ -114,7 +117,7 @@ async function deliverAndSettle(
   if (!pending) throw new Error("seed elicitation missing");
   await deliverPendingNativeElicitationCore({
     db: ctx.db,
-    principal: principal(),
+    principal: owner,
     pending,
     nativeElicitation: transport,
     resume: async (): Promise<NativeDeliveryResult> => {
@@ -129,30 +132,30 @@ async function deliverAndSettle(
 
 describe("confirm URL-mode selection (approval_url branch)", () => {
   test("form-capable client renders the FORM, never the approval link", async () => {
-    const id = await seedPendingConfirm({});
+    const seeded = await seedPendingConfirm({});
     const rec = recordingTransport({ form: true, url: true });
-    await deliverAndSettle(id, rec.transport);
+    await deliverAndSettle(seeded, rec.transport);
     expect(rec.formCalls).toBeGreaterThanOrEqual(1);
     expect(rec.urlCalls()).toBe(0);
   });
 
   test("a client with no form capability delivers the approval_url as url-mode", async () => {
-    const id = await seedPendingConfirm({});
+    const seeded = await seedPendingConfirm({});
     const rec = recordingTransport({ url: true });
-    await deliverAndSettle(id, rec.transport);
+    await deliverAndSettle(seeded, rec.transport);
     expect(rec.urlCalls()).toBe(1);
     expect(rec.lastUrl()).toBe(APPROVAL_URL);
     expect(rec.formCalls).toBe(0);
   });
 
   test("an already-completed row replays synchronously and resumes — even on a form-capable, url-incapable client", async () => {
-    const id = await seedPendingConfirm({ lastError: "url_completed" });
+    const seeded = await seedPendingConfirm({ lastError: "url_completed" });
     const rec = recordingTransport({ form: true });
-    const { resumeCalls } = await deliverAndSettle(id, rec.transport);
+    const { resumeCalls } = await deliverAndSettle(seeded, rec.transport);
     expect(rec.formCalls).toBe(0);
     expect(rec.urlCalls()).toBe(0);
     expect(resumeCalls).toBe(1);
-    const resolved = await getElicitation(tenant_id, id, ctx.db);
+    const resolved = await getElicitation(tenant_id, seeded.id, ctx.db);
     expect(resolved?.output).toMatchObject({ confirmed: true });
   });
 });

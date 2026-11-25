@@ -43,10 +43,13 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-async function seed(owner_id: string | null): Promise<string> {
+async function seed(
+  owner_id: string | null,
+  visibility: "private" | "team" = "private",
+): Promise<string> {
   const [c] = await srv.db
     .insert(conversations)
-    .values({ tenant_id: srv.tenantId, status: "active", title: "to delete", owner_id })
+    .values({ tenant_id: srv.tenantId, status: "active", title: "to delete", owner_id, visibility })
     .returning();
   return c!.id;
 }
@@ -68,8 +71,10 @@ describe("DELETE /v1/conversations/:id", () => {
   });
 
   test("a member may delete their own conversation but not someone else's", async () => {
-    const foreign = await seed(srv.userId);
-    expect((await del(foreign, memberKey)).status).toBe(403);
+    const foreignPrivate = await seed(srv.userId);
+    expect((await del(foreignPrivate, memberKey)).status).toBe(404);
+    const foreignShared = await seed(srv.userId, "team");
+    expect((await del(foreignShared, memberKey)).status).toBe(403);
     const own = await seed(memberId);
     expect((await del(own, memberKey)).status).toBe(200);
   });

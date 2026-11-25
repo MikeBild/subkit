@@ -81,14 +81,14 @@ async function insertMessage(
   return row!.id;
 }
 
-async function seedConversation(): Promise<{
+async function seedConversation(owner_id: string | null = null): Promise<{
   conversation_id: string;
   run_call_id: string;
   connector_call_id: string;
 }> {
   const [conv] = await ctx.db
     .insert(conversations)
-    .values({ tenant_id, status: "active" })
+    .values({ tenant_id, status: "active", owner_id })
     .returning({ id: conversations.id });
   const conversation_id = conv!.id;
   await insertMessage(
@@ -175,8 +175,8 @@ function record(
 
 describe("compactConversation — semantic summary through the summarize flow", () => {
   test("records system-account attribution for manual compaction", async () => {
-    const seeded = await seedConversation();
     const actor_id = "10000000-0000-4000-8000-000000000001";
+    const seeded = await seedConversation(actor_id);
 
     await compactConversation(
       {
