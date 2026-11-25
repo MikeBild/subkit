@@ -9,6 +9,7 @@
       "@ui/*": ["../../packages/ui/src/*"],
       "@shared/*": ["../../packages/shared/src/*"],
       "@cli-core/engine-api/openapi": ["../../packages/cli-core/src/engine-api/openapi.d.ts"],
+      "@cli-core/release-public-key": ["../../packages/cli-core/src/release-public-key.ts"],
       "*": ["./node_modules/@types/*", "./node_modules/*"]
     }
   },

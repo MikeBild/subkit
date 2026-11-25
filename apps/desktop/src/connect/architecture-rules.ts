@@ -183,7 +183,7 @@ export const SHARED_MODULE_RULES: ModuleRules = {
 export const MAIN_MODULE_RULES: ModuleRules = {
   root: "src/main",
   reach: ["src/main", "src/shared", "src/runner", "vendor"],
-  packages: /^(electron|zod|bun|node:[a-z_/]+|@shared\/.+)$/,
+  packages: /^(electron|zod|bun|node:[a-z_/]+|@shared\/.+|@cli-core\/release-public-key)$/,
 };
 
 export function moduleViolations(files: SourceFile[], rules: ModuleRules): string[] {

@@ -114,6 +114,9 @@ jobs:
           macos=$(missing_of CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER)
           if [ "$WINDOWS_SIGNING" = "cloud" ]; then
             windows=$(missing_of WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME)
+          elif [ "$WINDOWS_SIGNING" = "none" ]; then
+            windows=""
+            echo "::warning::Windows ships without Authenticode signing. The app checks every update against the signed SHA256SUMS-desktop instead. See apps/desktop/RELEASING.md."
           else
             windows=$(missing_of WIN_CSC_LINK WIN_CSC_KEY_PASSWORD)
           fi
@@ -556,6 +559,16 @@ jobs:
             "-c.win.signtoolOptions.sign=scripts/win-cloud-sign.cjs" \
             "-c.win.signtoolOptions.publisherName=$WIN_PUBLISHER_NAME"
 
+      - name: Build without code signing
+        if: ${{ needs.resolve.outputs.dry_run != 'true' && needs.resolve.outputs.windows_signing == 'none' }}
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          SUBKIT_DESKTOP_UPDATES: "1"
+        run: |
+          set -euo pipefail
+          bun run package --prebuilt --win --publish never -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs" "-c.win.verifyUpdateCodeSignature=false"
+
       - name: Build unsigned dry run
         if: ${{ needs.resolve.outputs.dry_run == 'true' }}
         working-directory: apps/desktop
@@ -567,7 +580,7 @@ jobs:
           bun run package --prebuilt --win --publish never -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs"
 
       - name: Verify Authenticode signatures
-        if: ${{ needs.resolve.outputs.dry_run != 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' && needs.resolve.outputs.windows_signing != 'none' }}
         working-directory: apps/desktop
         shell: pwsh
         run: |
