@@ -980,7 +980,7 @@ export interface paths {
         };
         /**
          * The Overview's operations figures over one window
-         * @description Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, and per LLM flow the share of prompt tokens read from the prompt cache — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.
+         * @description Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, per LLM flow the share of prompt tokens read from the prompt cache, and how often people were asked to confirm per turn, per task run and per tool — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.
          */
         get: {
             parameters: {
@@ -29662,6 +29662,70 @@ export interface components {
                 total: number;
                 completed: number;
                 failed: number;
+            };
+            /** @description How often people were asked to confirm in the window, per turn, per task run and per tool, read from the stored questions and the audit trail. */
+            confirmations: {
+                /** @description Confirmation questions a person was asked in the window. */
+                asked: number;
+                /** @description Calls that would have asked but ran without asking, covered by a rule, the person's own words or a standing authority. */
+                covered: number;
+                /** @description policy_gate: the engine held a tool call for approval; ask_user: the assistant asked by itself. */
+                kinds: {
+                    policy_gate: number;
+                    ask_user: number;
+                };
+                /** @description How each ask ended: granted, declined, expired, superseded by a newer question, cancelled, or still open. */
+                outcomes: {
+                    granted: number;
+                    declined: number;
+                    expired: number;
+                    superseded: number;
+                    cancelled: number;
+                    open: number;
+                };
+                /** @description Covered calls by what covered them: an approval rule, the person's instruction, or a standing authority. */
+                covered_by: {
+                    rule: number;
+                    instruction: number;
+                    authority: number;
+                };
+                per_turn: {
+                    /** @description Conversation turns started in the window. */
+                    turns: number;
+                    /** @description Turns in which at least one question was asked. */
+                    turns_with_ask: number;
+                    /** @description Questions per turn, two decimals; null without turns. */
+                    asked_per_turn: number | null;
+                };
+                per_task_run: {
+                    /** @description Task runs started in the window. */
+                    runs: number;
+                    runs_with_ask: number;
+                    /** @description Questions asked inside those runs. */
+                    asked: number;
+                    asked_per_run: number | null;
+                    /** @description Median questions per run, counting runs without a question as 0. */
+                    median_per_run: number | null;
+                };
+                /** @description The same figures per tool, most asked first. */
+                tools: {
+                    tool: string;
+                    asked: number;
+                    asked_in_task_runs: number;
+                    outcomes: {
+                        granted: number;
+                        declined: number;
+                        expired: number;
+                        superseded: number;
+                        cancelled: number;
+                        open: number;
+                    };
+                    covered: {
+                        rule: number;
+                        instruction: number;
+                        authority: number;
+                    };
+                }[];
             };
         };
         StatsQualityResponse: {

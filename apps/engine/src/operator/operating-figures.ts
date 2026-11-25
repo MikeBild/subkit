@@ -7,9 +7,11 @@ import { connectors, executionSteps } from "../db/schema/index.ts";
 import { taskRuns } from "../db/schema/tasks.ts";
 import {
   aggregateAudit,
+  aggregateConfirmations,
   aggregateExecutions,
   aggregateLlm,
   aggregateLlmCacheReportedByFlow,
+  type ConfirmationFigures,
   type LlmCacheReported,
   type LlmGroup,
   statsBucketFor,
@@ -63,6 +65,7 @@ export interface OperatingFigures {
     completed: number;
     failed: number;
   };
+  confirmations: ConfirmationFigures;
 }
 
 export interface PromptCacheFlow {
@@ -165,6 +168,7 @@ export async function readOperatingFigures(
     cacheReported,
     heldSucceeded,
     taskRunCounts,
+    confirmations,
   ] = await Promise.all([
     aggregateExecutions(db, { ...window, groupBy: [] }),
     aggregateAudit(db, {
@@ -210,6 +214,7 @@ export async function readOperatingFigures(
           lt(taskRuns.created_at, bounds.to),
         ),
       ),
+    aggregateConfirmations(db, { tenantId, from: bounds.from, to: bounds.to }),
   ]);
 
   const total = executions.totals.executions.count;
@@ -268,5 +273,6 @@ export async function readOperatingFigures(
       completed: Number(taskRunCounts[0]?.completed ?? 0),
       failed: Number(taskRunCounts[0]?.failed ?? 0),
     },
+    confirmations,
   };
 }

@@ -2415,6 +2415,16 @@ The amount is then a floor. The real cost is higher.
 Below it you see how many calls have no price, for example **Calls without a price: 12**.
 When no prices are known at all, the tile shows **Cost unknown**.
 
+### Confirmations
+
+**Confirmations** shows in one line how often someone had to confirm something in the window, for example "0.35 per turn · median 0.5 per task run · 3 ran without asking".
+
+- **per turn**: confirmation questions divided by the conversation turns that started in the window.
+- **median per task run**: the middle value over all runs that started in the window. A run without a question counts as 0.
+- **ran without asking**: calls that would have asked but were covered by a rule, your own words or a standing authority.
+
+**Per tool** expands the figures for each tool. When the figure per turn drops after a new rule or authority, it works. When it rises for no reason, take a look.
+
 ### Worth a look
 
 **Worth a look** lists what changed clearly or costs money.

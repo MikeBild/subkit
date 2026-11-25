@@ -46,6 +46,16 @@ Der Betrag ist dann eine Untergrenze. Die echten Kosten sind höher.
 Darunter steht, wie viele Aufrufe keinen Preis haben, etwa **Aufrufe ohne Preis: 12**.
 Fehlen alle Preise, zeigt die Kachel **Kosten unbekannt**.
 
+### Bestätigungen
+
+Unter **Bestätigungen** steht in einer Zeile, wie oft jemand im Zeitraum etwas bestätigen musste, zum Beispiel „0,35 je Gesprächsrunde · Median 0,5 je Run einer Aufgabe · 3 ohne Frage gelaufen“.
+
+- **je Gesprächsrunde**: Bestätigungsfragen geteilt durch die Gesprächsrunden, die im Zeitraum begonnen haben.
+- **Median je Run einer Aufgabe**: der mittlere Wert über alle Runs, die im Zeitraum gestartet sind. Ein Run ohne Frage zählt mit 0.
+- **ohne Frage gelaufen**: Aufrufe, die gefragt hätten, aber durch eine Regel, deine eigenen Worte oder eine stehende Freigabe gedeckt waren.
+
+**Je Werkzeug** klappt die Zahlen pro Werkzeug auf. Sinkt die Zahl je Gesprächsrunde nach einer neuen Regel oder Freigabe, wirkt sie. Steigt sie ohne Grund, lohnt ein Blick.
+
 ### Auffälligkeiten
 
 Unter **Auffälligkeiten** steht, was sich deutlich verändert hat oder Geld kostet.

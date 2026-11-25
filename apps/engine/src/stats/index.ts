@@ -1,5 +1,18 @@
 export type { AuditGroupDim, AuditOutcome, StatusClass } from "./aggregate-audit.ts";
 export { aggregateAudit } from "./aggregate-audit.ts";
+export type {
+  ConfirmationCover,
+  ConfirmationFigures,
+  ConfirmationKind,
+  ConfirmationOutcome,
+  ConfirmationToolFigures,
+} from "./aggregate-confirmations.ts";
+export {
+  aggregateConfirmations,
+  CONFIRMATION_COVERS,
+  CONFIRMATION_KINDS,
+  CONFIRMATION_OUTCOMES,
+} from "./aggregate-confirmations.ts";
 export type { ExecutionGroupDim } from "./aggregate-executions.ts";
 export { aggregateExecutions } from "./aggregate-executions.ts";
 export type { LlmCacheReported, LlmGroup, LlmGroupDim } from "./aggregate-llm.ts";
