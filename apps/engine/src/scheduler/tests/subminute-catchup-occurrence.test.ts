@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { scheduleOccurrences, workflowsSchedules } from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { fireEverySchedule } from "../workflow-schedule-sweep.ts";
 import { createSchedulerCtx, type SchedulerTestCtx } from "./setup.ts";
 
@@ -23,7 +24,8 @@ test("a sub-minute catch-up run is recorded while a run on time writes no entry"
     slug: "subminute-catchup",
     steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "input" }],
   });
-  const startedAt = Date.now();
+  const startedAt = FROZEN_NOW;
+  const now = new Date(startedAt);
   const [schedule] = await db
     .insert(workflowsSchedules)
     .values({
@@ -59,7 +61,7 @@ test("a sub-minute catch-up run is recorded while a run on time writes no entry"
         ),
       );
 
-  await fireEverySchedule(db, definition, fire);
+  await fireEverySchedule(db, definition, fire, now);
   expect(fired).toHaveLength(1);
   const [catchup, ...rest] = await occurrences();
   expect(rest).toHaveLength(0);
@@ -72,11 +74,11 @@ test("a sub-minute catch-up run is recorded while a run on time writes no entry"
 
   await db
     .update(workflowsSchedules)
-    .set({ last_enqueued_at: new Date(Date.now() - 16_000) })
+    .set({ last_enqueued_at: new Date(startedAt - 16_000) })
     .where(
       and(eq(workflowsSchedules.id, schedule.id), eq(workflowsSchedules.tenant_id, tenant_id)),
     );
-  await fireEverySchedule(db, definition, fire);
+  await fireEverySchedule(db, definition, fire, now);
   expect(fired).toHaveLength(2);
   expect(await occurrences()).toHaveLength(1);
 });
