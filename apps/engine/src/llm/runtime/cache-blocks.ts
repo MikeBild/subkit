@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { ModelMessage } from "ai";
 import { countTokens } from "../accounting/index.ts";
 import type { EnhancedPrompt, LlmFlow } from "../types.ts";
 
@@ -102,4 +104,39 @@ export function toSystemMessages(
     out.push({ role: "system", content: blocks.volatile });
   }
   return out;
+}
+
+function shortHash(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
+export function stablePrefixHash(blocks: CacheBlocks): string {
+  return shortHash(blocks.stable);
+}
+
+export function toolPaletteHash(toolNames: readonly string[]): string {
+  return shortHash([...toolNames].sort().join("\n"));
+}
+
+export function promptCacheKeyFor(tenantId: string, conversationId: string): string {
+  return `subkit-conv-${createHash("sha256").update(`${tenantId}:${conversationId}`).digest("hex").slice(0, 32)}`;
+}
+
+export function withHistoryCacheBreakpoint(
+  messages: ModelMessage[],
+  opts: CacheHintOptions,
+): ModelMessage[] {
+  const last = messages.at(-1);
+  if (!opts.enabled || !last) return messages;
+  const marked = {
+    ...last,
+    providerOptions: {
+      ...last.providerOptions,
+      anthropic: {
+        ...last.providerOptions?.anthropic,
+        cacheControl: { type: "ephemeral", ttl: opts.ttl ?? PROMPT_CACHE_TTL },
+      },
+    },
+  } as ModelMessage;
+  return [...messages.slice(0, -1), marked];
 }

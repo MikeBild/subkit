@@ -54,6 +54,8 @@ async function recordStepUsage(
   state.turnTokensTotal += stepTotalTokens(u);
   state.turnInputTokens += u.inputTokens;
   state.turnCacheReadTokens += u.cacheReadTokens;
+  state.turnCacheCreationTokens += u.cacheCreationTokens;
+  state.turnCacheReported ||= u.cacheReported;
   const stepEndedAt = now();
   const latency_ms = Math.max(0, stepEndedAt - attempt.lastStepEnd);
   attempt.lastStepEnd = stepEndedAt;

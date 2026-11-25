@@ -12,6 +12,12 @@ function group(flow: string, calls: number, prompt: number, cacheRead: number): 
       tokens: { prompt, completion: 0, cache_read: cacheRead, cache_creation: 0, total: prompt },
       latency_ms: latency,
       result: { success: calls },
+      prompt_cache: {
+        reported_calls: 0,
+        reported_prompt_tokens: 0,
+        reported_cache_read_tokens: 0,
+        hit_percent: null,
+      },
     },
   };
 }

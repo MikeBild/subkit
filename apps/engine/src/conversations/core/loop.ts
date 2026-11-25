@@ -267,12 +267,30 @@ export function scanProseChunk(
   };
 }
 
-export function cacheReadUsage(inputTokens: number, cacheReadTokens: number) {
-  const total = inputTokens + cacheReadTokens;
-  if (total <= 0) return {};
+export interface TurnCacheTokens {
+  input_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  cache_reported: boolean;
+}
+
+export interface TurnCacheUsage {
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_reported?: boolean;
+  cache_read_pct?: number;
+}
+
+export function cacheReadUsage(turn: TurnCacheTokens): TurnCacheUsage {
+  const input = Math.max(turn.input_tokens, turn.cache_read_tokens + turn.cache_creation_tokens);
+  if (input <= 0) return {};
   return {
-    cache_read_tokens: cacheReadTokens,
-    cache_read_pct: Math.round((cacheReadTokens / total) * 1000) / 10,
+    cache_read_tokens: turn.cache_read_tokens,
+    cache_creation_tokens: turn.cache_creation_tokens,
+    cache_reported: turn.cache_reported,
+    ...(turn.cache_reported
+      ? { cache_read_pct: Math.round((turn.cache_read_tokens / input) * 1000) / 10 }
+      : {}),
   };
 }
 

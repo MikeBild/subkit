@@ -29563,6 +29563,7 @@ export interface components {
                     result: {
                         [key: string]: number;
                     };
+                    prompt_cache: components["schemas"]["StatsLlmPromptCache"];
                 };
                 cost?: components["schemas"]["StatsLlmPartCost"];
             }[];
@@ -29575,6 +29576,7 @@ export interface components {
                 };
                 tokens: components["schemas"]["StatsTokenAgg"];
                 latency_ms: components["schemas"]["StatsLatencyAgg"];
+                prompt_cache: components["schemas"]["StatsLlmPromptCache"];
             };
             cost: components["schemas"]["StatsLlmCost"];
         };
@@ -29590,6 +29592,16 @@ export interface components {
             currency: string;
             unpriced_calls: number;
             cache_savings: number;
+        };
+        StatsLlmPromptCache: {
+            /** @description Calls whose provider reported prompt-cache figures. */
+            reported_calls: number;
+            /** @description Input tokens of those calls, cached tokens included. */
+            reported_prompt_tokens: number;
+            /** @description Input tokens of those calls read from the provider prompt cache. */
+            reported_cache_read_tokens: number;
+            /** @description Share of input read from the prompt cache over the reporting calls, one decimal; null when no call reported cache figures. */
+            hit_percent: number | null;
         };
         StatsLlmCost: {
             amount: number;

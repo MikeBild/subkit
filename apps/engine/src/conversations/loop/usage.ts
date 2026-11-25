@@ -24,7 +24,7 @@ interface RawStep {
 }
 
 export function stepPromptTokens(u: StepTokens): number {
-  return u.inputTokens + u.cacheReadTokens + u.cacheCreationTokens;
+  return Math.max(u.inputTokens, u.cacheReadTokens + u.cacheCreationTokens);
 }
 
 export function stepTotalTokens(u: StepTokens): number {

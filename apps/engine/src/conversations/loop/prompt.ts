@@ -1,6 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { connectorEndpointSchemas, conversationToolCalls } from "../../db/schema/index.ts";
-import { assembleEnhancedPrompt } from "../../llm/runtime/context-assembler.ts";
+import {
+  assembleEnhancedPrompt,
+  reportAssembledContext,
+} from "../../llm/runtime/context-assembler.ts";
 import { timePhaseAsync } from "../../observability/runtime-telemetry.ts";
 import { validateTenantWorkflowDef } from "../../workflows/tenant-validator.ts";
 import { expandPriorFailuresFromToolCalls } from "../authoring-critic/prior-failures.ts";
@@ -179,5 +182,15 @@ export async function assembleTurnPrompt(
   await appendPlaybookContext(base, prompt);
   if (taskRunMarkerOf(base.ctx))
     appendVolatileSystemContext(prompt, TASK_RUN_UNTRUSTED_CONTENT_NOTE);
+  reportAssembledContext(
+    {
+      tenant_id: p.tenant_id,
+      flow: "converse",
+      max_tokens: route.context_cap,
+      model: seedModel,
+      prior_failure_count: combinedPriorFailures.length,
+    },
+    prompt,
+  );
   return { prompt, activeConnectorId, recentToolCalls };
 }

@@ -37,6 +37,7 @@ class MockProvider {
   calls: MockCall[] = [];
   toolChoices: Array<{ type: string; toolName?: string } | undefined> = [];
   toolPalettes: Array<Array<{ name: string; description: string }>> = [];
+  cachePrefixes: string[] = [];
   failureByModel: Map<string, MockFailure> = new Map();
   generateOverrides: Partial<Record<LlmFlow, (last: string) => unknown>> = {};
   conversePlans: Map<string, ConverseMockStep[]> = new Map();
@@ -52,6 +53,7 @@ class MockProvider {
     this.conversePlans = new Map();
     this.toolChoices = [];
     this.toolPalettes = [];
+    this.cachePrefixes = [];
     this.converseCursors = new Map();
     this.cacheSeenKey = new Set();
     this.defaultCriticPassWarned = false;

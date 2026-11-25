@@ -2,9 +2,14 @@ import { type ModelMessage, streamText, type ToolSet } from "ai";
 import { actorFields } from "../../llm/accounting/index.ts";
 import { isReasoningModel } from "../../llm/runtime/ai-sdk-model.ts";
 import {
+  type CacheBlocks,
+  promptCacheKeyFor,
   promptCacheSupported,
   splitPromptIntoBlocks,
+  stablePrefixHash,
+  toolPaletteHash,
   toSystemMessages,
+  withHistoryCacheBreakpoint,
 } from "../../llm/runtime/cache-blocks.ts";
 import {
   anthropicWebSearchApplies,
@@ -111,6 +116,48 @@ function onAttemptAbort(env: TurnEnv, attempt: Attempt, event: unknown): void {
   });
 }
 
+function attemptProviderOptions(
+  env: TurnEnv,
+  provider: ModelRoute["provider"],
+  cacheSupported: boolean,
+  turnStageReadOnly: boolean,
+) {
+  if (cacheSupported)
+    return { providerOptions: { anthropic: { disableParallelToolUse: !turnStageReadOnly } } };
+  if (provider === "openai")
+    return {
+      providerOptions: {
+        openai: { promptCacheKey: promptCacheKeyFor(env.p.tenant_id, env.p.conversation_id) },
+      },
+    };
+  return {};
+}
+
+function logPromptPrefix(
+  env: TurnEnv,
+  attempt: Attempt,
+  cacheBlocks: CacheBlocks,
+  cacheSupported: boolean,
+): void {
+  const toolNames = Object.keys(attempt.turnTools);
+  logger.info({
+    module: "llm",
+    action: "converse.prompt_prefix",
+    msg: "prompt prefix sent to the provider",
+    conversation_id: env.p.conversation_id,
+    tenant_id: env.p.tenant_id,
+    provider: attempt.provider,
+    model: attempt.modelId,
+    stable_prefix_hash: stablePrefixHash(cacheBlocks),
+    stable_tokens: cacheBlocks.token_counts.stable,
+    volatile_tokens: cacheBlocks.token_counts.volatile,
+    tool_palette_hash: toolPaletteHash(toolNames),
+    tool_count: toolNames.length,
+    cache_breakpoints: cacheSupported ? ["system", "history"] : [],
+    prompt_cache_key: !cacheSupported && attempt.provider === "openai",
+  });
+}
+
 export async function runAttempt(
   env: TurnEnv,
   state: TurnState,
@@ -121,7 +168,7 @@ export async function runAttempt(
   const { p, events, stepRouterSignals } = env;
   await assertConversationTurn(env.abort.signal);
   const startedAt = now();
-  const attemptMessages = prebuiltMessages ?? (await conversationMessages(p));
+  const historyMessages = prebuiltMessages ?? (await conversationMessages(p));
   const resolvedModel = await resolveLanguageModel(provider, modelId, p.tenant_id, p.db);
   const budgetMs = turnBudgetMs(env.budget);
   const firstChunkTimeoutMs = firstChunkTimeoutMsOverride ?? CONVERSE_FIRST_CHUNK_TIMEOUT_MS;
@@ -131,6 +178,10 @@ export async function runAttempt(
     splitPromptIntoBlocks(env.prompt, "converse"),
   );
   const systemMessages = toSystemMessages(cacheBlocks, { enabled: cacheSupported, ttl: "1h" });
+  const attemptMessages = withHistoryCacheBreakpoint(historyMessages, {
+    enabled: cacheSupported,
+    ttl: "1h",
+  });
   events.push({ type: "activity", phase: "composing", label: "composing reply" });
   const toolsByName: Record<string, ConversationTool> = {};
   for (const t of listTools()) toolsByName[t.name] = t;
@@ -167,17 +218,17 @@ export async function runAttempt(
     ? { ...env.tools, web_search: buildAnthropicWebSearchTool(5, p.tenant_id) }
     : env.tools;
   attempt.turnTools = turnTools;
+  logPromptPrefix(env, attempt, cacheBlocks, cacheSupported);
   const result = streamText({
     model: resolvedModel,
     instructions: systemMessages,
     messages: attemptMessages,
     allowSystemInMessages: true,
     tools: turnTools,
+    toolOrder: [],
     toolChoice: turnToolChoice(env.preferredTool, env.forceNoTools),
     reasoning: thinkingDecision.effort,
-    ...(cacheSupported
-      ? { providerOptions: { anthropic: { disableParallelToolUse: !turnStageReadOnly } } }
-      : {}),
+    ...attemptProviderOptions(env, provider, cacheSupported, turnStageReadOnly),
     experimental_repairToolCall: ({ toolCall, tools: callTools, error, messages, system }) => {
       if (attempt.turnRepairCount >= MAX_REPAIRS_PER_TURN) {
         recordConversationRepair({ kind: "capped" });
