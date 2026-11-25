@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { ResolvedPrincipal } from "../../auth/index.ts";
 import type { ConversationDetail } from "../../conversations/types.ts";
 import type { Db } from "../../db/client.ts";
 import { SuggestNextFeedbackBody } from "../../http/routes/conversations/schemas.ts";
@@ -18,6 +19,14 @@ interface FeedbackInput {
 
 export interface ConversationSuggestNextServices {
   getConversation(tenant_id: string, id: string, exec: Db): Promise<ConversationDetail | null>;
+  isConversationReadable(
+    exec: Db,
+    reader: {
+      tenant_id: string;
+      conversation_id: string;
+      principal: ResolvedPrincipal | null | undefined;
+    },
+  ): Promise<boolean>;
 }
 
 function outcomeOf(body: FeedbackBody): "accepted" | "dismissed" | "typed_over" {
@@ -35,7 +44,12 @@ export function conversationSuggestNextOperations(svc: ConversationSuggestNextSe
     effect: "read",
     async handler(scope, { id, body }) {
       if (!scope.principal) return reject.unauthorized();
-      const conv = await svc.getConversation(scope.tenant_id, id, scope.db);
+      const readable = await svc.isConversationReadable(scope.db, {
+        tenant_id: scope.tenant_id,
+        conversation_id: id,
+        principal: scope.principal,
+      });
+      const conv = readable ? await svc.getConversation(scope.tenant_id, id, scope.db) : null;
       if (!conv) {
         return plainRejection(404, "conversation_not_found", "conversation not found");
       }

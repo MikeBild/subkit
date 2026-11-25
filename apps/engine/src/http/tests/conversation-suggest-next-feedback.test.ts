@@ -1,14 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { apiKeys, conversations, roles, systemAccounts } from "../../db/schema/index.ts";
+import { apiKeys, conversations, roles, systemAccounts, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { adminHeaders, seedTenant } from "../../test-helpers/seed.ts";
-import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 let conversation_id: string;
 let scopedKey = "";
 let otherTenantConvId: string;
+let privateConvId: string;
+let memberHeaders: Record<string, string>;
 
 function sha256Hex(v: string): string {
   return createHash("sha256").update(v).digest("hex");
@@ -59,7 +62,32 @@ beforeAll(async () => {
     .values({ tenant_id: otherTenant.id, status: "active" })
     .returning();
   otherTenantConvId = otherConv!.id;
+
+  const [member] = await srv.db
+    .insert(users)
+    .values({
+      tenant_id: srv.tenantId,
+      email: "feedback-member@test.local",
+      role_id: await builtinRoleId(srv.db, "member"),
+    })
+    .returning();
+  if (!member) throw new Error("missing member fixture");
+  memberHeaders = await browserSessionHeaders(srv, member.id);
+  const [privateConv] = await srv.db
+    .insert(conversations)
+    .values({ tenant_id: srv.tenantId, status: "active", owner_id: member.id, title: "secret" })
+    .returning();
+  privateConvId = privateConv!.id;
 });
+
+async function sendFeedback(id: string, headers: Record<string, string>) {
+  const res = await fetch(`${srv.baseUrl}/v1/conversations/${id}/suggest-next/feedback`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ accepted: true, source: "right-arrow" }),
+  });
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
 
 afterAll(async () => {
   await srv.cleanup();
@@ -119,6 +147,17 @@ describe("POST /v1/conversations/:id/suggest-next/feedback (RBAC + tenant + Zod)
       },
     );
     expect(res.status).toBe(404);
+  });
+
+  test("a foreign private conversation answers like a missing one, the owner gets 200", async () => {
+    const hidden = await sendFeedback(privateConvId, adminHeaders(srv.apiKey));
+    const missing = await sendFeedback(crypto.randomUUID(), adminHeaders(srv.apiKey));
+    expect(hidden.status).toBe(404);
+    expect(missing.status).toBe(404);
+    const { request_id: _hiddenRequest, ...hiddenBody } = hidden.body;
+    const { request_id: _missingRequest, ...missingBody } = missing.body;
+    expect(hiddenBody).toEqual(missingBody);
+    expect((await sendFeedback(privateConvId, memberHeaders)).status).toBe(200);
   });
 
   test("missing `source` → 400 (Zod boundary)", async () => {
