@@ -33,8 +33,20 @@ const sentenceCount = (paragraph: string) => paragraph.split(/(?<=[.!?])\s+/u).l
 const goal = "Is the final synthetic inventory result correct";
 
 describe("task guide on result questions of a run", () => {
-  test("the engine holds back only a normalized word-for-word repeat of the goal", () => {
-    const reserved = { goal, result_question: null };
+  test("the engine holds back result-step bindings and normalized goal or confirmation questions", () => {
+    const reserved = { goal, result_question: "Does this result meet your expectations?" };
+    expect(
+      asksForTheTaskRunResult(
+        { playbook_step_id: "confirm-result", question: "Which inventory?" },
+        reserved,
+      ),
+    ).toBe(true);
+    expect(
+      asksForTheTaskRunResult(
+        { question: "  DOES this result meet your expectations?! " },
+        reserved,
+      ),
+    ).toBe(true);
     expect(
       asksForTheTaskRunResult(
         { question: "  is the FINAL synthetic inventory result correct?! " },
@@ -55,9 +67,11 @@ describe("task guide on result questions of a run", () => {
     );
   });
 
-  test("the English guide states the word-for-word limit and that paraphrases can get through", () => {
+  test("the English guide states all suppression rules and that paraphrases can get through", () => {
     const paragraph = resultReadyParagraph(englishGuide, englishAccept, englishReview);
-    expect(paragraph).toContain("only when it repeats the goal of the task word for word");
+    expect(paragraph).toContain("bound to the reserved `confirm-result` step");
+    expect(paragraph).toContain("matches that step’s confirmation question");
+    expect(paragraph).toContain("repeats the goal of the task word for word");
     expect(paragraph).toContain("A question that asks the same in other words can still reach you");
     expect(paragraph).toContain(`only **${englishAccept}** under **${englishReview}** does`);
   });
@@ -67,7 +81,8 @@ describe("task guide on result questions of a run", () => {
     expect(germanReview.length).toBeGreaterThan(0);
     const englishParagraph = resultReadyParagraph(englishGuide, englishAccept, englishReview);
     const germanParagraph = resultReadyParagraph(germanGuide, germanAccept, germanReview);
-    expect(germanParagraph).not.toBe("");
+    expect(germanParagraph).toContain("`confirm-result`");
+    expect(germanParagraph).toContain("Best\u00e4tigungsfrage");
     expect(sentenceCount(germanParagraph)).toBe(sentenceCount(englishParagraph));
   });
 });
