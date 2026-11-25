@@ -2,8 +2,8 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
-export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "83b87b6ed3bfedb06de2389308a3b3b865e76702",
+export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
+  "source": "ec4ae3cc74b22d276f8b9532fceb7ba37251c4e5",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2325,11 +2325,7 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "Top-level pages in the Cockpit and in SubKit Desktop no longer repeat the menu name as a big heading.",
         "Skipped steps read as skipped, not as failures, and failed sign-ins to connectors log the provider's reason.",
         "SubKit is open source: contributing guide, code of conduct, issue forms and private security reports on GitHub.",
-        "The README, the documentation and the website describe SubKit in the same words.",
-        "show browser page refusals as a page, not JSON",
-        "open every browser page while signed in to the Cockpit",
-        "let the desktop sign-in page open in a signed-in browser",
-        "say which files a storage step may access"
+        "The README, the documentation and the website describe SubKit in the same words."
       ]
     },
     {
@@ -2388,18 +2384,23 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "MCP clients that accept every offered scope keep full access for admins again; vault, connector and role tools deny consistently under a narrow grant.",
         "Connector credentials name their environment: `subkit vault attach <slug> --env prod`, a diagnosis opens the right credentials form, and promote fills an existing production connector.",
         "Desktop keeps one queued restart while an update installs; old `sk` agent hooks are migrated to `subkit`.",
-        "More than 170 fixes from a full end-user QA pass across Cockpit, CLI, MCP, connectors, schedules, tasks and docs.",
-        "inbox list/ack emit one JSON document (#513)",
-        "atomic files download with clean path errors (#603, #592)",
-        "branding form keeps saved name (#647)",
-        "read price decimals in reader locale (#508)",
-        "keep every repeated --input-file and --attach (#608)",
-        "ignore headings in tilde fences (#562)",
-        "wordmark shows saved branding name (#523)",
-        "logs --json emits NDJSON (#527)",
-        "approval expiry says today on same local day (#556)",
-        "request steps name their protocol as a discriminated union",
-        "remove the loop step kind in favor of for_each"
+        "More than 170 fixes from a full end-user QA pass across Cockpit, CLI, MCP, connectors, schedules, tasks and docs."
+      ]
+    },
+    {
+      "version": "v13.0.1",
+      "notes": [],
+      "highlights": [
+        "SubKit Desktop for 13.0: this release ships the macOS app for everything in 13.0.0.",
+        "Security scans are clean again: a placeholder SFTP host key no longer looks like a secret, and a template URL check no longer trips the code scanner."
+      ]
+    },
+    {
+      "version": "v13.0.2",
+      "notes": [],
+      "highlights": [
+        "The Mac download and the desktop update always point at a release that has the Mac app. If the app for a new release is missing, the previous complete release stays the latest one.",
+        "A file you upload stays available for a day before cleanup can remove it, even when nothing links to it yet, so a chat or workflow that picks it up a little later still finds it."
       ]
     }
   ],
@@ -2407,5 +2408,96 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     "version": null,
     "notes": [],
     "highlights": null
+  },
+  "highlights": {
+    "12.1.0": [
+      "SubKit Desktop runs on Macs with Apple Silicon (macOS 13 or later) and on Windows x64, with a menu bar or tray icon that shows what needs you, a quick note and a drop sheet for files. Create a workspace or join one from an invitation right in the app, and download it from the latest release.",
+      "SubKit works on your Mac: with files in folders you allow, on websites in a browser of its own and, through computer use, in apps you allow. The live view shows every step with a redacted screenshot, and ⌘⇧⎋ stops it at any time.",
+      "Your request decides what runs without a question; with “Always ask first” every step that writes asks you. In chat, a typed yes, no or option answers an open question, and a task shows the chat message it came from.",
+      "The vault keeps API keys, logins and connector credentials in one place, encrypted. The AI never sees a value, and every use is in the audit trail.",
+      "One monthly AI budget in US dollars, $50 for a new workspace. At 100%, chat, tasks and model steps pause; workflows without a model step keep running.",
+      "Run a workspace entirely on your Mac with your own AI key or a local model server, and move it to a server later.",
+      "A workspace language for texts that go to no particular person, and a bug report you can send before you sign in.",
+      "Hardened against 50 code-scanning findings: safer file access, release builds only from verified commits, and stricter input handling."
+    ],
+    "12.1.1": [
+      "SubKit Desktop runs on Macs with Apple Silicon (macOS 13 or later) and on Windows x64, with a menu bar or tray icon that shows what needs you, a quick note and a drop sheet for files. Create a workspace or join one from an invitation right in the app, and download it from the latest release.",
+      "SubKit works on your Mac: with files in folders you allow, on websites in a browser of its own and, through computer use, in apps you allow. The live view shows every step with a redacted screenshot, and ⌘⇧⎋ stops it at any time.",
+      "Your request decides what runs without a question; with “Always ask first” every step that writes asks you. In chat, a typed yes, no or option answers an open question, and a task shows the chat message it came from.",
+      "The vault keeps API keys, logins and connector credentials in one place, encrypted. The AI never sees a value, and every use is in the audit trail.",
+      "One monthly AI budget in US dollars, $50 for a new workspace. At 100%, chat, tasks and model steps pause; workflows without a model step keep running.",
+      "Run a workspace entirely on your Mac with your own AI key or a local model server, and move it to a server later.",
+      "A workspace language for texts that go to no particular person, and a bug report you can send before you sign in.",
+      "Hardened against 50 code-scanning findings: safer file access, release builds only from verified commits, and stricter input handling."
+    ],
+    "12.1.2": [
+      "SubKit Desktop runs on Macs with Apple Silicon (macOS 13 or later) and on Windows x64, with a menu bar or tray icon that shows what needs you, a quick note and a drop sheet for files. Create a workspace or join one from an invitation right in the app, and download it from the latest release.",
+      "SubKit works on your Mac: with files in folders you allow, on websites in a browser of its own and, through computer use, in apps you allow. The live view shows every step with a redacted screenshot, and ⌘⇧⎋ stops it at any time.",
+      "Your request decides what runs without a question; with “Always ask first” every step that writes asks you. In chat, a typed yes, no or option answers an open question, and a task shows the chat message it came from.",
+      "The vault keeps API keys, logins and connector credentials in one place, encrypted. The AI never sees a value, and every use is in the audit trail.",
+      "One monthly AI budget in US dollars, $50 for a new workspace. At 100%, chat, tasks and model steps pause; workflows without a model step keep running.",
+      "Run a workspace entirely on your Mac with your own AI key or a local model server, and move it to a server later.",
+      "A workspace language for texts that go to no particular person, and a bug report you can send before you sign in.",
+      "Hardened against 50 code-scanning findings: safer file access, release builds only from verified commits, and stricter input handling."
+    ],
+    "12.1.3": [
+      "When something goes wrong, SubKit says what and what to do next: SubKit Desktop keeps a log in ~/Library/Logs/SubKit, shows a clear screen if it cannot start, and copies a redacted diagnostics bundle with one click.",
+      "The engine names the boot phase that failed and the next step; `subkit doctor` checks reachability, version, sign-in and config, and `--verbose` shows every request with its trace id.",
+      "In the Cockpit, Help › “Send diagnostics” sends a bug report with diagnostics, and every error shows its real trace id.",
+      "SubKit Desktop for Mac is signed, notarized and checked with a launch test before every release.",
+      "Fresh screenshots in the docs show the vault, the AI budget, “Always ask first”, the live view and local permissions."
+    ],
+    "12.1.4": [
+      "SubKit Desktop signs in even when the browser is already signed in to the Cockpit, and every browser page of SubKit opens without a workspace error.",
+      "“Report a problem” in SubKit Desktop now sends the report, with redacted diagnostics attached, even before you sign in.",
+      "SubKit Desktop starts with SubKit Cloud prefilled, and the installer window stays clean even when Finder shows hidden files.",
+      "Top-level pages in the Cockpit and in SubKit Desktop no longer repeat the menu name as a big heading.",
+      "Skipped steps read as skipped, not as failures, and failed sign-ins to connectors log the provider's reason.",
+      "SubKit is open source: contributing guide, code of conduct, issue forms and private security reports on GitHub.",
+      "The README, the documentation and the website describe SubKit in the same words."
+    ],
+    "12.1.5": [
+      "SubKit Desktop and the Cockpit no longer show “Server offline” while connected: the live event stream works for every signed-in workspace.",
+      "Connected and offline now come from one source, so the status in the top bar and the notice on a page always agree.",
+      "“Report a problem” in the Cockpit attaches the redacted diagnostics and the trace id of the failing request, and confirms that the report arrived.",
+      "SubKit Desktop asks macOS for screen recording and accessibility before it opens System Settings, so SubKit now appears in both lists.",
+      "After the first setup, SubKit Desktop shows your connected server, permissions and device status at a glance, and back and close always lead where you came from."
+    ],
+    "12.1.6": [
+      "Actions under “Needs you” in SubKit Desktop and installed Cockpit apps open the right page again instead of “This page does not exist”.",
+      "A new release becomes “latest” only once its desktop files are attached, so downloads and desktop updates never point at a release without them.",
+      "SubKit Desktop reports “You're on the latest version” when no update is published yet, instead of a network error, and logs the checked address."
+    ],
+    "13.0.0": [
+      "The `loop` step kind is removed. Use “for each” instead: simple loops are converted automatically, any other loop shows exactly how to rewrite it.",
+      "Request steps that do not speak HTTP name their protocol: `graphql`, `sql`, `s3`, `sftp` or `mcp`.",
+      "Workflows that already use a model step need to be approved again after the update.",
+      "Personal notes: SubKit remembers what you tell it, privately for you. Only you can see them, admins included. You can switch learning off, say “remember this”, ask “How do you know this?” and edit, confirm, archive, forget or export every note.",
+      "Knowledge search finds German questions in German sources, cites its sources under every answer and searches smaller passages more precisely.",
+      "What the assistant collects lands in the intake first; duplicates are merged, related items are grouped, you can work through them in bulk, and sources ask for review when they are due.",
+      "Content from websites, connectors, files and tool results is marked as untrusted everywhere and can never create notes or team knowledge on its own.",
+      "A run interrupted by a restart resumes at the next step instead of starting over. If a write may or may not have reached the other system, the run waits as “uncertain” and you decide whether it happened.",
+      "Stopped workflows name the concrete reason: approval expired, used up, revoked or changed. “Always ask” also applies in tasks, every confirmation shows the sentence of yours it relies on, and held runs can be approved or declined from Slack.",
+      "Self-healing now proposes instead of applying on its own. You review each change separately, test your selection first and approve only what was tested.",
+      "Secrets, approvals, webhooks and subscriptions are additionally protected by row-level security per workspace.",
+      "Model steps call your workspace AI model with structured output. The approval shows which step data goes to the model and how many tokens it may use, and a new model step always needs a new approval.",
+      "Parse files in a workflow: CSV, Excel, PDF, Word and ZIP. CSV exports with semicolons or Windows encoding are read correctly, and long files report how many rows were cut.",
+      "SFTP connectors sign in with a password or with an SSH key from the vault. The key never appears in settings, logs or answers.",
+      "Every connector template ships with a tested contract.",
+      "Live progress in chat and schedules, the projected monthly cost of every schedule before you approve it, and run results that link to the changed record in GitHub, Notion, Stripe, Google and more.",
+      "Cockpit, CLI and SubKit Desktop show the same run states and reasons, and you can snooze items under “Needs you”.",
+      "MCP clients that accept every offered scope keep full access for admins again; vault, connector and role tools deny consistently under a narrow grant.",
+      "Connector credentials name their environment: `subkit vault attach <slug> --env prod`, a diagnosis opens the right credentials form, and promote fills an existing production connector.",
+      "Desktop keeps one queued restart while an update installs; old `sk` agent hooks are migrated to `subkit`.",
+      "More than 170 fixes from a full end-user QA pass across Cockpit, CLI, MCP, connectors, schedules, tasks and docs."
+    ],
+    "13.0.1": [
+      "SubKit Desktop for 13.0: this release ships the macOS app for everything in 13.0.0.",
+      "Security scans are clean again: a placeholder SFTP host key no longer looks like a secret, and a template URL check no longer trips the code scanner."
+    ],
+    "13.0.2": [
+      "The Mac download and the desktop update always point at a release that has the Mac app. If the app for a new release is missing, the previous complete release stays the latest one.",
+      "A file you upload stays available for a day before cleanup can remove it, even when nothing links to it yet, so a chat or workflow that picks it up a little later still finds it."
+    ]
   }
 };
