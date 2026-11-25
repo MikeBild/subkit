@@ -187,7 +187,7 @@ describe("no request body can set the run marker or a requested check", () => {
           content: { text: "first" },
         })
         .returning({ id: conversationMessages.id });
-      const res = await admin(
+      const res = await call(ownerHeaders)(
         "POST",
         `/v1/conversations/${source}/fork-from-message/${message!.id}`,
         SMUGGLED,
