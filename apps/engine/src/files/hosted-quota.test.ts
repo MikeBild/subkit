@@ -97,6 +97,25 @@ test("soft-deleted and failed files remain charged and revive consumes no extra 
   expect(await tdb.db.select().from(files).where(eq(files.tenant_id, tenant))).toHaveLength(1);
 });
 
+test("new rows matching retained deleted content still consume hosted byte quota", async () => {
+  const tenant = await fixture();
+  const values = {
+    tenant_id: tenant,
+    filename: "retained-hash",
+    size_bytes: 6,
+    storage_uri: `s3://fixture/${tenant}/retained-hash`,
+    sha256: "retained-hash",
+    status: "ready" as const,
+  };
+  const row = await insertFileRow(tdb.db, values);
+  await tdb.db
+    .update(files)
+    .set({ deleted_at: new Date(FROZEN_NOW) })
+    .where(eq(files.id, row.id));
+  await expect(insertFileRow(tdb.db, values)).rejects.toBeInstanceOf(HostedFileQuotaError);
+  expect(await tdb.db.select().from(files).where(eq(files.tenant_id, tenant))).toHaveLength(1);
+});
+
 test("identical inline content is deduplicated without creating another reservation", async () => {
   const tenant = await fixture();
   const input = {
