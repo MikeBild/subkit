@@ -1,3 +1,5 @@
+import { MAX_INLINE_BYTES } from "@shared/files-constants.ts";
+
 export const INTAKE_FILE_TYPES = {
   "application/pdf": "binary",
   "image/png": "binary",
@@ -12,9 +14,11 @@ export const INTAKE_FILE_TYPES = {
 
 export type IntakeFileType = keyof typeof INTAKE_FILE_TYPES;
 
+export const INTAKE_FILE_BODY_MAX_CHARS = MAX_INLINE_BYTES;
+
 export type IntakeFileCheck =
   | { ok: true; content_type: IntakeFileType; text: string | null }
-  | { ok: false; reason: "unsupported_file_type" | "content_type_mismatch" };
+  | { ok: false; reason: "unsupported_file_type" | "content_type_mismatch" | "too_large" };
 
 function startsWith(bytes: Uint8Array, signature: readonly number[], offset = 0): boolean {
   return signature.every((byte, i) => bytes[offset + i] === byte);
@@ -55,6 +59,7 @@ export function checkIntakeFile(declared: string, bytes: Uint8Array): IntakeFile
       ? { ok: true, content_type: type, text: null }
       : { ok: false, reason: "content_type_mismatch" };
   }
+  if (bytes.byteLength > INTAKE_FILE_BODY_MAX_CHARS) return { ok: false, reason: "too_large" };
   const text = decodeUtf8(bytes);
   if (text === null || text.includes("\u0000") || ACTIVE_TEXT.test(text))
     return { ok: false, reason: "content_type_mismatch" };
