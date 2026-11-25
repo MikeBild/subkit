@@ -5,7 +5,7 @@ type Run = components["schemas"]["TaskRun"];
 
 export type WaitingReason = NonNullable<Run["waiting_reason"]>;
 export type WaitingParty = "you" | "budget" | "ai_access";
-export type WaitingAction = "answer" | "continue" | "usage" | "ai_access";
+export type WaitingAction = "answer" | "continue" | "usage" | "ai_access" | "stop";
 
 export interface WaitingView {
   party: WaitingParty;
@@ -23,6 +23,11 @@ const WAITING: Record<WaitingReason, WaitingView> = {
   },
   no_progress: { party: "you", line: "tasks.strip.waiting.no_progress", action: "continue" },
   turn_stopped: { party: "you", line: "tasks.strip.waiting.turn_stopped", action: "continue" },
+  conversation_abandoned: {
+    party: "you",
+    line: "tasks.strip.waiting.conversation_abandoned",
+    action: "stop",
+  },
   budget: { party: "budget", line: "tasks.strip.waiting.budget", action: "usage" },
   ai_access: { party: "ai_access", line: "tasks.strip.waiting.ai_access", action: "ai_access" },
 };
@@ -89,6 +94,7 @@ const REASON_KEYS: Record<WaitingReason, TranslationKey> = {
   question_expired: "tasks.reason.question_expired",
   no_progress: "tasks.reason.no_progress",
   turn_stopped: "tasks.reason.turn_stopped",
+  conversation_abandoned: "tasks.reason.conversation_abandoned",
   budget: "tasks.reason.budget",
   ai_access: "tasks.reason.ai_access",
 };

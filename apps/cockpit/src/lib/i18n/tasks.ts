@@ -108,6 +108,8 @@ export const tasksEn = {
   "tasks.strip.waiting.ai_access":
     "The run is waiting for AI access and continues on its own once it is set up.",
   "tasks.strip.waiting.turn_stopped": "The run is on hold and waits for you.",
+  "tasks.strip.waiting.conversation_abandoned":
+    "The conversation was abandoned, so the run could not ask its question. Stop the run and start the task again.",
   "tasks.strip.waiting.quoted": "Waiting for you: “{question}”",
   "tasks.strip.result_ready": "The result is ready for you.",
   "tasks.strip.failed": "The last run failed.",
@@ -313,6 +315,7 @@ export const tasksEn = {
   "tasks.reason.question_expired": "question unanswered",
   "tasks.reason.no_progress": "no progress",
   "tasks.reason.turn_stopped": "on hold",
+  "tasks.reason.conversation_abandoned": "conversation abandoned",
   "tasks.reason.budget": "AI allowance",
   "tasks.reason.ai_access": "AI access",
 } as const;
@@ -429,6 +432,8 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.strip.waiting.ai_access":
     "Der Run wartet auf den KI-Zugang und läuft von selbst weiter, sobald er eingerichtet ist.",
   "tasks.strip.waiting.turn_stopped": "Der Run ist angehalten und wartet auf dich.",
+  "tasks.strip.waiting.conversation_abandoned":
+    "Die Unterhaltung wurde abgebrochen, deshalb konnte der Run seine Frage nicht stellen. Brich den Run ab und starte die Aufgabe neu.",
   "tasks.strip.waiting.quoted": "Wartet auf dich: „{question}“",
   "tasks.strip.result_ready": "Das Ergebnis liegt für dich bereit.",
   "tasks.strip.failed": "Der letzte Run ist fehlgeschlagen.",
@@ -639,6 +644,7 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.reason.question_expired": "Rückfrage unbeantwortet",
   "tasks.reason.no_progress": "kein Fortschritt",
   "tasks.reason.turn_stopped": "angehalten",
+  "tasks.reason.conversation_abandoned": "Unterhaltung abgebrochen",
   "tasks.reason.budget": "KI-Kontingent",
   "tasks.reason.ai_access": "KI-Zugang",
 };

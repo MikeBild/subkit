@@ -449,6 +449,7 @@ function stripAction(
     allow(): void;
     resume(): void;
     resuming: boolean;
+    stop(): void;
   },
 ): ActionSpec | undefined {
   if (!status.action) return undefined;
@@ -481,6 +482,10 @@ function stripAction(
   if (status.action === "allow")
     return permissions.includes("task:grant")
       ? { label, variant: "primary", onClick: act.allow, testId }
+      : undefined;
+  if (status.action === "stop")
+    return permissions.includes("task_run:abort")
+      ? { label, variant: "primary", onClick: act.stop, testId }
       : undefined;
   return permissions.includes("task:resume")
     ? { label, variant: "primary", onClick: act.resume, pending: act.resuming, testId }
@@ -790,6 +795,7 @@ export function TaskDetail({
           allow: () => setGranting(true),
           resume: () => resume.mutate(),
           resuming: resume.isPending,
+          stop: () => confirmation.ask("stop"),
         }),
       }}
       notice={

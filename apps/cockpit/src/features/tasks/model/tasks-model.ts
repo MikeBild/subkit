@@ -218,6 +218,7 @@ const ACTION_KEYS: Record<TaskAction, TranslationKey> = {
   review: "tasks.action.review",
   allow: "tasks.action.allow",
   resume: "tasks.action.resume",
+  stop: "tasks.menu.stop",
 };
 
 export function actionKey(action: TaskAction): TranslationKey {

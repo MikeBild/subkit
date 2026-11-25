@@ -168,6 +168,7 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   budget_exhausted: "audit.reason.taskBudget",
   question_expired: "audit.reason.taskQuestionExpired",
   turn_stopped: "audit.reason.taskTurnStopped",
+  conversation_abandoned: "audit.reason.taskConversationAbandoned",
   ai_access: "audit.reason.taskAiAccess",
   ai_access_missing: "audit.reason.taskAiAccess",
   grant_required: "audit.reason.taskGrantRequired",

@@ -97,10 +97,11 @@ describe("what a waiting run waits for", () => {
       ["question_expired", "dich", "Antworten"],
       ["no_progress", "dich", "Fortsetzen"],
       ["turn_stopped", "dich", "Fortsetzen"],
+      ["conversation_abandoned", "dich", "Run abbrechen"],
       ["budget", "KI-Kontingent", "Nutzung ansehen"],
       ["ai_access", "KI-Zugang", "KI-Zugang einrichten"],
     ]);
-    expect(new Set(WAITING_REASONS.map((reason) => status(reason).line)).size).toBe(7);
+    expect(new Set(WAITING_REASONS.map((reason) => status(reason).line)).size).toBe(8);
     expect(en(actionKey("usage"))).toBe("View usage");
     expect(en(actionKey("ai_access"))).toBe("Set up AI access");
     expect(en(actionKey("continue"))).toBe("Resume");
