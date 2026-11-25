@@ -6,12 +6,14 @@ import { errorFields, logger } from "../logging/index.ts";
 import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
 import { runAuthorityHoldReasonsBackfill } from "./authority-hold-backfill.ts";
 import { createMigrationDbFromUrl, type Db } from "./client.ts";
+import { RLS_SCOPE_SETTING } from "./core/tenant-scope.ts";
 import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
 import * as schema from "./schema/index.ts";
 import { ensureTenantRowSecurity } from "./tenant-role-preflight.ts";
+import { withSystemScope } from "./tenant-scope.ts";
 
 interface MigrationReport {
   applied: number;
@@ -87,7 +89,6 @@ interface JournalRow {
   tag: string | null;
 }
 
-const TENANT_ROW_SECURITY_TAG = "0007_tenant_row_security";
 const MIGRATION_LOCK_KEY = 776_644_2026;
 
 export const SQUASHED_CHAIN_HEAD_TAG = "0023_drop_chat_mode";
@@ -176,8 +177,7 @@ export async function runMigrationsFromUrl(
   const { pool, db } = createMigrationDbFromUrl(url);
   try {
     const report = await runMigrations(db, migrations);
-    const rowSecurity = migrations.find((m) => m.tag === TENANT_ROW_SECURITY_TAG);
-    if (rowSecurity) await ensureTenantRowSecurity(pool, rowSecurity.statements.join("\n"));
+    await ensureTenantRowSecurity(pool);
     return report;
   } finally {
     await pool.end();
@@ -271,6 +271,7 @@ async function applyMigrations(
     const migStartedAt = Date.now();
     await db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL search_path = subkit, pg_catalog, public`);
+      await tx.execute(sql`SELECT set_config(${RLS_SCOPE_SETTING}, 'system', true)`);
       for (const stmt of m.statements) {
         await tx.execute(sql.raw(stmt));
       }
@@ -295,7 +296,7 @@ async function applyMigrations(
   await db.execute(sql`SELECT set_config('search_path', 'subkit,pg_catalog,public', false)`);
 
   try {
-    await runInboxNonActionablePurge(db);
+    await withSystemScope(db, "inbox non-actionable purge", (tx) => runInboxNonActionablePurge(tx));
   } catch (err) {
     logger.error({
       module: "db",
@@ -305,7 +306,9 @@ async function applyMigrations(
     });
   }
   try {
-    await runAuthorityHoldReasonsBackfill(db);
+    await withSystemScope(db, "authority hold reason backfill", (tx) =>
+      runAuthorityHoldReasonsBackfill(tx),
+    );
   } catch (err) {
     logger.error({
       module: "db",
@@ -315,7 +318,7 @@ async function applyMigrations(
     });
   }
   try {
-    await runMetricsScopeBackfill(db);
+    await withSystemScope(db, "metrics scope backfill", (tx) => runMetricsScopeBackfill(tx));
   } catch (err) {
     logger.error({
       module: "db",
@@ -325,7 +328,9 @@ async function applyMigrations(
     });
   }
   try {
-    await runContextNoteFactsBackfill(db);
+    await withSystemScope(db, "context note facts backfill", (tx) =>
+      runContextNoteFactsBackfill(tx),
+    );
   } catch (err) {
     logger.error({
       module: "db",
@@ -336,7 +341,9 @@ async function applyMigrations(
   }
 
   try {
-    const cutover = await cutOverLearningCandidates(db);
+    const cutover = await withSystemScope(db, "learning candidate cutover", (tx) =>
+      cutOverLearningCandidates(tx),
+    );
     if (cutover.collected + cutover.dropped > 0)
       logger.info({
         module: "db",

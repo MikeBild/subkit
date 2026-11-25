@@ -27,6 +27,7 @@ import sql0006KnowledgeReviewDue from "./0006_knowledge_review_due.sql" with { t
 import sql0007TenantRowSecurity from "./0007_tenant_row_security.sql" with { type: "text" };
 import sql0008NotificationChannelFloor from "./0008_notification_channel_floor.sql" with { type: "text" };
 import sql0009ConversationVisibility from "./0009_conversation_visibility.sql" with { type: "text" };
+import sql0010TenantRowSecurityForce from "./0010_tenant_row_security_force.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -61,6 +62,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0007_tenant_row_security": sql0007TenantRowSecurity,
   "0008_notification_channel_floor": sql0008NotificationChannelFloor,
   "0009_conversation_visibility": sql0009ConversationVisibility,
+  "0010_tenant_row_security_force": sql0010TenantRowSecurityForce,
 };
 
 const journal = journalMeta as unknown as Journal;

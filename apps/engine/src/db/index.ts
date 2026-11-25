@@ -254,7 +254,8 @@ export {
   readTenantRoleFacts,
   tenantRolePreflight,
 } from "./tenant-role-preflight.ts";
-export { withTenantScope } from "./tenant-scope.ts";
+export type { ScopedTx } from "./tenant-scope.ts";
+export { withRowScope, withSystemScope, withTenantScope } from "./tenant-scope.ts";
 export { isTransientDbError, retryTransient } from "./transient.ts";
 export {
   renderVaultStockSql,
