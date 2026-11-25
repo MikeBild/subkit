@@ -1,5 +1,5 @@
 import { open } from "node:fs/promises";
-import { extname, isAbsolute, resolve } from "node:path";
+import { basename, extname, isAbsolute, resolve } from "node:path";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -113,7 +113,7 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
       } finally {
         await handle.close();
       }
-      const name = abs.split("/").pop() ?? ingestPath;
+      const name = basename(abs) || ingestPath;
       const mime = mimeFor(name);
       await client.createKnowledgeSource({ name, content, mime_type: mime });
       setActionFlash(`ingested ${name} (${content.length} bytes, ${mime})`);

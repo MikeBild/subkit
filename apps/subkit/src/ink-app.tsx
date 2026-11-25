@@ -21,6 +21,7 @@ import {
   usePromptHistory,
   useSecretRedirect,
 } from "./ink-app/composer-state.ts";
+import { dictationInsertText } from "./ink-app/dictation-state.ts";
 import { renderElicitAnswer } from "./ink-app/elicit-transcript.ts";
 import { PaneHost } from "./ink-app/panes.tsx";
 import {
@@ -39,6 +40,7 @@ import {
   StatusBar,
 } from "./ink-app/transcript-cells.tsx";
 import type { InkAppProps, TranscriptMode } from "./ink-app/types.ts";
+import { useDictation } from "./ink-app/use-dictation.ts";
 import { useNotices, usePendingElicitationNotice } from "./ink-app/use-notices.ts";
 import { useOAuthAutoResume } from "./ink-app/use-oauth-auto-resume.ts";
 import { useStatusLine } from "./ink-app/use-status-line.ts";
@@ -511,6 +513,20 @@ export const InkApp: React.FC<InkAppProps> = ({
   );
   const showWelcomeActions =
     session.messages.length === 0 && input.value.length === 0 && pane === null && !launcherOpen;
+  const insertDictation = useCallback(
+    (transcript: string) =>
+      setInput((prev) => {
+        const text = dictationInsertText(prev.value, prev.cursor, transcript);
+        return text ? applyInput(prev, { type: "insert", text }) : prev;
+      }),
+    [setInput],
+  );
+  const dictation = useDictation({
+    engineClient,
+    insertText: insertDictation,
+    showInfo,
+    showError,
+  });
 
   useComposerKeys({
     input,
@@ -548,6 +564,7 @@ export const InkApp: React.FC<InkAppProps> = ({
     starterTaskActions,
     mentionSpec,
     showInfo,
+    dictation,
   });
 
   const welcomeRow = (
@@ -688,6 +705,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       <PendingPasteRefs items={pendingPasteRefs} />
 
       <Composer input={input} busy={busy} />
+      {dictation.statusLine ? <Text color="red">{dictation.statusLine}</Text> : null}
 
       <Footer
         user={statusSnapshot?.user.email ?? statusSnapshot?.user.id ?? persona.label}
