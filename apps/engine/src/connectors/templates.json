@@ -18230,9 +18230,15 @@
             },
             {
               "kind": "transform",
+              "id": "page_input",
+              "language": "javascript",
+              "expression": "return { html: input.scope.fetch.data, url: input.input.url };"
+            },
+            {
+              "kind": "transform",
               "id": "to_markdown",
               "language": "html-to-markdown",
-              "input_from": "fetch.data"
+              "input_from": "page_input.data"
             }
           ],
           "output_transform": "to_markdown"
@@ -18280,9 +18286,15 @@
             },
             {
               "kind": "transform",
+              "id": "page_input",
+              "language": "javascript",
+              "expression": "return { html: input.scope.fetch.data, url: input.input.url };"
+            },
+            {
+              "kind": "transform",
               "id": "readable",
               "language": "readability",
-              "input_from": "fetch.data"
+              "input_from": "page_input.data"
             },
             {
               "kind": "transform",
@@ -18366,10 +18378,16 @@
             },
             {
               "kind": "transform",
+              "id": "page_inputs",
+              "language": "javascript",
+              "expression": "return input.scope.fetch_page.data.map((entry, index) => ({ html: entry.fetch_page.data, url: input.scope.urls.data[index].page_url }));"
+            },
+            {
+              "kind": "transform",
               "id": "readable",
-              "for_each": "(sourceData) => sourceData.fetch_page.data",
+              "for_each": "(sourceData) => sourceData.page_inputs.data",
               "language": "readability",
-              "input_from": "$item.fetch_page.data"
+              "input_from": "$item"
             },
             {
               "kind": "transform",
