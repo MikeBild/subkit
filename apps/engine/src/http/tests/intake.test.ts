@@ -280,6 +280,37 @@ describe("intake HTTP flow", () => {
     expect((await request("/v1/intake/items?origin=llm", "GET")).status).toBe(400);
   });
 
+  test("accepts an RFC 3339 captured_at with an offset and stores the UTC instant", async () => {
+    const offsetNote = {
+      client_request_id: "10000000-0000-4000-8000-000000000092",
+      category: "notes",
+      title: "Résumé – 日本語 note ✓",
+      captured_at: "2026-10-25T02:30:00+02:00",
+      body: "# Heading\n\n- **bold** item\n- `code` item",
+    };
+    const collected = await request("/v1/intake/items", "POST", offsetNote);
+    expect(collected.status).toBe(201);
+    const note = (await collected.json()) as {
+      id: string;
+      original_snapshot: { captured_at: string };
+    };
+    expect(note.original_snapshot.captured_at).toBe("2026-10-25T00:30:00.000Z");
+
+    const readBack = await request(`/v1/intake/items/${note.id}`, "GET");
+    expect(readBack.status).toBe(200);
+    expect(
+      ((await readBack.json()) as { original_snapshot: { captured_at: string } }).original_snapshot
+        .captured_at,
+    ).toBe("2026-10-25T00:30:00.000Z");
+
+    const replayed = await request("/v1/intake/items", "POST", {
+      ...offsetNote,
+      captured_at: "2026-10-25T00:30:00.000Z",
+    });
+    expect([200, 201]).toContain(replayed.status);
+    expect(((await replayed.json()) as { id: string }).id).toBe(note.id);
+  });
+
   test("rejects category values outside the knowledge metadata contract", async () => {
     for (const category of ["Mission Reports", "mission_reports", "platform"]) {
       const response = await request("/v1/intake/proposals", "POST", {

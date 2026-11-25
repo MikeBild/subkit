@@ -5,6 +5,7 @@ import { checkIntakeFile, INTAKE_FILE_TYPES, intakeFileBody } from "../../knowle
 import type { IntakeItemView } from "../../knowledge/intake-types.ts";
 import { CategorySchema } from "../catalog-metadata.ts";
 import { MAX_INLINE_BYTES } from "../files-schemas.ts";
+import { CapturedAtInputSchema } from "../intake-schemas.ts";
 import { decodeUpload, storeUpload } from "./conversation-attachments.ts";
 import { defineOperation, isRejection, reject } from "./index.ts";
 import { INTAKE_TAGS, INTAKE_WRITE, intakeCaller, intakeFailure } from "./intake.ts";
@@ -16,7 +17,7 @@ const CreateFileItemSchema = z
     category: CategorySchema.optional(),
     title: z.string().trim().min(1).max(1_000).optional(),
     note: z.string().max(20_000).optional(),
-    captured_at: z.string().datetime(),
+    captured_at: CapturedAtInputSchema,
     filename: z.string().trim().min(1).max(255),
     content_type: z
       .string()
