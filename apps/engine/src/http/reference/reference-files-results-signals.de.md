@@ -47,7 +47,7 @@ Die Ablage der Desktop-App nutzt diese Routen für „Im Chat anhängen“. Der 
 - Höchstens 5 MB.
 - Der Inhalt muss zur Art passen: Ein PNG muss wie ein PNG beginnen, Text muss UTF-8 sein, JSON muss sich lesen lassen. HTML, SVG, XML und Skripte lehnt SubKit ab, auch wenn sie sich als Text ausgeben.
 - Die Datei durchläuft die Malware-Prüfung. Eine abgelehnte Datei legt keinen Eintrag an.
-- `title` ist ohne Angabe der Dateiname. Der Text des Eintrags ist bei CSV, Text, Markdown und JSON der Inhalt der Datei, bei PDFs und Bildern eine Zeile mit dem Dateinamen.
+- `title` ist ohne Angabe der Dateiname. Der Text des Eintrags ist bei CSV, Text, Markdown und JSON der vollständige Inhalt der Datei, bei PDFs und Bildern eine Zeile mit dem Dateinamen.
 - `client_request_id` wirkt wie bei Texteinträgen: Dieselbe ID mit derselben Datei liefert denselben Eintrag.
 - Jeder Eintrag im Eingang hat jetzt `attachment`: `null` oder `{file_id, filename, content_type, size_bytes}`. Die Datei lädst du mit `GET /v1/files/{file_id}/content` (`file:read`).
 

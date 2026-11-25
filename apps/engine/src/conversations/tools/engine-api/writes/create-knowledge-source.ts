@@ -7,6 +7,7 @@ import {
   assistantIntakeRequestId,
   checkIntakeFile,
   createIntakeItem,
+  INTAKE_FILE_BODY_MAX_CHARS,
   type IntakeCollector,
   IntakeConflictError,
   intakeFileBody,
@@ -141,7 +142,9 @@ export const createKnowledgeSourceTool: ConversationTool = {
           data: {
             error: checked.reason,
             reason:
-              "Only text, CSV, JSON, PDF and image files can be collected for review. Ask the person to add other formats in Cockpit.",
+              checked.reason === "too_large"
+                ? `Text files larger than ${INTAKE_FILE_BODY_MAX_CHARS} bytes cannot be collected for review.`
+                : "Only text, CSV, JSON, PDF and image files can be collected for review. Ask the person to add other formats in Cockpit.",
           },
         };
       const facts = {

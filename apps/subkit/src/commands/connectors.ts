@@ -7,7 +7,6 @@ import type {
   ConnectorDocsIngestBody,
   ConnectorProbeResult,
   CreateConnectorBody,
-  CredentialBody,
   ImportConnectorBody,
   UpdateConnectorBody,
 } from "../engine-client/connectors.ts";
@@ -17,6 +16,11 @@ import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+import {
+  CREDENTIAL_SHAPE_HELP,
+  credentialHint,
+  parseCredentialFile,
+} from "./connector-credential-file-model.ts";
 import { saveConnectorFromFile } from "./connector-save.ts";
 import { readDefinitionFile } from "./definition-file.ts";
 import { CONNECTOR_LIST_COLUMNS } from "./list-columns.ts";
@@ -141,7 +145,7 @@ export function probeSummary(result: ConnectorProbeResult): NonNullable<Connecto
 }
 
 export function probeFailureDetail(result: ConnectorProbeResult): string {
-  return result.detail ?? result.error_code ?? `status=${result.status ?? "?"}`;
+  return credentialHint(result) ?? result.error_code ?? `status=${result.status ?? "?"}`;
 }
 
 export function renderProbeOutcome(result: ConnectorProbeResult, jsonMode: boolean): boolean {
@@ -153,7 +157,8 @@ export function renderProbeOutcome(result: ConnectorProbeResult, jsonMode: boole
   process.stdout.write(`ok: ${ok}\n`);
   if (!ok) {
     if (result.error_code) process.stdout.write(`${pc.dim("reason:")} ${result.error_code}\n`);
-    if (result.detail) process.stdout.write(`${pc.dim("detail:")} ${result.detail}\n`);
+    const detail = credentialHint(result);
+    if (detail) process.stdout.write(`${pc.dim("detail:")} ${detail}\n`);
     if (typeof result.provider_action_url === "string") {
       process.stdout.write(`${pc.dim("fix:")} ${result.provider_action_url}\n`);
     }
@@ -201,8 +206,7 @@ const createCommand = defineCommand({
     file: { type: "string", description: "Path to a connector definition JSON file" },
     credential: {
       type: "string",
-      description:
-        "Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `subkit vault attach` after create.",
+      description: `Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with \`subkit vault attach\` after create. ${CREDENTIAL_SHAPE_HELP}`,
     },
     name: { type: "string", description: "Override connector name (--template only)" },
     "skip-checks": {
@@ -312,8 +316,7 @@ const probeCommand = defineCommand({
     },
     credential: {
       type: "string",
-      description:
-        "Path to a credential JSON file. Signs this probe only; never stored. Required when the definition's auth_type is not 'none'.",
+      description: `Path to a credential JSON file. Signs this probe only; never stored. Required when the definition's auth_type is not 'none'. ${CREDENTIAL_SHAPE_HELP}`,
     },
     json: { type: "boolean", description: "JSON-only output" },
   },
@@ -325,7 +328,7 @@ const probeCommand = defineCommand({
         if (args.file) {
           const connector = await readDefinitionFile<CreateConnectorBody>(String(args.file));
           const credential = args.credential
-            ? await readDefinitionFile<CredentialBody>(String(args.credential))
+            ? parseCredentialFile(await readDefinitionFile<unknown>(String(args.credential)))
             : undefined;
           const result = await client.probeConnectorDraft({
             connector,

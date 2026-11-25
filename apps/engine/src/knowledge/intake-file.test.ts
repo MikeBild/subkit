@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkIntakeFile, intakeFileBody } from "./intake-file.ts";
+import { checkIntakeFile, INTAKE_FILE_BODY_MAX_CHARS, intakeFileBody } from "./intake-file.ts";
 
 const bytes = (...parts: Array<string | number[]>): Uint8Array =>
   Uint8Array.from(
@@ -52,6 +52,17 @@ describe("checkIntakeFile", () => {
     expect(checkIntakeFile("text/markdown", bytes("  <svg onload=x>")).ok).toBe(false);
   });
 
+  test("text files larger than the largest item body are refused", () => {
+    const largest = new Uint8Array(INTAKE_FILE_BODY_MAX_CHARS).fill(0x61);
+    expect(checkIntakeFile("text/plain", largest).ok).toBe(true);
+    expect(
+      checkIntakeFile("text/plain", new Uint8Array(INTAKE_FILE_BODY_MAX_CHARS + 1).fill(0x61)),
+    ).toEqual({
+      ok: false,
+      reason: "too_large",
+    });
+  });
+
   test("unknown types are refused", () => {
     expect(checkIntakeFile("application/zip", bytes("PK")).ok).toBe(false);
   });
@@ -72,6 +83,11 @@ describe("intakeFileBody", () => {
     expect(intakeFileBody({ ...file, content_type: "text/plain" }, " \t\n \r\n")).toBe(
       " \t\n \r\n",
     );
+  });
+
+  test("text files keep their whole text beyond two million characters", () => {
+    const text = `${"a".repeat(2_030_000)}END`;
+    expect(intakeFileBody({ ...file, content_type: "text/plain" }, text)).toBe(text);
   });
 
   test("empty text files are named in one line", () => {
