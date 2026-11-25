@@ -10,6 +10,7 @@ const skip = testEnv.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
 let conversation_id: string;
+const boundConnectorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 beforeAll(async () => {
   if (skip) return;
@@ -57,7 +58,7 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(
       makeToolCtx({ tenant_id, conversation_id, draft }),
-      { template_slug: "stripe", recipe_slug: "list-customers" },
+      { template_slug: "stripe", recipe_slug: "list-customers", connector_id: boundConnectorId },
     );
     expect(result.ok).toBe(true);
     const wf = draft.current.workflow;
@@ -65,13 +66,31 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(wf?.derived_from_skill_id).toBe("stripe-basics");
     expect(wf?.steps?.length ?? 0).toBeGreaterThan(0);
     expect(wf?.slug).toBe("stripe-list-customers");
+    const steps = (
+      (wf?.steps ?? []) as Array<{ kind?: string; connector_id?: string; url?: string }>
+    ).filter((step) => step.kind === "request");
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.map((step) => [step.connector_id, step.url])).toEqual(
+      steps.map(() => [boundConnectorId, undefined]),
+    );
+  });
+
+  test("single-connector recipe without a binding returns connector_bindings_missing", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      { template_slug: "notion", recipe_slug: "create-page" },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error_code).toBe("connector_bindings_missing");
   });
 
   test("clone stashes a recipe-derived goal so the post-preview judge is armed (not judge.no_goal)", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(
       makeToolCtx({ tenant_id, conversation_id, draft }),
-      { template_slug: "stripe", recipe_slug: "list-customers" },
+      { template_slug: "stripe", recipe_slug: "list-customers", connector_id: boundConnectorId },
     );
     expect(result.ok).toBe(true);
     const goal = (draft.current.workflow as { goal?: string }).goal;
@@ -86,6 +105,7 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
       {
         template_slug: "stripe",
         recipe_slug: "list-customers",
+        connector_id: boundConnectorId,
         name: "Weekly VIP customer pull",
       },
     );
@@ -208,7 +228,11 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(
       makeToolCtx({ tenant_id, conversation_id, draft }),
-      { template_slug: "github", recipe_slug: "delegated-triage-via-call" },
+      {
+        template_slug: "github",
+        recipe_slug: "delegated-triage-via-call",
+        connector_id: boundConnectorId,
+      },
     );
     expect(result.ok).toBe(true);
     const wf = draft.current.workflow;
@@ -223,7 +247,11 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(
       makeToolCtx({ tenant_id, conversation_id, draft }),
-      { template_slug: "github", recipe_slug: "merge-pr-after-approval" },
+      {
+        template_slug: "github",
+        recipe_slug: "merge-pr-after-approval",
+        connector_id: boundConnectorId,
+      },
     );
     expect(result.ok).toBe(true);
     const wf = draft.current.workflow;

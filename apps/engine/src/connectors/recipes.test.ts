@@ -463,22 +463,6 @@ describe("solution recipes — several connectors per recipe", () => {
   });
 });
 
-describe("template recipe urls (#521)", () => {
-  test("every recipe url built on a connector base_url passes the draft-save url check", () => {
-    const urlErrors = loadBuiltinTemplates().flatMap((template) =>
-      template.recipes.flatMap((recipe) => {
-        const baseUrlStepPaths = (recipe.workflow.steps as Array<{ id: string; url?: string }>)
-          .filter((step) => step.url?.startsWith("${connector."))
-          .map((step) => `steps.${step.id}.url`);
-        return validateWorkflowDef(JSON.parse(JSON.stringify(recipe.workflow)))
-          .errors.filter((error) => baseUrlStepPaths.includes(error.path))
-          .map((error) => `${template.slug}/${recipe.slug}: ${error.path}`);
-      }),
-    );
-    expect(urlErrors).toEqual([]);
-  });
-});
-
 describe("square write recipes (#564)", () => {
   test("every square write step binds the square connector and compiles a request boundary", () => {
     const placeholder = "00000000-0000-0000-0000-000000000000";

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { connectors } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import {
   createEngineCtx,
@@ -8,15 +9,17 @@ import {
   jsonResponse,
   type MockServer,
 } from "../../execution/tests/setup.ts";
+import { rebindConnectorIds } from "../recipe-binding.ts";
 import { getBuiltinTemplate } from "../templates.ts";
 
-const createContactWorkflow = () =>
-  getBuiltinTemplate("hubspot")!.recipes.find((recipe) => recipe.slug === "create-contact")!
-    .workflow;
+const createContactRecipe = () =>
+  getBuiltinTemplate("hubspot")!.recipes.find((recipe) => recipe.slug === "create-contact")!;
+const createContactWorkflow = () => createContactRecipe().workflow;
 
 let engineCtx: EngineTestCtx;
 let hubspotReceiver: MockServer;
 let receivedBodies: unknown[] = [];
+let receiverConnectorId: string;
 
 beforeAll(async () => {
   engineCtx = await createEngineCtx("hubspot-create-contact");
@@ -26,6 +29,21 @@ beforeAll(async () => {
     receivedBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     jsonResponse(res, 201, { id: "contact-1" });
   });
+  const [receiverConnector] = await engineCtx.testDb.db
+    .insert(connectors)
+    .values({
+      tenant_id: engineCtx.tenantId,
+      slug: "hubspot",
+      template_slug: "hubspot",
+      display_name: "HubSpot",
+      driver: "http",
+      environment: "dev",
+      auth_type: "none",
+      base_url: hubspotReceiver.baseUrl,
+      config: {},
+    })
+    .returning();
+  receiverConnectorId = receiverConnector!.id;
 });
 
 afterAll(async () => {
@@ -35,12 +53,13 @@ afterAll(async () => {
 
 const runRecipe = async (input: Record<string, unknown>) => {
   receivedBodies = [];
-  const workflowWithReceiver = JSON.parse(
-    JSON.stringify(createContactWorkflow()).replaceAll(
-      "${connector.hubspot.base_url}",
-      hubspotReceiver.baseUrl,
-    ),
+  const bindings = Object.fromEntries(
+    createContactRecipe().required_connectors.map((required) => [
+      required.placeholder,
+      receiverConnectorId,
+    ]),
   );
+  const workflowWithReceiver = rebindConnectorIds(createContactWorkflow(), bindings);
   const { workflow_id } = await createWorkflowRow(engineCtx, workflowWithReceiver);
   const result = await runExecution({
     db: engineCtx.testDb.db,

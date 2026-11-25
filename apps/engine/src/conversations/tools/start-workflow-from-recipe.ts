@@ -34,7 +34,7 @@ const inputSchema = z
       .uuid()
       .optional()
       .describe(
-        "Single-connector path. Bind every request step that carries the placeholder connector_id `00000000-0000-0000-0000-000000000000` to this saved connector id. Required for SQL/Postgres-style recipes that cannot express the connector via a base_url placeholder. Reject when the recipe declares `required_connectors` — use `connector_bindings` instead.",
+        "Single-connector path. Bind the recipe's one connector placeholder (its single `required_connectors` entry, or the placeholder connector_id `00000000-0000-0000-0000-000000000000` on recipes that declare none) to this saved connector id. Rejected when the recipe declares more than one required connector — use `connector_bindings` instead.",
       ),
     connector_bindings: z
       .record(z.string().uuid(), z.string().uuid())
@@ -57,7 +57,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     "The cloned draft validates as-is under WorkflowDefSchema. Only override fields the user explicitly customized.",
     "Recipes are READ ONLY in templates.json. Edits land on the draft, not on the template.",
     "If the recipe declares `derived_from_skill`, the cloned workflow's `derived_from_skill_id` is populated so `save_workflow_draft` can apply the skill-schema gate.",
-    "Multi-connector recipes (non-empty `required_connectors`) require `connector_bindings` covering every declared placeholder UUID. The single `connector_id` arg is rejected for those — use `inspect_recipe` to see the placeholder roster, then resolve each placeholder to a saved connector via `find_connector` before cloning.",
+    "Recipes with `required_connectors` need a binding for every declared placeholder UUID: pass `connector_id` when exactly one connector is declared, otherwise `connector_bindings`. Use `inspect_recipe` to see the placeholder roster, then resolve each placeholder to a saved connector via `find_connector` before cloning.",
   ],
   inputSchema,
   category: "draft_write" as const,
@@ -92,7 +92,10 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
 
     const required = recipe.required_connectors ?? [];
     let bindings: Record<string, string> = {};
-    if (required.length > 0) {
+    const [singleRequired] = required;
+    if (required.length === 1 && singleRequired && args.connector_id !== undefined) {
+      bindings = { ...args.connector_bindings, [singleRequired.placeholder]: args.connector_id };
+    } else if (required.length > 0) {
       if (args.connector_id !== undefined) {
         return {
           ok: false,
@@ -117,7 +120,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     } else if (args.connector_bindings) {
       bindings = { ...args.connector_bindings };
     }
-    if (args.connector_id !== undefined) {
+    if (args.connector_id !== undefined && required.length === 0) {
       bindings[PLACEHOLDER_CONNECTOR_ID] = args.connector_id;
     }
 

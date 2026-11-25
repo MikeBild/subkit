@@ -54,7 +54,7 @@ describe("stateful recipes — paths match the request step output (#534)", () =
       id: string;
       kind: string;
       method?: string;
-      url?: string;
+      path?: string;
       body?: unknown;
       expression?: string;
       state_write?: { value_path: string };
@@ -93,7 +93,7 @@ describe("stateful recipes — paths match the request step output (#534)", () =
           };
           const results = candidates.filter(
             (d) =>
-              !step.url?.endsWith("/search") ||
+              !step.path?.endsWith("/search") ||
               body.filterGroups!.some((group) =>
                 group.filters.every((filter) => {
                   const value = d.properties[filter.propertyName as keyof typeof d.properties];
@@ -135,7 +135,6 @@ describe("stateful recipes — paths match the request step output (#534)", () =
       {
         ...dealsDue,
         boundary: { variables: {}, max_body_bytes: 4096, max_calls: 1 },
-        url: dealsDue.url!.replace("${connector.hubspot.base_url}", "https://api.hubapi.com"),
       },
       "https://api.hubapi.com",
     );
