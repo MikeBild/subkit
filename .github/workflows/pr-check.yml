@@ -88,10 +88,13 @@ jobs:
       - name: Run the shard and compare failures with the base commit
         run: |
           : > failed.txt
+          : > candidates.txt
+          mkdir -p shard-logs
+          { grep -v '^$' shard.txt || true; } | xargs -P 3 -I{} bash -c 'log="shard-logs/$(echo "$1" | tr / _).log"; bun scripts/test-files-isolated.ts "$1" > "$log" 2>&1 || echo "$1" >> candidates.txt' _ {}
           while read -r file; do
             [ -z "$file" ] && continue
             bun scripts/test-files-isolated.ts "$file" > run.log 2>&1 || { echo "$file" >> failed.txt; tail -40 run.log; }
-          done < shard.txt
+          done < candidates.txt
           [ -s failed.txt ] || { echo "all shard tests passed"; exit 0; }
           git worktree add -q --detach ../base "$BASE_SHA"
           (cd ../base && bun install --frozen-lockfile >/dev/null && bun run build assets >/dev/null 2>&1 && bun run build subkit --skip-deps >/dev/null 2>&1)
