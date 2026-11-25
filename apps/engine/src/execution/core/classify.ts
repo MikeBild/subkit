@@ -178,6 +178,8 @@ export function humanizeClassification(
       return `The ${kind} step stopped before every page was read, so its result would be incomplete: ${message}`;
     case "rate_limited":
       return `The vendor's rate limit stopped the ${kind} step; retry after the limit resets.`;
+    case "step_error":
+      return `The ${kind} step's code failed: ${message}`;
     default:
       return message || "Step failed.";
   }

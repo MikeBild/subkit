@@ -45,7 +45,23 @@ test("preview classifications retain every public result category", () => {
     "unknown",
     "incomplete_read",
     "rate_limited",
+    "step_error",
   ]);
+});
+
+test("a local transform exception is a step error, not an external-system failure (#525)", () => {
+  const error = { code: "transform_error", message: "HISTORY_FIXTURE_FAILURE" };
+  expect(classifyFailure(failed(error.code, error.message))).toBe("step_error");
+  expect(
+    classifyRunFailure({ status: "failed", failure: null }, { status: "failed", error })
+      ?.classification,
+  ).toBe("step_error");
+  expect(
+    classifyRunFailure(
+      { status: "failed", failure: { error_code: error.code, error_message: error.message } },
+      null,
+    )?.classification,
+  ).toBe("step_error");
 });
 
 test("terminal statuses override codes, codes override message heuristics", () => {
@@ -280,6 +296,7 @@ test("human summaries provide actionable class-specific descriptions", () => {
     driver_error: "The step driver failed: detail",
     incomplete_read: "before every page was read",
     rate_limited: "rate limit stopped",
+    step_error: "The request step's code failed: detail",
   } as const;
   for (const [classification, text] of Object.entries(cases))
     expect(

@@ -25110,6 +25110,7 @@
                       "unknown",
                       "incomplete_read",
                       "rate_limited",
+                      "step_error",
                       null
                     ]
                   },
@@ -25511,6 +25512,7 @@
               "unknown",
               "incomplete_read",
               "rate_limited",
+              "step_error",
               null
             ]
           },
@@ -30854,7 +30856,8 @@
                   "preview_unsupported",
                   "unknown",
                   "incomplete_read",
-                  "rate_limited"
+                  "rate_limited",
+                  "step_error"
                 ]
               }
             },
@@ -38143,7 +38146,8 @@
               "preview_unsupported",
               "unknown",
               "incomplete_read",
-              "rate_limited"
+              "rate_limited",
+              "step_error"
             ]
           },
           "count": {
@@ -44938,7 +44942,8 @@
           "preview_unsupported",
           "unknown",
           "incomplete_read",
-          "rate_limited"
+          "rate_limited",
+          "step_error"
         ]
       },
       "OperatorDigestPatch": {
@@ -45478,6 +45483,7 @@
               "unknown",
               "incomplete_read",
               "rate_limited",
+              "step_error",
               null
             ]
           },
@@ -46588,6 +46594,7 @@
                             "unknown",
                             "incomplete_read",
                             "rate_limited",
+                            "step_error",
                             null
                           ]
                         },
