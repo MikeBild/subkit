@@ -378,7 +378,7 @@ const LlmSection = z
       .boolean()
       .default(false)
       .describe(
-        "Ask the configured AI model (judge route) whether a question of a task run asks for the run's result in other words, and hold it back when it does (one extra call per question; a failed call lets the question through)",
+        "Use the judge model to block task-run questions that ask for the run's result in other words (one extra call per question; failed calls let questions through)",
       )
       .meta(tenant()),
     reasoning_effort: z

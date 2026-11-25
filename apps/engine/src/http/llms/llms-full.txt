@@ -8547,7 +8547,7 @@ LLM configuration
 | `llm.providers.vertex.private_key` | string | `""` | global | yes | no |  |
 | `llm.providers.vertex.project` | string | `""` | global | no | no |  |
 | `llm.reasoning_effort` | enum("default" \| "none" \| "low" \| "medium" \| "high") | `"default"` | tenant | no | no | Reasoning effort in authoring turns. default: thinking only in late stages on supported Claude models. none, low, medium or high: every stage on OpenAI reasoning and supported Claude models. |
-| `llm.result_question_check` | boolean | `false` | tenant | no | no | Ask the configured AI model (judge route) whether a question of a task run asks for the run's result in other words, and hold it back when it does (one extra call per question; a failed call lets the question through) |
+| `llm.result_question_check` | boolean | `false` | tenant | no | no | Use the judge model to block task-run questions that ask for the run's result in other words (one extra call per question; failed calls let questions through) |
 | `llm.suggestion_model` | string | `""` | tenant | no | no | Small model used to generate post-turn suggestions; empty uses the primary provider's default |
 | `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
 | `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |
