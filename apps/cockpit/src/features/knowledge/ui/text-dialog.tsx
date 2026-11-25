@@ -36,19 +36,14 @@ export function TextDialog({
   const [body, setBody] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const value = body ?? doc?.content ?? "";
-  const save = useSaveSourceText(src, () => {
+  const close = () => {
     setBody(null);
     setNote("");
     onOpenChange(false);
-  });
+  };
+  const save = useSaveSourceText(src, close);
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) setBody(null);
-        onOpenChange(v);
-      }}
-    >
+    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : close())}>
       <DialogContent className={dialogWidthClass("document")}>
         <DialogHeader>
           <DialogTitle>{t("kn.sources.editText")}</DialogTitle>
@@ -86,12 +81,7 @@ export function TextDialog({
             />
           </div>
           <DialogFooter>
-            <Button
-              data-testid="common-cancel-3"
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button data-testid="common-cancel-3" type="button" variant="ghost" onClick={close}>
               {t("common.cancel")}
             </Button>
             <Button data-testid="kn-save-2" type="submit" disabled={!doc || save.isPending}>
