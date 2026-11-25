@@ -21979,6 +21979,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/conversations/{id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share one of your own conversations with the team
+         * @description Lets everyone in the workspace with conversation:read read the conversation; only the owner keeps writing in it, others can fork it. The conversation is not copied, only its visibility changes. Needs the owner's explicit confirmation in a Cockpit browser session.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationVisibilityConfirmBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Conversation"];
+                    };
+                };
+                /** @description human_confirmation_required — only the owner in a Cockpit browser session; not_conversation_owner */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description already_shared; task_run_conversation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/unshare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a shared conversation private again
+         * @description Only the owner can read the conversation again. Forks others made earlier stay theirs. Needs the owner's explicit confirmation in a Cockpit browser session.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationVisibilityConfirmBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Conversation"];
+                    };
+                };
+                /** @description human_confirmation_required — only the owner in a Cockpit browser session; not_conversation_owner */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description already_private; task_run_conversation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/conversations/{id}/tool-policies": {
         parameters: {
             query?: never;
@@ -38850,6 +38994,9 @@ export interface components {
             title_locked?: boolean;
             origin_client?: string | null;
             surface?: string | null;
+            /** @enum {string} */
+            visibility?: "private" | "team";
+            content_hidden?: boolean;
             created_at: string;
             updated_at: string;
             /** @enum {string} */
@@ -39407,6 +39554,13 @@ export interface components {
             anchor_message_id: string;
             copied_message_count: number;
             truncated: boolean;
+        };
+        ConversationVisibilityConfirmBody: {
+            /**
+             * @description The owner's explicit yes to changing who can read this conversation.
+             * @enum {boolean}
+             */
+            confirm: true;
         };
         ToolPoliciesResponse: {
             policies: {

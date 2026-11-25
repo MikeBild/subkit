@@ -109,7 +109,7 @@ export async function interruptTaskRunTurn(
 ): Promise<ConversationRecord | null> {
   const run = await activeTaskRun(exec, tenant_id, conversation_id);
   if (!run) return null;
-  await assertTaskRunWriter(exec, { tenant_id, conversation_id, actor_id, principal });
+  await assertConversationWriter(exec, { tenant_id, conversation_id, actor_id, principal });
   const [row] = await exec
     .select()
     .from(conversations)

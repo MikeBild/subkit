@@ -3665,6 +3665,94 @@
       }
     },
     {
+      "slug": "who-can-read-a-conversation",
+      "llms_path": "setup.md",
+      "audience": "public",
+      "section": "work",
+      "order": 20,
+      "generated": false,
+      "locales": {
+        "en": {
+          "title": "Who can read a conversation",
+          "summary": "Conversations are private to the person who started them. Share one with the team when others should read it.",
+          "headings": [
+            {
+              "depth": 2,
+              "text": "Who can read a conversation",
+              "anchor": "who-can-read-a-conversation"
+            },
+            {
+              "depth": 3,
+              "text": "Private is the default",
+              "anchor": "private-is-the-default"
+            },
+            {
+              "depth": 3,
+              "text": "Share a conversation with your team",
+              "anchor": "share-a-conversation-with-your-team"
+            },
+            {
+              "depth": 3,
+              "text": "Make it private again",
+              "anchor": "make-it-private-again"
+            },
+            {
+              "depth": 3,
+              "text": "Slack and Google Chat",
+              "anchor": "slack-and-google-chat"
+            },
+            {
+              "depth": 3,
+              "text": "When something does not work",
+              "anchor": "when-something-does-not-work"
+            }
+          ],
+          "images": [],
+          "sha256": "f9b79618b8b320a70b272aed229c7e1403f0139a3ab6ec64bfd5187d38084d84",
+          "body": "## Who can read a conversation\n\nThis chapter is for everyone who chats with SubKit in the Cockpit, through an MCP client or in Slack and Google Chat.\nAfterwards you know who can read a conversation, how you share it with your team and how you make it private again.\n\n### Private is the default\n\nEvery conversation belongs to the person who started it. Nobody else can read it, also not an administrator.\n\n| Who | Private conversation | Conversation shared with the team |\n| --- | --- | --- |\n| You, the owner | Read and write | Read and write |\n| Others in the workspace with `conversation:read` | Not visible | Read and fork, not write |\n| Administrators | See that it exists, its owner and dates, and may delete it through the HTTP API (`DELETE /v1/conversations/{id}`) | Read and fork, delete |\n\nFor a conversation you cannot read, SubKit answers as if it did not exist, so nothing about it leaks. In the conversation list an administrator sees another person’s private conversation as **Private conversation**, without title or content. A search in the list never finds text from conversations you cannot read.\n\nConversations of a task run keep their own rule: the owner of the task and administrators can read them.\n\n### Share a conversation with your team\n\n1. Open the conversation in **Chat**.\n2. Open the menu in its header and choose **Share with the team**.\n3. The question names the conversation and what changes. Confirm it with **Share**.\n\nThe badge in the header changes from **Private** to **Shared with the team**. The conversation is not copied; only who can read it changes. You keep writing in it. Others can read it and fork it to continue on their own.\n\nOnly you, signed in to the Cockpit, can share your conversation. An API key or an MCP client cannot do it for you.\n\n### Make it private again\n\nOpen the menu again and choose **Make private**, then confirm with **Make private**. From then on only you can read the conversation. Forks others made earlier stay theirs.\n\n### Slack and Google Chat\n\nA thread in a Slack or Google Chat channel is shared with the team from the start, because everyone in the channel sees it anyway. Everyone in the thread can keep replying. A direct message to SubKit stays private.\n\nChannel threads started before this change become shared with their next message.\n\n### When something does not work\n\n| What you see | What it means | What you can do |\n| --- | --- | --- |\n| A conversation link answers “not found” | The conversation is private to someone else, or it was deleted. | Ask the owner to share it. |\n| “Only the owner writes in this conversation.” | The conversation is shared, but it is not yours. | Fork it to continue on your own. |\n| **Share with the team** is missing in the menu | The conversation is not yours, or it belongs to a task run. | Ask the owner, or fork it. |"
+        },
+        "de": {
+          "title": "Wer eine Unterhaltung lesen kann",
+          "summary": "Unterhaltungen gehören der Person, die sie begonnen hat. Gib eine fürs Team frei, wenn andere sie lesen sollen.",
+          "headings": [
+            {
+              "depth": 2,
+              "text": "Wer eine Unterhaltung lesen kann",
+              "anchor": "wer-eine-unterhaltung-lesen-kann"
+            },
+            {
+              "depth": 3,
+              "text": "Privat ist der Standard",
+              "anchor": "privat-ist-der-standard"
+            },
+            {
+              "depth": 3,
+              "text": "Eine Unterhaltung mit dem Team teilen",
+              "anchor": "eine-unterhaltung-mit-dem-team-teilen"
+            },
+            {
+              "depth": 3,
+              "text": "Wieder privat machen",
+              "anchor": "wieder-privat-machen"
+            },
+            {
+              "depth": 3,
+              "text": "Slack und Google Chat",
+              "anchor": "slack-und-google-chat"
+            },
+            {
+              "depth": 3,
+              "text": "Wenn etwas nicht klappt",
+              "anchor": "wenn-etwas-nicht-klappt"
+            }
+          ],
+          "images": [],
+          "sha256": "27c6eec7dd2154d4ed1eb42c2d2c11850adee37377471a2be1e12c62b2112fee",
+          "body": "## Wer eine Unterhaltung lesen kann\n\nDieses Kapitel ist für alle, die mit SubKit im Cockpit, über einen MCP-Client oder in Slack und Google Chat schreiben.\nDanach weißt du, wer eine Unterhaltung lesen kann, wie du sie mit dem Team teilst und wie du sie wieder privat machst.\n\n### Privat ist der Standard\n\nJede Unterhaltung gehört der Person, die sie begonnen hat. Niemand sonst kann sie lesen, auch keine Administratorin und kein Administrator.\n\n| Wer | Private Unterhaltung | Fürs Team freigegebene Unterhaltung |\n| --- | --- | --- |\n| Du als Besitzerin oder Besitzer | Lesen und schreiben | Lesen und schreiben |\n| Andere im Arbeitsbereich mit `conversation:read` | Nicht sichtbar | Lesen und forken, nicht schreiben |\n| Administratorinnen und Administratoren | Sehen, dass es sie gibt, wem sie gehört und wann sie entstand, und dürfen sie über die HTTP-API löschen (`DELETE /v1/conversations/{id}`) | Lesen und forken, löschen |\n\nFür eine Unterhaltung, die du nicht lesen darfst, antwortet SubKit so, als gäbe es sie nicht. So verrät nichts, dass sie existiert. In der Liste der Unterhaltungen sehen Administratorinnen und Administratoren die private Unterhaltung einer anderen Person als **Private Unterhaltung**, ohne Titel und Inhalt. Die Suche in der Liste findet nie Text aus Unterhaltungen, die du nicht lesen darfst.\n\nFür Unterhaltungen eines Task-Runs gilt weiter ihre eigene Regel: Lesen dürfen die Person, der der Task gehört, und Administratorinnen und Administratoren.\n\n### Eine Unterhaltung mit dem Team teilen\n\n1. Öffne die Unterhaltung im **Chat**.\n2. Öffne das Menü in ihrem Kopf und wähle **Mit dem Team teilen**.\n3. Die Rückfrage nennt die Unterhaltung und was sich ändert. Bestätige sie mit **Teilen**.\n\nDas Badge im Kopf wechselt von **Privat** zu **Fürs Team freigegeben**. Die Unterhaltung wird nicht kopiert, es ändert sich nur, wer sie lesen kann. Du schreibst weiter darin. Andere können sie lesen und einen Fork anlegen, um allein weiterzumachen.\n\nNur du selbst kannst deine Unterhaltung teilen, angemeldet im Cockpit. Ein API-Key oder ein MCP-Client kann das nicht für dich tun.\n\n### Wieder privat machen\n\nÖffne das Menü noch einmal, wähle **Wieder privat machen** und bestätige mit **Privat machen**. Ab dann kannst nur du die Unterhaltung lesen. Forks, die andere schon angelegt haben, bleiben bei ihnen.\n\n### Slack und Google Chat\n\nEin Thread in einem Kanal von Slack oder Google Chat ist von Anfang an fürs Team freigegeben, denn alle im Kanal sehen ihn ohnehin. Alle im Thread können weiter antworten. Eine Direktnachricht an SubKit bleibt privat.\n\nKanal-Threads, die vor dieser Änderung begonnen wurden, werden mit ihrer nächsten Nachricht fürs Team freigegeben.\n\n### Wenn etwas nicht klappt\n\n| Was du siehst | Was es bedeutet | Was du tun kannst |\n| --- | --- | --- |\n| Ein Link zu einer Unterhaltung meldet „nicht gefunden“ | Die Unterhaltung ist privat und gehört jemand anderem, oder sie wurde gelöscht. | Bitte die Besitzerin oder den Besitzer, sie zu teilen. |\n| Eine Meldung, dass nur die Besitzerin oder der Besitzer schreiben darf | Die Unterhaltung ist freigegeben, gehört aber nicht dir. | Leg einen Fork an, um allein weiterzumachen. |\n| **Mit dem Team teilen** fehlt im Menü | Die Unterhaltung gehört nicht dir oder zu einem Task-Run. | Frag die Besitzerin oder den Besitzer, oder leg einen Fork an. |"
+        }
+      }
+    },
+    {
       "slug": "cockpit-branding",
       "llms_path": "setup.md",
       "audience": "operator",

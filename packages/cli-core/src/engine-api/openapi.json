@@ -39162,6 +39162,16 @@
               "null"
             ]
           },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "team"
+            ]
+          },
+          "content_hidden": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string"
           },
@@ -41686,6 +41696,22 @@
           "copied_message_count",
           "truncated"
         ]
+      },
+      "ConversationVisibilityConfirmBody": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "The owner's explicit yes to changing who can read this conversation."
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "additionalProperties": false
       },
       "ToolPoliciesResponse": {
         "type": "object",
@@ -78444,6 +78470,158 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/share": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Share one of your own conversations with the team",
+        "description": "Lets everyone in the workspace with conversation:read read the conversation; only the owner keeps writing in it, others can fork it. The conversation is not copied, only its visibility changes. Needs the owner's explicit confirmation in a Cockpit browser session.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationVisibilityConfirmBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "human_confirmation_required — only the owner in a Cockpit browser session; not_conversation_owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "already_shared; task_run_conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/unshare": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Make a shared conversation private again",
+        "description": "Only the owner can read the conversation again. Forks others made earlier stay theirs. Needs the owner's explicit confirmation in a Cockpit browser session.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationVisibilityConfirmBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "human_confirmation_required — only the owner in a Cockpit browser session; not_conversation_owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "already_private; task_run_conversation",
             "content": {
               "application/json": {
                 "schema": {
