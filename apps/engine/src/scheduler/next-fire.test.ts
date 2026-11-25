@@ -6,7 +6,7 @@ import { isCronDue } from "./reconciler.ts";
 const created = new Date("2026-01-01T00:00:00.000Z");
 
 describe("nextScheduleFire", () => {
-  test.each([
+  test.each<{ input: Parameters<typeof calendarGateSkipReason>[2]; expected: string }>([
     { input: { business_days_only: true }, expected: "2026-03-16T18:00:00.000Z" },
     { input: { skip_dates: ["2026-03-14"] }, expected: "2026-03-15T18:00:00.000Z" },
   ])("a missed Friday run does not fire on a blocked Saturday: $input", ({ input, expected }) => {
