@@ -9,3 +9,4 @@ export {
   type PreviewClassification,
   type PreviewStepSummary,
 } from "./core/classify.ts";
+export { STATUS_CLASSES } from "./core/sensitive-diagnostics.ts";

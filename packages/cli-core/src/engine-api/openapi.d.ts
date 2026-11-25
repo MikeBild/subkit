@@ -35735,6 +35735,15 @@ export interface components {
             header_keys: string[];
             query_keys: string[];
             body_kind: string;
+            /** @description JSON type each resolved body placeholder produced, keyed by placeholder path such as input.body.app.argv. Never the value. */
+            placeholder_types?: {
+                [key: string]: "string" | "number" | "boolean" | "null" | "array" | "object" | "unresolved";
+            };
+            /**
+             * @description Coarse size of the request body that was built.
+             * @enum {string}
+             */
+            body_size?: "<1KB" | "<10KB" | "<100KB" | "<1MB" | ">=1MB";
         };
         PaginationCheckpoint: {
             page_idx: number;
@@ -35854,6 +35863,20 @@ export interface components {
             driver: "sensitive";
             pagination?: components["schemas"]["RequestPaginationSummary"];
             connector?: components["schemas"]["SensitiveConnectorRef"];
+            /**
+             * @description Class of the upstream answer of a failed step: 2xx, 3xx, 4xx, 5xx, network or timeout. Never the exact status.
+             * @enum {string}
+             */
+            status_class?: "2xx" | "3xx" | "4xx" | "5xx" | "network" | "timeout";
+            /** @description JSON type each resolved body placeholder produced, keyed by placeholder path such as input.body.app.argv. Never the value. */
+            placeholder_types?: {
+                [key: string]: "string" | "number" | "boolean" | "null" | "array" | "object" | "unresolved";
+            };
+            /**
+             * @description Coarse size of the request body that was built.
+             * @enum {string}
+             */
+            body_size?: "<1KB" | "<10KB" | "<100KB" | "<1MB" | ">=1MB";
             extras?: {
                 [key: string]: unknown;
             };
@@ -36117,6 +36140,11 @@ export interface components {
             } | null;
             /** @enum {string|null} */
             cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error" | null;
+            /**
+             * @description Class of the upstream answer that stopped the run: 4xx for sign-in or validation, 5xx for the service, network or timeout. Present when the stopping step reached or tried to reach a service. Never the exact status.
+             * @enum {string}
+             */
+            status_class?: "2xx" | "3xx" | "4xx" | "5xx" | "network" | "timeout";
             error_code: string | null;
             /** @enum {string|null} */
             refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;

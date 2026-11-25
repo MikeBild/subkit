@@ -1,3 +1,5 @@
+import type { StatusClass } from "./sensitive-diagnostics.ts";
+
 export type OutcomeKind = "succeeded" | "failed" | "held" | "partial" | "running";
 
 export interface RerunSafety {
@@ -42,6 +44,7 @@ export interface OutcomeFailureFacts<
   error_code: string | null;
   refusal_reason: Refusal | null;
   connector: Connector | null;
+  status_class?: StatusClass | null;
 }
 
 export interface OutcomeFacts<Classification extends string, Refusal extends string, Connector> {
@@ -58,6 +61,7 @@ export interface ExecutionOutcome<
   kind: OutcomeKind;
   failed_step: { step_key: string; kind: string } | null;
   cause_class: Classification | null;
+  status_class?: StatusClass;
   error_code: string | null;
   refusal_reason: Refusal | null;
   connector: Connector | null;
@@ -185,6 +189,9 @@ export function deriveExecutionOutcome<
           }
         : null,
     cause_class: reportsFailure ? facts.failure.classification : null,
+    ...(reportsFailure && facts.failure.status_class
+      ? { status_class: facts.failure.status_class }
+      : {}),
     error_code: reportsFailure ? facts.failure.error_code : null,
     refusal_reason: reportsFailure ? facts.failure.refusal_reason : null,
     connector: kind === "failed" ? facts.failure.connector : null,

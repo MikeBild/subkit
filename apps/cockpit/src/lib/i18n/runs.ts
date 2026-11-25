@@ -315,6 +315,18 @@ export const runsEn = {
   "runs.result.duration": "Duration",
   "runs.result.recordsLine.one": "Changed 1 record in {systems}.",
   "runs.result.recordsLine.other": "Changed {count} records in {systems}.",
+  "runs.outcome.protected.status.2xx":
+    "The service accepted the request (2xx); the step failed while handling its answer.",
+  "runs.outcome.protected.status.3xx": "The service answered with a redirect (3xx).",
+  "runs.outcome.protected.status.4xx":
+    "The service refused the request (4xx). Check the sign-in and the values the step sends.",
+  "runs.outcome.protected.status.5xx":
+    "The service failed on its side (5xx). Retry later or check the service’s status.",
+  "runs.outcome.protected.status.network":
+    "The service could not be reached. Check the address and the network.",
+  "runs.outcome.protected.status.timeout": "The service did not answer in time.",
+  "runs.outcome.protected.body": "Request body: {size}.",
+  "runs.outcome.protected.placeholders": "Values used, by type only: {list}.",
 } as const;
 
 export const runsDe: Record<keyof typeof runsEn, string> = {
@@ -643,4 +655,16 @@ export const runsDe: Record<keyof typeof runsEn, string> = {
   "runs.result.duration": "Dauer",
   "runs.result.recordsLine.one": "1 Datensatz in {systems} geändert.",
   "runs.result.recordsLine.other": "{count} Datensätze in {systems} geändert.",
+  "runs.outcome.protected.status.2xx":
+    "Der Dienst hat die Anfrage angenommen (2xx); der Schritt ist beim Verarbeiten der Antwort gescheitert.",
+  "runs.outcome.protected.status.3xx": "Der Dienst hat mit einer Weiterleitung geantwortet (3xx).",
+  "runs.outcome.protected.status.4xx":
+    "Der Dienst hat die Anfrage abgelehnt (4xx). Prüfe die Anmeldung und die Werte, die der Schritt sendet.",
+  "runs.outcome.protected.status.5xx":
+    "Der Dienst ist auf seiner Seite gescheitert (5xx). Versuch es später noch einmal oder prüfe den Status des Dienstes.",
+  "runs.outcome.protected.status.network":
+    "Der Dienst war nicht erreichbar. Prüfe die Adresse und das Netzwerk.",
+  "runs.outcome.protected.status.timeout": "Der Dienst hat nicht rechtzeitig geantwortet.",
+  "runs.outcome.protected.body": "Anfrage-Body: {size}.",
+  "runs.outcome.protected.placeholders": "Verwendete Werte, nur nach Typ: {list}.",
 };

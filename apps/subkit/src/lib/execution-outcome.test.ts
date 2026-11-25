@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "./execution-outcome.ts";
+import {
+  executionOutcomeLine,
+  recordLinkLines,
+  sensitiveDiagnosticsLine,
+  stepLimitLine,
+} from "./execution-outcome.ts";
 
 describe("recordLinkLines", () => {
   test("each record link names the system, the record and its web address", () => {
@@ -119,5 +124,48 @@ describe("stepLimitLine", () => {
     expect(
       stepLimitLine({ step_key: "x", error: { code: "http_4xx", message: "404" } }),
     ).toBeNull();
+  });
+});
+
+describe("protected run diagnostics", () => {
+  test("a failed protected step names the upstream class, body size and placeholder types", () => {
+    expect(
+      sensitiveDiagnosticsLine({
+        request_meta: {
+          driver: "sensitive",
+          status_class: "5xx",
+          body_size: "<10KB",
+          placeholder_types: { "input.body.app.argv": "array", "input.name": "string" },
+        },
+      }),
+    ).toBe(
+      "protected run · upstream 5xx · body <10KB · placeholders input.body.app.argv: array, input.name: string",
+    );
+  });
+
+  test("a protected step without diagnostics and an ordinary step print nothing", () => {
+    expect(sensitiveDiagnosticsLine({ request_meta: { driver: "sensitive" } })).toBeNull();
+    expect(sensitiveDiagnosticsLine({ request_meta: { driver: "http", status: 503 } })).toBeNull();
+    expect(sensitiveDiagnosticsLine({ request_meta: null })).toBeNull();
+    expect(sensitiveDiagnosticsLine({})).toBeNull();
+  });
+
+  test("the outcome line names the upstream class next to the cause", () => {
+    expect(
+      executionOutcomeLine({
+        kind: "failed",
+        failed_step: { step_key: "send", kind: "request" },
+        cause_class: "driver_error",
+        status_class: "network",
+        error_code: "sensitive_execution_failure",
+        refusal_reason: null,
+        connector: null,
+        steps,
+        output_contract: "none",
+        rerun_safety: { mode: "prepare_only", reason: "fixture" },
+      }),
+    ).toBe(
+      "failed at step send (request) · driver_error, upstream network, sensitive_execution_failure · steps 1/3 ok, 1 failed, 1 skipped",
+    );
   });
 });

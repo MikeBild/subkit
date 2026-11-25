@@ -111,6 +111,32 @@ const outcomeFacts = {
   failure: failureFacts,
 };
 
+test("status class is projected only for failed and partial outcomes", () => {
+  for (const status of ["failed", "timed_out", "aborted", "succeeded", "running"]) {
+    for (const status_class of ["5xx", null, undefined] as const) {
+      const result = deriveExecutionOutcome(
+        { status, failure: { step_id: "read" }, output_contract: "none" },
+        [row("read", "failed", 1)],
+        {
+          ...outcomeFacts,
+          failure: { ...failureFacts, ...(status_class === undefined ? {} : { status_class }) },
+        },
+      );
+      if (status !== "running" && status_class) {
+        expect(result).toHaveProperty("status_class", status_class);
+      } else {
+        expect(result).not.toHaveProperty("status_class");
+      }
+    }
+  }
+  const result = deriveExecutionOutcome(
+    { status: "succeeded", failure: null, output_contract: "none" },
+    [row("read", "succeeded", 1)],
+    { ...outcomeFacts, failure: { ...failureFacts, status_class: "5xx" } },
+  );
+  expect(result).not.toHaveProperty("status_class");
+});
+
 test("ordinary request metadata without extras is not a held row", () => {
   const result = deriveExecutionOutcome(
     { status: "succeeded", failure: null, output_contract: null },

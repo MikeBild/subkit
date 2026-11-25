@@ -174,7 +174,10 @@ test("a sensitive limit failure keeps its safe code at step and run level", asyn
   expect(result.status).toBe("failed");
   expect(result.error).toEqual(sensitiveFailure("pagination_limit_reached"));
   expect(result.error?.code).toBe("pagination_limit_reached");
-  expect(result.steps[0]?.error).toEqual(sensitiveFailure("pagination_limit_reached"));
+  expect(result.steps[0]?.error).toEqual(
+    sensitiveFailure("pagination_limit_reached", undefined, "2xx"),
+  );
+  expect(result.steps[0]?.request_meta).toMatchObject({ driver: "sensitive", status_class: "2xx" });
   expect(JSON.stringify(result)).not.toContain(CURSOR);
 });
 
