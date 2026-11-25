@@ -370,7 +370,9 @@ export const authorityEn = {
   "authority.refusal.partial_segment_placeholder":
     "A placeholder covers only part of an address segment. A limit can name a whole segment, not a piece of one.",
   "authority.refusal.runtime_header":
-    "A header is filled at runtime, so what this request carries cannot be reviewed in advance.",
+    "A header is filled at runtime in a form a limit cannot describe.",
+  "authority.refusal.header_boundary_mismatch":
+    "The limit names different headers than the step actually fills at runtime.",
   "authority.refusal.runtime_value_outside_path_and_body":
     "A runtime value appears somewhere other than the address or the body — there is nothing to bound it with.",
   "authority.refusal.query_placeholder_unsupported":
@@ -820,7 +822,9 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.refusal.partial_segment_placeholder":
     "Ein Platzhalter deckt nur einen Teil eines Adressabschnitts ab. Eine Grenze kann einen ganzen Abschnitt benennen, kein Stück davon.",
   "authority.refusal.runtime_header":
-    "Ein Kopffeld wird erst zur Laufzeit gefüllt — was diese Anfrage mitführt, ist vorab nicht prüfbar.",
+    "Ein Kopffeld wird zur Laufzeit in einer Form gefüllt, die eine Grenze nicht beschreiben kann.",
+  "authority.refusal.header_boundary_mismatch":
+    "Die Grenze benennt andere Kopffelder als der Schritt zur Laufzeit tatsächlich füllt.",
   "authority.refusal.runtime_value_outside_path_and_body":
     "Ein Laufzeitwert steht an anderer Stelle als in Adresse oder Inhalt. Dort gibt es nichts, womit man ihn begrenzen könnte.",
   "authority.refusal.query_placeholder_unsupported":

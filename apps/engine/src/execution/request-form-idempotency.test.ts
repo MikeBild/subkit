@@ -223,6 +223,28 @@ describe("request step idempotency_key", () => {
     expect(observed).toHaveLength(0);
   });
 
+  test("a header bounded by boundary.headers is resolved, checked and sent", async () => {
+    const boundedStep = {
+      headers: { "Idempotency-Key": "${input.body.workId}" },
+      body: { title: "${input.body.title}" },
+      boundary: {
+        variables: {},
+        headers: { "Idempotency-Key": { class: "identifier" } },
+        max_body_bytes: 1024,
+        max_calls: 1,
+      },
+    };
+    const allowed = await send(boundedStep, { body: { workId: "work-42", title: "Plan" } });
+    expect(allowed.result.status).toBe("succeeded");
+    expect(observed[0]?.idempotency_key).toBe("work-42");
+    expect(JSON.parse(observed[0]?.body ?? "{}")).toEqual({ title: "Plan" });
+    const refused = await send(boundedStep, { body: { workId: "work 42!", title: "Plan" } });
+    expect(refused.result.status).toBe("failed");
+    expect(refused.result.error?.code).toBe("request_outside_declared_boundary");
+    expect(refused.result.error?.message).toContain("the header `Idempotency-Key`");
+    expect(observed).toHaveLength(0);
+  });
+
   test("without idempotency_key the generated per-step key is kept", async () => {
     const { result, ids } = await send({ body: { a: 1 } }, {});
     expect(result.status).toBe("succeeded");

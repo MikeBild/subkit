@@ -7,6 +7,7 @@ import type { ModelCallEffect } from "./core/model-call-effect.ts";
 import type { WorkflowEffectManifest } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { loadWorkflowReadFacts, type WorkflowReadFacts } from "./read-facts.ts";
+import { ruleLabel } from "./request-value-rules.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
 const candidateWorkflowId = "00000000-0000-4000-8000-000000000001";
@@ -213,6 +214,14 @@ export async function resolveWorkflowReviewManifest(
             `At most ${effect.boundary.max_calls} calls; ${effect.boundary.max_body_bytes} body bytes`,
             ...(Object.keys(effect.boundary.variables).length
               ? [`Variable paths: ${Object.keys(effect.boundary.variables).sort().join(", ")}`]
+              : []),
+            ...(effect.boundary.headers
+              ? [
+                  `Variable headers: ${Object.entries(effect.boundary.headers)
+                    .map(([name, entry]) => `${name} (${ruleLabel(entry.rule)})`)
+                    .sort()
+                    .join(", ")}`,
+                ]
               : []),
           ]
         : []),

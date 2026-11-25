@@ -31537,6 +31537,17 @@ export interface components {
                     idempotency_key?: {
                         var: string;
                     };
+                    headers?: {
+                        [key: string]: {
+                            var: string;
+                            rule: {
+                                enum: string[];
+                            } | {
+                                /** @enum {string} */
+                                class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                            };
+                        };
+                    };
                     segments?: (string | {
                         var: string;
                     })[];
@@ -32293,6 +32304,15 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                    };
+                };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
                 allowed_hosts?: string[] | string;
                 max_body_bytes: number;
@@ -32447,6 +32467,15 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    };
+                };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
                     };
                 };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
@@ -32774,6 +32803,15 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                    };
+                };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
                 allowed_hosts?: string[] | string;
                 max_body_bytes: number;
@@ -32946,6 +32984,15 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    };
+                };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
                     };
                 };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
@@ -33122,6 +33169,15 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                    };
+                };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
                 allowed_hosts?: string[] | string;
                 max_body_bytes: number;
@@ -33291,6 +33347,15 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                    };
+                };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
                 allowed_hosts?: string[] | string;
                 max_body_bytes: number;
@@ -33458,6 +33523,15 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    };
+                };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
                     };
                 };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
@@ -33634,6 +33708,15 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                    };
+                };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
                 allowed_hosts?: string[] | string;
                 max_body_bytes: number;
@@ -33808,6 +33891,15 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                    };
+                };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
                 allowed_hosts?: string[] | string;
                 max_body_bytes: number;
@@ -33963,6 +34055,15 @@ export interface components {
                         caller_bound: true;
                     };
                 };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
+                    };
+                };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
                 allowed_hosts?: string[] | string;
                 max_body_bytes: number;
@@ -34116,6 +34217,15 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    };
+                };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
                     };
                 };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
@@ -34303,6 +34413,15 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    };
+                };
+                /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
+                headers?: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name";
                     };
                 };
                 /** @description Hosts a runtime url may reach. Only with a `url` that is one whole `${input.*}` or `${item.*}` placeholder; the request must then be https on exactly one of these hosts. A recipe leaves `${input.<key>}` here and pins the list at install time. */
