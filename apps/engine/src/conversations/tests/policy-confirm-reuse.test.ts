@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
-import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversations,
+  conversationToolCalls,
+} from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getElicitation } from "../elicitations.ts";
 import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
@@ -22,7 +26,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-test("reused policy confirmation publishes the persisted approval metadata", async () => {
+const policyConfirmInvoker = async () => {
   const [conversation] = await ctx.testDb.db
     .insert(conversations)
     .values({ tenant_id: ctx.tenant_id, owner_id: ctx.user_id, status: "active" })
@@ -72,6 +76,11 @@ test("reused policy confirmation publishes the persisted approval metadata", asy
     );
     return { result, signals, events };
   };
+  return { conversation, invoke };
+};
+
+test("reused policy confirmation publishes the persisted approval metadata", async () => {
+  const { conversation, invoke } = await policyConfirmInvoker();
   const first = await invoke();
   const firstId = first.signals.pendingElicitation?.elicitation_id;
   expect(firstId).toBeDefined();
@@ -92,4 +101,26 @@ test("reused policy confirmation publishes the persisted approval metadata", asy
     .where(eq(conversationToolCalls.conversation_id, conversation.id));
   expect(calls).toHaveLength(2);
   for (const call of calls) expect(call.output).toMatchObject({ approval_url: input.approval_url });
+});
+
+test("an expired but still pending approval for the same action is not reused", async () => {
+  const { conversation, invoke } = await policyConfirmInvoker();
+  const first = await invoke();
+  const firstId = first.signals.pendingElicitation?.elicitation_id;
+  if (!firstId) throw new Error("missing first elicitation");
+  await ctx.testDb.db
+    .update(conversationElicitations)
+    .set({ expires_at: new Date(Date.now() - 60_000) })
+    .where(eq(conversationElicitations.id, firstId));
+  const second = await invoke();
+  const secondId = second.signals.pendingElicitation?.elicitation_id;
+  if (!secondId) throw new Error("missing second elicitation");
+  expect(secondId).not.toBe(firstId);
+  const rows = await ctx.testDb.db
+    .select()
+    .from(conversationElicitations)
+    .where(eq(conversationElicitations.conversation_id, conversation.id));
+  expect(rows.filter((row) => row.status === "pending").map((row) => row.id)).toEqual([secondId]);
+  const fresh = rows.find((row) => row.id === secondId);
+  expect(fresh?.expires_at.getTime()).toBeGreaterThan(Date.now());
 });

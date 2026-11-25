@@ -288,6 +288,14 @@ async function openElicitation(
   return admission;
 }
 
+const markAwaitingInput = (exec: Executor, p: CreateElicitationParams) =>
+  transitionConversation(exec, {
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    to: "awaiting_input",
+    set: { updated_at: new Date() },
+  });
+
 async function insertElicitation(
   p: CreateElicitationParams,
   protocolNative: boolean,
@@ -320,14 +328,14 @@ async function insertElicitation(
         eq(conversationElicitations.status, "pending"),
       ),
     );
-  const openApproval = stale.find((row) =>
-    asksForSameApproval(row, { tool_name: p.tool_name, input: p.input }),
+  const lookupAt = new Date();
+  const openApproval = stale.find(
+    (row) =>
+      row.expires_at.getTime() > lookupAt.getTime() &&
+      asksForSameApproval(row, { tool_name: p.tool_name, input: p.input }),
   );
   if (openApproval) {
-    await exec
-      .update(conversations)
-      .set({ status: "awaiting_input", updated_at: new Date() })
-      .where(eq(conversations.id, p.conversation_id));
+    await markAwaitingInput(exec, p);
     logger.info({
       module: "conversation",
       action: "elicitation.reused_open_approval",
@@ -385,12 +393,7 @@ async function insertElicitation(
     })
     .returning();
   assertInsertRow(inserted, "elicitation");
-  await transitionConversation(exec, {
-    tenant_id: p.tenant_id,
-    conversation_id: p.conversation_id,
-    to: "awaiting_input",
-    set: { updated_at: new Date() },
-  });
+  await markAwaitingInput(exec, p);
   const inputKind =
     p.input && typeof p.input === "object" && p.input !== null
       ? ((p.input as { kind?: unknown }).kind ?? null)
