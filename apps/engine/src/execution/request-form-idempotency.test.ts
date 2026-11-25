@@ -187,6 +187,22 @@ describe("request step idempotency_key", () => {
     expect(observed[0]?.idempotency_key).toBe("explicit-header-value");
   });
 
+  for (const header of ["Idempotency-Key", "idempotency-key", "IDEMPOTENCY-KEY"]) {
+    test(`an explicit ${header} header skips an unresolved idempotency_key`, async () => {
+      const { result } = await send(
+        {
+          headers: { [header]: "explicit-header-value" },
+          idempotency_key: "${secret.missing}",
+          body: { a: 1 },
+        },
+        {},
+      );
+      expect(result.status).toBe("succeeded");
+      expect(observed).toHaveLength(1);
+      expect(observed[0]?.idempotency_key).toBe("explicit-header-value");
+    });
+  }
+
   test("a bounded step checks the derived Idempotency-Key against its reviewed rule", async () => {
     const boundedStep = {
       form: { amount: "${input.amount}" },

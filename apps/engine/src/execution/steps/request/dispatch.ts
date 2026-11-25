@@ -245,7 +245,8 @@ async function resolveRequestParts(
       omitted_keys: formRes.omitted,
     });
   const idempotencyKeyRes =
-    p.step.idempotency_key !== undefined
+    p.step.idempotency_key !== undefined &&
+    !Object.keys(p.step.headers ?? {}).some((key) => key.toLowerCase() === "idempotency-key")
       ? await resolveStringPlaceholders(p.step.idempotency_key, partsCtx)
       : null;
   const credentialUnresolved = [
