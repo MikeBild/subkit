@@ -18,10 +18,8 @@ apps/engine/src/auth/providers/oidc-session.ts                         2
 apps/engine/src/auth/providers/oidc.ts                                 1
 apps/engine/src/auth/providers/portal-token.ts                         2
 apps/engine/src/chat/dispatcher.ts                                     4
-apps/engine/src/chat/elicit-routing.ts                                 3
 apps/engine/src/chat/slack/decisions/handle.ts                         1
 apps/engine/src/composition/scheduler.ts                               1
-apps/engine/src/config/loader.ts                                       7
 apps/engine/src/connectors/discovery/html-scrape.ts                    1
 apps/engine/src/connectors/discovery/llms-txt.ts                       1
 apps/engine/src/connectors/discovery/openapi-direct.ts                 1
@@ -71,7 +69,6 @@ apps/engine/src/db/issue-admin-key.ts                                  1
 apps/engine/src/db/migrate.ts                                          1
 apps/engine/src/db/print-key.ts                                        1
 apps/engine/src/devices/core/assertion.ts                              1
-apps/engine/src/docs-ingestion/cascade.ts                              3
 apps/engine/src/docs-ingestion/parsers/pdf.ts                          2
 apps/engine/src/docs-ingestion/parsers/strategy.ts                     1
 apps/engine/src/docs-ingestion/read-response.ts                        2
@@ -160,7 +157,7 @@ apps/engine/src/queue/handlers/execution-run.ts                        1
 apps/engine/src/queue/handlers/task-run-turn.ts                        2
 apps/engine/src/rbac/evaluator.ts                                      1
 apps/engine/src/runtime-config/restart.ts                              1
-apps/engine/src/sandboxes/quickjs/runtime.ts                           4
+apps/engine/src/sandboxes/quickjs/runtime.ts                           1
 apps/engine/src/sandboxes/quickjs/worker.ts                            1
 apps/engine/src/scheduler/reconciler.ts                                1
 apps/engine/src/storage/file-system-object-store.ts                    6

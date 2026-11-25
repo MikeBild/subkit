@@ -125,6 +125,27 @@ function looksUrlLike(value: string): boolean {
   return false;
 }
 
+function absoluteUrl(raw: string, base: string): string | null {
+  try {
+    return new URL(raw, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+function collectSpecLinks(
+  body: string,
+  parse: (text: string) => unknown,
+  push: (link: string) => void,
+): boolean {
+  try {
+    for (const v of walkForSpecLinks(parse(body))) push(v);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function walkForSpecLinks(root: unknown): string[] {
   const MAX_NODES = 5_000;
   const out: string[] = [];
@@ -167,13 +188,11 @@ export async function discoverOpenApiLinks(
   const candidates: string[] = [];
   const seen = new Set<string>();
   const push = (raw: string): void => {
-    try {
-      const abs = new URL(raw, baseUrl).toString();
-      if (!seen.has(abs)) {
-        seen.add(abs);
-        candidates.push(abs);
-      }
-    } catch {}
+    const abs = absoluteUrl(raw, baseUrl);
+    if (abs !== null && !seen.has(abs)) {
+      seen.add(abs);
+      candidates.push(abs);
+    }
   };
 
   if (
@@ -181,17 +200,11 @@ export async function discoverOpenApiLinks(
     body.trimStart().startsWith("{") ||
     body.trimStart().startsWith("[")
   ) {
-    try {
-      const parsed = JSON.parse(body);
-      for (const v of walkForSpecLinks(parsed)) push(v);
-    } catch {}
+    collectSpecLinks(body, JSON.parse, push);
   }
 
   if (candidates.length === 0 && (contentType.includes("yaml") || /\.ya?ml(\?|$)/i.test(baseUrl))) {
-    try {
-      const parsed = loadYaml(body);
-      for (const v of walkForSpecLinks(parsed)) push(v);
-    } catch {}
+    collectSpecLinks(body, loadYaml, push);
   }
 
   if (candidates.length === 0) {

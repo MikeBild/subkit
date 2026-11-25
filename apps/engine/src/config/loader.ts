@@ -170,6 +170,12 @@ async function atomicWrite(configPath: string, content: string): Promise<void> {
     await fileHandle.close();
   }
 
+  await syncDirectory(dir);
+
+  await fs.rename(tmp, configPath);
+}
+
+async function syncDirectory(dir: string): Promise<boolean> {
   try {
     const dirHandle = await fs.open(dir, "r");
     try {
@@ -177,9 +183,21 @@ async function atomicWrite(configPath: string, content: string): Promise<void> {
     } finally {
       await dirHandle.close();
     }
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  await fs.rename(tmp, configPath);
+type LoggingModule = typeof import("../logging/logger.ts");
+
+async function withLogging(use: (logging: LoggingModule) => void): Promise<boolean> {
+  try {
+    use(await import("../logging/logger.ts"));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function buildSourceMap(raw: Record<string, unknown>): SourceMap {
@@ -379,8 +397,7 @@ export async function loadConfig(
     }
   }
 
-  try {
-    const { logger } = await import("../logging/logger.ts");
+  await withLogging(({ logger }) => {
     const sourceMap = buildSourceMap(mergedObj);
     const tally = { override: 0, global: 0, default: 0 };
     for (const src of Object.values(sourceMap)) {
@@ -399,7 +416,7 @@ export async function loadConfig(
       tenant_overlay_count: Object.keys(parsed.tenants ?? {}).length,
       ...tally,
     });
-  } catch {}
+  });
 
   _state = {
     config: parsed,
@@ -431,8 +448,7 @@ export function recordBootConsumer(name: string): void {
 export async function emitBootComplete(): Promise<void> {
   if (_bootCompleteEmitted) return;
   _bootCompleteEmitted = true;
-  try {
-    const { logger } = await import("../logging/logger.ts");
+  await withLogging(({ logger }) => {
     logger.info({
       module: "config",
       action: "boot.complete",
@@ -440,7 +456,7 @@ export async function emitBootComplete(): Promise<void> {
       consumers: [..._bootConsumers].sort(),
       consumer_count: _bootConsumers.size,
     });
-  } catch {}
+  });
 }
 
 export function _resetBootConsumersForTests(): void {
@@ -512,17 +528,17 @@ export function installRuntimeConfig(document: unknown): Config {
 
 export async function emitRequiresRestartPendingIfAny(): Promise<void> {
   if (_state === null) return;
-  if (_state.pendingRestartKeys.size === 0) return;
-  try {
-    const { logger } = await import("../logging/logger.ts");
+  const pending = _state.pendingRestartKeys;
+  if (pending.size === 0) return;
+  await withLogging(({ logger }) => {
     logger.warn({
       module: "config",
       action: "requires_restart_pending",
       msg: "config writes pending restart — engine has not picked up the new value yet",
-      pending_restart_keys: [..._state.pendingRestartKeys].sort(),
-      pending_count: _state.pendingRestartKeys.size,
+      pending_restart_keys: [...pending].sort(),
+      pending_count: pending.size,
     });
-  } catch {}
+  });
 }
 
 export interface SetConfigKeyOptions {
@@ -668,8 +684,7 @@ export async function setConfigKey(
     if (!opts.tenantId) state.globalSourceMap[dottedPath(leaf)] = "global";
     if (requiresRestart) state.pendingRestartKeys.add(dottedPath(leaf));
 
-    try {
-      const { logger } = await import("../logging/logger.ts");
+    await withLogging(({ logger }) => {
       logger.info({
         module: "config",
         action: "setting.applied",
@@ -680,28 +695,26 @@ export async function setConfigKey(
         requires_restart: requiresRestart,
         changed: JSON.stringify(beforeValue) !== JSON.stringify(validatedValue),
       });
-    } catch {}
+    });
 
     if (leaf.path[0] === "log") {
-      try {
-        const { reconfigureLogger } = await import("../logging/logger.ts");
+      await withLogging(({ reconfigureLogger }) => {
         reconfigureLogger({
           level: fullParse.data.log.level,
           format: fullParse.data.log.format,
         });
-      } catch {}
+      });
     }
 
     let reconfigureFailed = false;
     if (leaf.path[0] === "observability") {
-      try {
-        const { reconfigureObservability } = await import("../logging/logger.ts");
+      await withLogging(({ reconfigureObservability }) => {
         reconfigureObservability({
           field_truncation_chars: fullParse.data.observability.field_truncation_chars,
           service_name: fullParse.data.observability.otlp.service_name,
           deployment_environment: fullParse.data.observability.deployment_environment,
         });
-      } catch {}
+      });
       try {
         const { reconfigureTracing } = await import("../observability/tracing.ts");
         await reconfigureTracing();

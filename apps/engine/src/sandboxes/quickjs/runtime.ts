@@ -121,7 +121,7 @@ export async function runJsInCurrentProcess<T = unknown>(
   let timedOut = false;
   let peakMemory = 0;
 
-  const samplePeakMemory = (): void => {
+  const samplePeakMemory = (): boolean => {
     try {
       const handle = runtime.computeMemoryUsage();
       try {
@@ -134,7 +134,10 @@ export async function runJsInCurrentProcess<T = unknown>(
       } finally {
         handle.dispose();
       }
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const tick_cap = Math.max(MIN_TICK_CAP, limits.tick_budget);
@@ -304,12 +307,17 @@ export async function runJsInCurrentProcess<T = unknown>(
     }
     throw new SandboxRuntimeError(message, stats);
   } finally {
-    try {
-      context.dispose();
-    } catch {}
-    try {
-      runtime.dispose();
-    } catch {}
+    disposeQuietly(context);
+    disposeQuietly(runtime);
+  }
+}
+
+function disposeQuietly(resource: { dispose(): void }): boolean {
+  try {
+    resource.dispose();
+    return true;
+  } catch {
+    return false;
   }
 }
 

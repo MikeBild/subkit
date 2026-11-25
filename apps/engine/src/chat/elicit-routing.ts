@@ -22,7 +22,7 @@ import {
 } from "../conversations/public/lifecycle.ts";
 import type { Db } from "../db/client.ts";
 import { isNoSuchTool } from "../llm/runtime/sdk-errors.ts";
-import { logger } from "../logging/index.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { isUuid } from "../utils/index.ts";
 import {
   ChatInteractionEnvelopeSchema,
@@ -200,6 +200,25 @@ interface RouteChatInteractionArgs {
   notify?: (text: string) => Promise<void>;
 }
 
+async function tellUser(
+  notify: RouteChatInteractionArgs["notify"],
+  text: string,
+  tenant_id: string,
+): Promise<void> {
+  if (!notify) return;
+  try {
+    await notify(text);
+  } catch (err) {
+    logger.warn({
+      module: "chat",
+      action: "interaction.notify_failed",
+      msg: "could not tell the user why the answer was not applied",
+      tenant_id,
+      ...errorFields(err),
+    });
+  }
+}
+
 export async function routeChatInteraction(
   args: RouteChatInteractionArgs,
 ): Promise<DispatchOutcome> {
@@ -315,11 +334,7 @@ export async function routeChatInteraction(
     const classified = classifyChatElicitError(err);
     switch (classified.kind) {
       case "actor_mismatch": {
-        if (notify) {
-          try {
-            await notify(classified.user_text);
-          } catch {}
-        }
+        await tellUser(notify, classified.user_text, tenant_id);
         await auditAwait(
           {
             tenant_id,
@@ -340,11 +355,7 @@ export async function routeChatInteraction(
         return { status: "ignored", conversation_id };
       }
       case "validation": {
-        if (notify) {
-          try {
-            await notify(classified.user_text);
-          } catch {}
-        }
+        await tellUser(notify, classified.user_text, tenant_id);
         logger.warn({
           module: "chat",
           action: "interaction.elicitation_validation_failed",
@@ -357,11 +368,7 @@ export async function routeChatInteraction(
         return { status: "ignored", conversation_id };
       }
       case "surface_unsupported": {
-        if (notify) {
-          try {
-            await notify(classified.user_text);
-          } catch {}
-        }
+        await tellUser(notify, classified.user_text, tenant_id);
         logger.warn({
           module: "chat",
           action: "interaction.surface_unsupported_tool",
