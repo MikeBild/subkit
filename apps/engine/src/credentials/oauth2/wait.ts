@@ -105,7 +105,16 @@ async function credentialExistsWithBoundedPool(
       await client.query({ text: "COMMIT", values: [], query_timeout: readTimeoutMs });
       return found;
     })();
-    query.catch(() => undefined);
+    query.catch((err) =>
+      logger.debug({
+        module: "oauth",
+        action: "oauth.wait.read_settled_after_race",
+        msg: "credential read failed after the wait already settled",
+        tenant_id,
+        connector_id,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
     const timedOut = new Promise<never>((_resolve, reject) => {
       deadline = setTimeout(() => reject(timeoutError), readTimeoutMs);
       deadline.unref?.();
