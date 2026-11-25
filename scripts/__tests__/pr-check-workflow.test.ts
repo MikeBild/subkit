@@ -8,6 +8,15 @@ const workflow = readFileSync(
 );
 const affected = workflow.slice(workflow.indexOf("\n  affected:"));
 
+test("the changed source coverage floor includes renamed files", () => {
+  const selection = affected.match(/changed=\$\(git diff[^\n]+/)?.[0];
+  expect(selection).toBeDefined();
+  const statuses = selection?.match(/--diff-filter=([A-Z]+)/)?.[1];
+  expect(statuses).toContain("A");
+  expect(statuses).toContain("M");
+  expect(statuses).toContain("R");
+});
+
 test("affected runners install expect before executing PTY tests", () => {
   const install = affected.indexOf("sudo apt-get install -y expect");
   expect(install).toBeGreaterThan(-1);

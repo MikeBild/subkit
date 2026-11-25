@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   aggregateByPrefix,
+  coverageTargetWanted,
   judgeFile,
   parseCoverageTable,
   parseFloorFile,
@@ -279,4 +280,29 @@ describe("relatedTests", () => {
       "apps/engine/src/execution/core/run.properties.test.ts",
     ]);
   });
+});
+
+describe("changed source coverage", () => {
+  test("skips a changed source without configured coverage targets", () => {
+    const result = Bun.spawnSync([
+      "bun",
+      "apps/engine/scripts/check-coverage-floor.ts",
+      "--changed-files",
+      "apps/clipper/src/api.ts",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain("no configured coverage targets");
+  });
+});
+
+test("changed subsystem files select their parent without matching adjacent paths", () => {
+  expect(
+    coverageTargetWanted("apps/engine/src/rbac", ["apps/engine/src/rbac/check.ts"], true),
+  ).toBe(true);
+  expect(
+    coverageTargetWanted("apps/engine/src/rbac", ["apps/engine/src/rbac-extra/check.ts"], true),
+  ).toBe(false);
+  expect(
+    coverageTargetWanted("apps/engine/src/rbac/check.ts", ["apps/engine/src/rbac/other.ts"]),
+  ).toBe(false);
 });
