@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { plan } from "../../../scripts/lib/commands.ts";
@@ -9,7 +9,9 @@ import { staleSnapshotsIn } from "../../../scripts/lib/migration-snapshots.ts";
 import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts";
 import { parseFloorFile } from "./audit/coverage-floor.ts";
 import { listFiles } from "./audit/files.ts";
+import { parseSource, resolveImport } from "./audit/imports.ts";
 import { createCache, evaluateRatchet, RATCHETS, writeRatchetBaseline } from "./audit/ratchets.ts";
+import { isRowScopeScope, rowScopeHits } from "./audit/row-scope.ts";
 import { isTestPath } from "./audit/rules.ts";
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 import { loadTestLayers } from "./audit/test-layer-source.ts";
@@ -298,6 +300,32 @@ function checkTenantFilter(): Result {
     id: "tenant_filter",
     status: "FAIL",
     message: `${violations.length} call sites without tenant_id predicate (add the predicate or annotate with \`// tenant-filter:exempt — <reason>\`):\n  ${rendered.join("\n  ")}${violations.length > 10 ? `\n  ... (${violations.length - 10} more)` : ""}`,
+  };
+}
+
+function checkRowScope(): Result {
+  const exists = (rel: string) => existsSync(join(REPO, rel));
+  const violations: string[] = [];
+  for (const abs of listFiles(ENGINE_SRC, (p) => p.endsWith(".ts"))) {
+    const rel = relative(REPO, abs);
+    if (isTestPath(rel) || !isRowScopeScope(rel)) continue;
+    const sf = parseSource(rel, readFileSync(abs, "utf8"));
+    for (const hit of rowScopeHits(sf, (spec) => resolveImport(rel, spec, exists)))
+      violations.push(
+        `${rel}:${hit.line} ${hit.how === "raw_sql" ? "raw SQL on" : "table"} ${hit.table}`,
+      );
+  }
+  if (violations.length === 0)
+    return {
+      id: "row_scope",
+      status: "PASS",
+      message:
+        "every row-scoped table is used inside withTenantScope/withSystemScope or a ScopedTx helper",
+    };
+  return {
+    id: "row_scope",
+    status: "FAIL",
+    message: `${violations.length} use(s) of a row-scoped table outside a row scope; wrap the access in withTenantScope or withSystemScope, take a \`ScopedTx\`, or annotate \`// row-scope-allowed: <reason>\`:\n  ${violations.join("\n  ")}`,
   };
 }
 
@@ -837,6 +865,7 @@ const CHECKS: Array<() => Result> = [
   checkInternalLayering,
   checkFileSize,
   checkTenantFilter,
+  checkRowScope,
   checkNoSnapshots,
   checkSingleMigrationSnapshot,
   checkNoLiveLlm,
