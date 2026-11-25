@@ -8,7 +8,7 @@ import { logger } from "../../../../logging/index.ts";
 import { recordSuccessShape } from "../../../../schema-versions/index.ts";
 import type { pagedBodyGuard } from "../../../../workflows/request-boundary.ts";
 import type { MaterializedRequest } from "../../../prepared-request.ts";
-import type { RequestMeta } from "../../../types.ts";
+import type { RequestDigest, RequestMeta } from "../../../types.ts";
 import { RequestError } from "../errors.ts";
 import type { DoOnePageParams } from "../http-attempt.ts";
 import { resolveRetryPolicy } from "../retry.ts";
@@ -33,7 +33,7 @@ export interface HttpExchange {
   retry_counter: { value: number };
   idempotency_base: string | null;
   last_idempotency_key: { value: string | null };
-  digest: { header_keys: string[]; query_keys: string[]; body_kind: string };
+  digest: RequestDigest;
   meta: RequestMeta;
   held_body: unknown;
   multipart: FormData | undefined;

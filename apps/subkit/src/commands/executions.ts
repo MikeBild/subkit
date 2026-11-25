@@ -15,7 +15,12 @@ import {
   isAbortableExecutionStatus,
   nothingToAbortLine,
 } from "../lib/execution-abort.ts";
-import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "../lib/execution-outcome.ts";
+import {
+  executionOutcomeLine,
+  recordLinkLines,
+  sensitiveDiagnosticsLine,
+  stepLimitLine,
+} from "../lib/execution-outcome.ts";
 import { executionOutputFileLines } from "../lib/execution-output-files.ts";
 import { resolveExecutionResult } from "../lib/execution-result.ts";
 import { heldRunBlock } from "../lib/held-run.ts";
@@ -362,6 +367,8 @@ function printFailedStepErrors(steps: readonly ExecutionStep[]): void {
     const resolvedUrl = stringField(s.error, "resolved_url");
     process.stdout.write(`  ${pc.red("●")} ${pc.bold(stepKey)} — ${pc.red(code)}: ${message}\n`);
     if (resolvedUrl) process.stdout.write(`      ${pc.dim(`url: ${resolvedUrl}`)}\n`);
+    const diagnostics = sensitiveDiagnosticsLine(s);
+    if (diagnostics) process.stdout.write(`      ${pc.dim(diagnostics)}\n`);
     const limit = stepLimitLine(s);
     if (limit) process.stdout.write(`      ${pc.yellow(limit)}\n`);
     if (guidance) process.stdout.write(`      ${pc.yellow(guidance)}\n`);

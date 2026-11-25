@@ -75,6 +75,7 @@ import {
   isExecutionRecord,
   type OutcomeSentence,
   previewText,
+  protectedDiagnosticsSentence,
   type RunFact,
   rerunFailureText,
   runCaller,
@@ -220,6 +221,7 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
   const failing = stoppingStep(stepItems, outcome);
   const errorEvidence = failing ? previewText(failing.error) : null;
   const limitSentence = stepLimitSentence(failing, t, locale);
+  const protectedSentence = protectedDiagnosticsSentence(failing, t);
   const payload = payloadEvidence(stepItems, current.status, outcome);
   const statusWord = (status: string) => statusLabel(t, status);
   const truncated = truncatedSteps(stepItems);
@@ -392,6 +394,11 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
               {limitSentence ? (
                 <span className="text-xs" data-testid="run-detail-limit">
                   {limitSentence}
+                </span>
+              ) : null}
+              {protectedSentence ? (
+                <span className="text-xs" data-testid="run-detail-protected-diagnostics">
+                  {protectedSentence}
                 </span>
               ) : null}
               {stepGuidance(failing) ? (

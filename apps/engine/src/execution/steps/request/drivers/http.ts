@@ -27,6 +27,11 @@ import {
   requestBoundary,
   requestBoundaryViolation,
 } from "../../../../workflows/request-boundary.ts";
+import {
+  bodyByteLength,
+  bodySizeBucket,
+  placeholderTypes,
+} from "../../../core/sensitive-diagnostics.ts";
 import { makeStrategy, type PaginationSpec } from "../../../pagination.ts";
 import {
   type MaterializedRequest,
@@ -34,7 +39,7 @@ import {
   preparedRequestReview,
 } from "../../../prepared-request.ts";
 import { GOVERNANCE_REFUSALS } from "../../../state.ts";
-import type { RequestMeta, StepResult } from "../../../types.ts";
+import type { RequestDigest, RequestMeta, StepResult } from "../../../types.ts";
 import { buildStepErrorDetail } from "../../error-detail.ts";
 import { requestFailureEvidence } from "../circuit-evidence.ts";
 import { RequestError } from "../errors.ts";
@@ -396,16 +401,7 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
     Object.keys(headers).some((name) => name.toLowerCase() === "idempotency-key")
       ? null
       : `${p.ctx.execution_id}:${p.ctx.step_row_id}`;
-  const digest = {
-    header_keys: Object.keys(headers).sort(),
-    query_keys: Object.keys(query).sort(),
-    body_kind:
-      resolvedStepBody == null
-        ? "none"
-        : Array.isArray(resolvedStepBody)
-          ? "array"
-          : typeof resolvedStepBody,
-  };
+  const digest = requestDigest(headers, query, p.step.body, resolvedStepBody);
   const meta: RequestMeta = d.connector_resolution
     ? {
         driver: "http",
@@ -570,6 +566,24 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
   };
   exchange.before_dispatch = httpBeforeDispatch(exchange);
   return { exchange };
+}
+
+function requestDigest(
+  headers: Record<string, string>,
+  query: Record<string, unknown>,
+  bodyTemplate: unknown,
+  resolvedBody: unknown,
+): RequestDigest {
+  const types = placeholderTypes(bodyTemplate, resolvedBody);
+  const size = bodySizeBucket(bodyByteLength(resolvedBody));
+  return {
+    header_keys: Object.keys(headers).sort(),
+    query_keys: Object.keys(query).sort(),
+    body_kind:
+      resolvedBody == null ? "none" : Array.isArray(resolvedBody) ? "array" : typeof resolvedBody,
+    ...(Object.keys(types).length > 0 ? { placeholder_types: types } : {}),
+    ...(size ? { body_size: size } : {}),
+  };
 }
 
 function governanceCode(error: unknown): string | undefined {

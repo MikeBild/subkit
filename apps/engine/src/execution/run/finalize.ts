@@ -22,6 +22,7 @@ import {
   sensitiveFailure,
   sensitiveOutputShape,
   sensitiveRequestMeta,
+  sensitiveStatusClass,
 } from "../sensitive-payload.ts";
 import { settleTerminalOutcome } from "../settle-terminal.ts";
 import { finalizeExecution, readExecutionAttempt } from "../state.ts";
@@ -86,9 +87,13 @@ function sensitiveRunResult(
     ...step,
     output_preview: null,
     raw_preview: null,
-    request_meta: sensitiveRequestMeta(step.request_meta),
+    request_meta: sensitiveRequestMeta(step.request_meta, step.error),
     error: step.error
-      ? sensitiveFailure(stepErrorCode(step.error), stepErrorMessage(step.error))
+      ? sensitiveFailure(
+          stepErrorCode(step.error),
+          stepErrorMessage(step.error),
+          sensitiveStatusClass(step.request_meta, step.error),
+        )
       : null,
   }));
   const safeWarnings = state.warnings

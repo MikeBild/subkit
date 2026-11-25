@@ -1,10 +1,26 @@
 import { z } from "@hono/zod-openapi";
+import {
+  BODY_SIZE_BUCKETS,
+  PLACEHOLDER_TYPES,
+  STATUS_CLASSES,
+} from "./core/sensitive-diagnostics.ts";
+
+const PlaceholderTypesSchema = z
+  .record(z.string(), z.enum(PLACEHOLDER_TYPES))
+  .describe(
+    "JSON type each resolved body placeholder produced, keyed by placeholder path such as input.body.app.argv. Never the value.",
+  );
+const BodySizeSchema = z
+  .enum(BODY_SIZE_BUCKETS)
+  .describe("Coarse size of the request body that was built.");
 
 const RequestDigestSchema = z
   .object({
     header_keys: z.array(z.string()),
     query_keys: z.array(z.string()),
     body_kind: z.string(),
+    placeholder_types: PlaceholderTypesSchema.optional(),
+    body_size: BodySizeSchema.optional(),
   })
   .openapi("RequestDigest");
 
@@ -180,6 +196,14 @@ const SensitiveRequestMetaSchema = z
       .object({ connector_id: z.string(), connector_slug: z.string() })
       .optional()
       .openapi("SensitiveConnectorRef"),
+    status_class: z
+      .enum(STATUS_CLASSES)
+      .optional()
+      .describe(
+        "Class of the upstream answer of a failed step: 2xx, 3xx, 4xx, 5xx, network or timeout. Never the exact status.",
+      ),
+    placeholder_types: PlaceholderTypesSchema.optional(),
+    body_size: BodySizeSchema.optional(),
     extras: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi("SensitiveRequestMeta");
