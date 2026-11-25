@@ -29,7 +29,9 @@ test(
         [tenant.id],
       );
 
-      expect(await runMigrations(ctx.db)).toMatchObject({ applied: 1 });
+      expect(await runMigrations(ctx.db)).toMatchObject({
+        applied: EMBEDDED_MIGRATIONS.length - baseline.length,
+      });
 
       const { rows } = await ctx.pool.query(
         "SELECT channel_id, default_severity FROM notification_channels ORDER BY channel_id",
