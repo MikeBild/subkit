@@ -13,6 +13,7 @@ type ChatWorkspaceInstallRefusal =
   | "claimed_elsewhere"
   | "platform_unsupported"
   | "installer_not_owned"
+  | "installer_not_user"
   | "already_installed"
   | "installer_linked_elsewhere";
 
@@ -112,6 +113,32 @@ export async function installChatWorkspace(
     throw new ChatWorkspaceInstallRefusedError(
       "platform_unsupported",
       "teams chat spaces are not supported yet — no adapter is hydrated for the teams platform",
+    );
+  }
+
+  if (input.principal.kind !== "user") {
+    await auditAwait(
+      {
+        tenant_id: input.principal.tenant_id,
+        actor_type: input.principal.kind,
+        actor_id: input.principal.id,
+        action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+        resource_type: "chat_workspace",
+        resource_id: null,
+        result: "denied",
+        reason: "installer_not_user",
+        metadata: {
+          platform: input.body.platform,
+          workspace_id: input.body.workspace_id,
+          installer_platform_user_id: input.body.installer_platform_user_id,
+        },
+      },
+      db,
+    );
+    throw new ChatWorkspaceInstallRefusedError(
+      "installer_not_user",
+      "installing a chat workspace links the installer to a subkit user, but this API key belongs to a system account — " +
+        "retry with a user API key or a signed-in session",
     );
   }
 

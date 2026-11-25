@@ -63,7 +63,8 @@ const InstallChatWorkspaceSchema = z
 function mapInstallRefusal(err: unknown): never {
   if (err instanceof ChatWorkspaceInstallRefusedError) {
     if (err.refusal === "platform_unsupported") throw new BadRequestError(err.message);
-    if (err.refusal === "installer_not_owned") throw new ForbiddenError(err.message);
+    if (err.refusal === "installer_not_owned" || err.refusal === "installer_not_user")
+      throw new ForbiddenError(err.message);
     throw new ConflictError(err.message);
   }
   throw err;

@@ -101,7 +101,7 @@ The turn runs under a synthetic chat principal resolved from the linked subkit u
 - Unique on `(platform, workspace_id, platform_user_id)` (global) — a given platform user links to one subkit user.
 
 No implicit elevation. There is NO auto-link-to-admin: a chat user who can message the bot is NOT silently made tenant admin. An explicit link must exist. Links are created two ways:
-- Installer: bound at install via `POST /v1/chat/workspaces` with `installer_platform_user_id`.
+- Installer: bound at install via `POST /v1/chat/workspaces` with `installer_platform_user_id`. The caller must be a subkit user (signed-in session or user API key); a system-account key such as the bootstrap admin key is refused with 403 because it has no user to link.
 - Everyone else: an admin links them via `POST /v1/chat/identities`.
 
 Other chat tables: `chat_sessions` (thread → conversation binding, unique per `(workspace_id, thread_id)`), `chat_events_seen` (replay dedup), `chat_deliveries` (outbound delivery log).
