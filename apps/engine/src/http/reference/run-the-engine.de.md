@@ -94,24 +94,18 @@ Teste die Wiederherstellung in einer separaten Installation, bevor du dich auf e
 
 Die Engine nutzt Row Level Security von PostgreSQL als zusätzliche Wand zwischen Arbeitsbereichen. Bei Tabellen mit besonders schutzwürdigen Daten liefert dann die Datenbank selbst nur Zeilen des Arbeitsbereichs, der gerade arbeitet. Das betrifft gespeicherte Geheimnisse, Freigaben von Tools, eingehende Webhooks, Abonnements, Chat-Arbeitsbereiche, Push-Abonnements, den Laufzustand von Workflows und die Einstellungen der Anmelde-Anbieter.
 
-Dafür braucht die Engine die Datenbankrolle `subkit_tenant`. Mit der mitgelieferten `docker-compose.yml` tust du bei einer neuen Installation nichts: Das mitgelieferte PostgreSQL legt die Rolle beim ersten Start an. Die Engine selbst legt nie Datenbankrollen an.
+Du musst dafür nichts einrichten. Die Migrationen der Engine schalten Row Level Security ein und erzwingen sie. Damit gilt sie auch für den Login, dem die Tabellen gehören. Eine zusätzliche Datenbankrolle ist nicht nötig:
 
-Bei einer eigenen PostgreSQL-Datenbank oder einer Installation, die es schon vor diesem Release gab, fehlt die Rolle noch. Dann bleibt Row Level Security aus, die Engine startet aber und arbeitet wie bisher. Den Start blockiert das nie. Das Log meldet „row security is off“ und nennt die nötigen Befehle.
-
-Zum Einschalten führt eine Datenbank-Administratorin oder ein Datenbank-Administrator einmal Folgendes aus, als Superuser oder als Rolle mit `CREATEROLE`. Ersetze `<engine login role>` durch die Rolle, mit der sich die Engine anmeldet:
-
-```sql
-CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS;
-GRANT subkit_tenant TO "<engine login role>";
-```
-
-Starte die Engine danach neu. Beim nächsten Start findet sie die Rolle, gibt ihr Zugriff auf ihre Tabellen und schaltet Row Level Security ein.
+- Jeder Zugriff auf diese Tabellen läuft entweder für einen Arbeitsbereich oder, bei Sweeps und Wartung, in einem ausdrücklichen System-Scope. Beides gilt jeweils für eine Transaktion.
+- Code, der keinen Scope wählt, liest keine Zeilen und kann nicht schreiben. Ein vergessener Filter scheitert also sicher, statt Daten eines anderen Arbeitsbereichs zu zeigen.
+- Das funktioniert mit jeder PostgreSQL-Datenbank, auch mit verwalteten Datenbanken, in denen du keine Rollen anlegen darfst.
 
 Gut zu wissen:
 
-- `subkit_tenant` kann sich nicht anmelden. Es ist kein Datenbankbenutzer. Die Engine wechselt nur in diese Rolle, solange sie für einen Arbeitsbereich arbeitet.
-- Rollen gehören nicht zu einem Datenbank-Dump. Spielst du ein Backup in einen anderen Datenbankserver ein, lege die Rolle dort zuerst an, wie unter „Backup und Wiederherstellung“ beschrieben. Fehlt die Rolle trotzdem, sind gespeicherte Geheimnisse nicht lesbar, bis es sie wieder gibt. Das Log nennt diesen Fall. Führe die beiden Befehle erneut aus und starte die Engine neu.
-- Meldet das Log, dass die Rolle Superuser ist oder `BYPASSRLS` hat, schränkt Row Level Security sie nicht ein. Behebe das mit `ALTER ROLE subkit_tenant NOSUPERUSER NOBYPASSRLS;`.
+- Superuser und Logins mit `BYPASSRLS` ignorieren Row Level Security, auch wenn sie erzwungen ist. Das mitgelieferte PostgreSQL der `docker-compose.yml` meldet sich als solcher Superuser an. Für diese Logins legt die Engine die Rolle `subkit_tenant` beim Start selbst an und wechselt in sie, solange sie für einen Arbeitsbereich arbeitet. `subkit_tenant` kann sich nicht anmelden.
+- Ein Login mit `BYPASSRLS`, der kein Superuser ist, kann diese Rolle nicht anlegen. Das Log meldet dann „role subkit_tenant is not usable“ und nennt die Befehle. Nimm dem Login der Engine besser `BYPASSRLS` weg.
+- Meldet das Log, dass die Rolle `subkit_tenant` Superuser ist oder `BYPASSRLS` hat, schränkt Row Level Security sie nicht ein. Behebe das mit `ALTER ROLE subkit_tenant NOSUPERUSER NOBYPASSRLS;`.
+- Meldet das Log, dass Row Level Security nicht erzwungen ist, starte die Engine noch einmal. Die Migrationen der Engine legen die Policies erneut an und brauchen dafür keine Rolle.
 
 ### Browser-Crawling für die Connector-Discovery
 
@@ -148,8 +142,11 @@ Dump, Objektarchiv und `.env` enthalten sensible Daten.
    Bewahre dieses Image in einer erreichbaren Registry oder mit `docker image save` auf, zusammen
    mit `docker-compose.yml` und `.env`. Verlass dich für die Wiederherstellung nicht auf einen veränderlichen Tag.
 2. Stoppe schreibende Dienste mit `docker compose stop engine`. Sichere PostgreSQL mit
-   `docker compose exec -T postgres pg_dump -U subkit -d subkit -Fc > /path/to/backup/postgres.dump`.
+   `docker compose exec -T -e PGOPTIONS='-c subkit.rls_scope=system' postgres pg_dump --enable-row-security -U subkit -d subkit -Fc > /path/to/backup/postgres.dump`.
    Prüfe den Exit-Status, bevor du weitermachst. Lass die Engine gestoppt, bis beide Datenspeicher gesichert sind.
+   Bei einer eigenen PostgreSQL-Datenbank sicherst du genauso: Ein Login, der kein Superuser ist, bricht sonst
+   mit „query would be affected by row-level security policy“ ab. Übergib deshalb `--enable-row-security` und den
+   System-Scope über `PGOPTIONS`. Mit so einem Login gilt dasselbe `PGOPTIONS` auch für `pg_restore`.
 3. Stoppe den Objektspeicher mit `docker compose stop object-store`. Ermittle sein genaues Volume
    mit `docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$(docker compose ps -aq object-store)"`.
    Archiviere es schreibgeschützt mit `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -cf - . > /path/to/backup/objects.tar`.
@@ -179,8 +176,8 @@ networks:
    Stelle nur in dieses neue Volume wieder her:
    `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Starte die neue Datenbank mit `docker compose -p subkit-recovery up -d --wait postgres`.
-   Der Dump verweist auf die Rolle `subkit_tenant`, Rollen gehören aber nicht dazu. Lege die Rolle zuerst mit `docker compose -p subkit-recovery exec -T postgres psql -U subkit -d subkit -c 'CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS; GRANT subkit_tenant TO subkit;'` an.
-   Stelle dann die Datenbank mit `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump` wieder her.
+   Stelle die Datenbank mit `docker compose -p subkit-recovery exec -T -e PGOPTIONS='-c subkit.rls_scope=system' postgres pg_restore --exit-on-error --clean --if-exists --no-owner --no-privileges -U subkit -d subkit < /path/to/backup/postgres.dump` wieder her.
+   Eine Datenbankrolle musst du vorher nicht anlegen. Die Policies für Row Level Security gehören zum Dump und nennen keine Rolle, gespeicherte Geheimnisse bleiben also lesbar. Braucht die Engine die Rolle `subkit_tenant`, legt sie sie beim Start selbst an.
    Dieser Befehl ersetzt Datenbankinhalte. Verwende ihn nur gegen das neue Wiederherstellungsprojekt.
 3. Starte die wiederhergestellten Dienste mit `docker compose -p subkit-recovery up -d --wait`.
    Docker veröffentlicht `SUBKIT_HOST_PORT` nicht, solange das Netz `internal` ist. Prüfe deshalb im Engine-Container:
