@@ -1,5 +1,10 @@
 import { CLI_BINARY } from "./release/assets.ts";
-import { backgroundCheckAllowed, refreshDue, updateHint } from "./release/update-policy.ts";
+import {
+  backgroundCheckAllowed,
+  managingPackageManager,
+  refreshDue,
+  updateHint,
+} from "./release/update-policy.ts";
 import {
   checkForUpdate,
   cleanupOldBinary,
@@ -43,7 +48,11 @@ export function startUpdateNotifier(options: UpdateNotifierOptions): Promise<voi
   let latest = cache?.latest_version ?? null;
   const onExit = options.onExit ?? ((listener) => process.once("exit", listener));
   onExit(() => {
-    const hint = updateHint(config.currentVersion, latest);
+    const hint = updateHint(
+      config.currentVersion,
+      latest,
+      managingPackageManager(process.execPath),
+    );
     if (hint) sink.write(`${hint}\n`);
   });
 
