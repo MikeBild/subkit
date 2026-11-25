@@ -4,8 +4,8 @@ import type { Db } from "../../db/client.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
 import { canWriteConversation, conversationViewerOf } from "../core/access.ts";
 import { resolveElicitationAndReactivate } from "../elicitations.ts";
+import { loadConversationAccess } from "../persistence/conversation-access.ts";
 import { normalizeConfirmOutput } from "../tools/ask-user/interpret-confirm.ts";
-import { loadConversationAccess } from "./access.ts";
 import { TaskRunWriteForbiddenError } from "./task-run-errors.ts";
 
 export async function answerElicitationAsPerson(

@@ -1,19 +1,5 @@
-import { isBuiltinAdmin, isOwner, isOwnerOrAdmin } from "../../rbac/core/owner.ts";
+import { isBuiltinAdmin, isOwner, isOwnerOrAdmin } from "@shared/owner.ts";
 import { getTaskRunMarker } from "./draft.ts";
-
-/**
- * Who may read, write, delete and share a conversation. Pure functions over
- * plain facts; the shell loads the row and the principal and decides here.
- *
- * - Read: the owner; anyone in the workspace when the conversation is shared
- *   with the team; admins only for workspace-owned rows without an owner.
- *   Admins never read another person's private conversation.
- * - Write (messages, uploads, answers, patch): the owner only. A shared
- *   conversation can be forked by others, not continued.
- * - Delete: the owner or an admin.
- * - Task-run conversations keep their own rule: owner or admin, and a sealed
- *   run is readable by admins only.
- */
 
 export const CONVERSATION_VISIBILITIES = ["private", "team"] as const;
 export type ConversationVisibility = (typeof CONVERSATION_VISIBILITIES)[number];
@@ -98,7 +84,6 @@ export function canDeleteConversation(
   return sameTenant(viewer, row) && isOwnerOrAdmin(viewer, row.owner_id);
 }
 
-/** Admins see that a conversation exists (metadata only) even when they cannot read it. */
 export function canSeeConversation(
   viewer: ConversationViewer,
   row: ConversationAccessRow,
@@ -108,7 +93,6 @@ export function canSeeConversation(
 
 export type ConversationWriteRefusal = "not_found" | "read_only";
 
-/** Why a write is refused: an unreadable row is "not_found" so nothing leaks about it. */
 export function conversationWriteRefusal(
   viewer: ConversationViewer,
   row: ConversationAccessRow,
@@ -137,7 +121,6 @@ export type VisibilityMove =
   | { readonly kind: "moved"; readonly visibility: ConversationVisibility }
   | { readonly kind: "rejected"; readonly reason: VisibilityRejection };
 
-/** Share or unshare: only the owner, never a task-run conversation. */
 export function moveConversationVisibility(
   viewer: ConversationViewer,
   row: ConversationAccessRow,

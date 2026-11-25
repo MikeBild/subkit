@@ -1,20 +1,16 @@
 import { and, eq } from "drizzle-orm";
-import type { Executor } from "../../db/client.ts";
-import { conversations } from "../../db/schema/index.ts";
-import { notTaskRunConversation } from "../../db/task-run-conversations.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { conversations, type Executor, notTaskRunConversation } from "../../db/index.ts";
 import type { ConversationVisibility } from "../core/access.ts";
+import { rowToRecord } from "../service/shared.ts";
 import type { ConversationRecord } from "../types.ts";
-import { rowToRecord } from "./shared.ts";
 
-/**
- * Stores a visibility move decided by moveConversationVisibility. The
- * `from` guard makes a concurrent move lose instead of writing twice.
- */
 export async function storeConversationVisibility(
   exec: Executor,
   p: {
     tenant_id: string;
     conversation_id: string;
+    actor_id: string;
     from: ConversationVisibility;
     to: ConversationVisibility;
   },
@@ -30,13 +26,23 @@ export async function storeConversationVisibility(
       ),
     )
     .returning();
-  return row ? rowToRecord(row) : null;
+  if (!row) return null;
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: "user",
+      actor_id: p.actor_id,
+      action: p.to === "team" ? AuditAction.CONVERSATION_SHARED : AuditAction.CONVERSATION_UNSHARED,
+      resource_type: "conversation",
+      resource_id: p.conversation_id,
+      result: "success",
+      metadata: { from: p.from, to: p.to },
+    },
+    exec,
+  );
+  return rowToRecord(row);
 }
 
-/**
- * A chat thread in a channel is shared with the team. Older channel threads
- * were stored private; the dispatcher shares them on their next message.
- */
 export async function shareChannelThread(
   exec: Executor,
   tenant_id: string,

@@ -1,3 +1,4 @@
+import { isOwner, isOwnerOrAdmin } from "@shared/owner.ts";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Executor } from "../../db/client.ts";
@@ -18,9 +19,9 @@ import {
   conversationWriteRefusal,
 } from "../core/access.ts";
 import { getTaskRunMarker } from "../core/draft.ts";
+import { loadConversationAccess } from "../persistence/conversation-access.ts";
 import { approvalHandleFromElicitationInput } from "../tools/ask-user/commit-intent.ts";
 import type { TaskRunMarker } from "../types.ts";
-import { loadConversationAccess } from "./access.ts";
 import {
   ConversationHiddenError,
   ConversationReadOnlyError,
@@ -43,11 +44,6 @@ export interface ConversationWriter {
   conversation_id: string;
   actor_id: string | null;
   principal?: ResolvedPrincipal | null | undefined;
-  /**
-   * chat_thread: the chat dispatcher appends replies from teammates in a shared
-   * channel thread. admitted_turn: a step inside a turn whose entry was already
-   * checked (e.g. automatic compaction). Neither skips the task-run rule.
-   */
   write_via?: "chat_thread" | "admitted_turn" | undefined;
 }
 
@@ -80,9 +76,11 @@ async function mayWrite(
   const actor = writer.principal?.id ?? writer.actor_id;
   if (!actor) return false;
   if (writer.principal && writer.principal.tenant_id !== writer.tenant_id) return false;
-  if (scope.owner_id !== null && actor === scope.owner_id) return true;
-  if (writer.principal) return hasBuiltinAdminRole(writer.principal);
-  return isActiveAdmin(exec, writer.tenant_id, actor);
+  if (isOwner({ id: actor }, scope.owner_id)) return true;
+  const is_admin = writer.principal
+    ? hasBuiltinAdminRole(writer.principal)
+    : await isActiveAdmin(exec, writer.tenant_id, actor);
+  return isOwnerOrAdmin({ id: actor, is_admin }, scope.owner_id);
 }
 
 async function isActiveAdmin(exec: Executor, tenant_id: string, actor: string): Promise<boolean> {
@@ -231,11 +229,6 @@ export async function mayDecideTaskRunApproval(
   return (await taskRunApprovalRefusal(exec, p)) === null;
 }
 
-/**
- * The one write check for a conversation. Task runs keep their owner-or-admin
- * rule; any other conversation is written by its owner only. Calls without a
- * principal are internal system paths and pass.
- */
 export async function assertConversationWriter(
   exec: Executor,
   writer: ConversationWriter,

@@ -1,8 +1,3 @@
-/**
- * The one "owner or admin" rule for owned rows (tasks, conversations, …).
- * Callers turn their principal into these facts in the shell; the decision
- * itself stays pure.
- */
 export interface OwnerFacts {
   readonly id: string;
   readonly is_admin: boolean;

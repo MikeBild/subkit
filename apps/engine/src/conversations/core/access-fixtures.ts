@@ -74,7 +74,6 @@ const TABLE: Record<AccessRowKind, Record<"owner" | "mate" | "admin", Expect>> =
 
 export const ACCESS_VIEWERS = { owner: OWNER, mate: MATE, admin: ADMIN } as const;
 
-/** One case per row kind and viewer; shared by the unit test and the SQL parity test. */
 export const ACCESS_CASES: readonly (AccessCase & { readonly kind: AccessRowKind })[] =
   Object.entries(TABLE).flatMap(([kind, byViewer]) =>
     Object.entries(byViewer).map(([who, [read, write, del]]) => ({

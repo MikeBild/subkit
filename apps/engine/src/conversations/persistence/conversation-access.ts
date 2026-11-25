@@ -1,8 +1,7 @@
 import { and, eq, isNull, or, type SQL, sql } from "drizzle-orm";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
-import type { Executor } from "../../db/client.ts";
-import { conversations } from "../../db/schema/index.ts";
-import { isTaskRunConversation } from "../../db/task-run-conversations.ts";
+import type { ResolvedPrincipal } from "../../auth/index.ts";
+import { conversations, type Executor, isTaskRunConversation } from "../../db/index.ts";
+import { can } from "../../rbac/index.ts";
 import {
   type ConversationAccessRow,
   type ConversationViewer,
@@ -15,12 +14,18 @@ import type { TaskRunMarker } from "../types.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const CONVERSATION_GET_PERMISSIONS = [
+  "conversation:read",
+  "workflow:read",
+  "conversation:approve",
+  "workflow:write",
+] as const;
+
 export interface ConversationAccessFacts {
   readonly row: ConversationAccessRow;
   readonly marker: TaskRunMarker | null;
 }
 
-/** Loads the facts the access rule needs; null when the conversation does not exist. */
 export async function loadConversationAccess(
   exec: Executor,
   tenant_id: string,
@@ -47,10 +52,6 @@ export interface ConversationReader {
   principal: ResolvedPrincipal | null | undefined;
 }
 
-/**
- * True unless the conversation exists and the principal may not read it.
- * A missing conversation answers true so callers keep their own 404 path.
- */
 export async function isConversationReadable(
   exec: Executor,
   reader: ConversationReader,
@@ -62,14 +63,29 @@ export async function isConversationReadable(
   return canReadConversation(conversationViewerOf(principal), facts.row);
 }
 
+async function holdsConversationGetPermission(
+  exec: Executor,
+  principal: ResolvedPrincipal,
+): Promise<boolean> {
+  for (const permission of CONVERSATION_GET_PERMISSIONS) {
+    const decision = await can(exec, { tenant_id: principal.tenant_id, principal, permission });
+    if (decision.allow) return true;
+  }
+  return false;
+}
+
+export async function hidesConversationFromReader(
+  exec: Executor,
+  reader: ConversationReader & { principal: ResolvedPrincipal },
+): Promise<boolean> {
+  if (await isConversationReadable(exec, reader)) return false;
+  return holdsConversationGetPermission(exec, reader.principal);
+}
+
 function taskRunSealed(): SQL<boolean> {
   return sql<boolean>`(jsonb_typeof(${conversations.draft} -> 'session' -> 'task_run') <> 'object' or jsonb_exists(${conversations.draft} -> 'session' -> 'task_run', 'sealed'))`;
 }
 
-/**
- * SQL twin of canReadConversation for lists and counts. The parity test runs
- * the shared case table through both and expects the same answers.
- */
 export function conversationReaderCond(viewer: ConversationViewer): SQL<boolean> {
   const owned = eq(conversations.owner_id, viewer.id);
   const taskRunBranch = viewer.is_admin

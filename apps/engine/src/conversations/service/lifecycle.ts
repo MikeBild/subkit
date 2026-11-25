@@ -33,6 +33,7 @@ import {
 import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
 import { deriveConversationOutcome } from "../lifecycle-view.ts";
+import { conversationReaderCond } from "../persistence/conversation-access.ts";
 import type { TurnFailure } from "../turn-failure.ts";
 import { cancelConversationTurns } from "../turns.ts";
 import type {
@@ -41,7 +42,6 @@ import type {
   ConversationStatus,
   ConversationTargetRef,
 } from "../types.ts";
-import { conversationReaderCond } from "./access.ts";
 import { loadOwners, rowToRecord } from "./shared.ts";
 import { assertConversationWriter, ConversationHiddenError } from "./task-run-access.ts";
 
@@ -172,7 +172,6 @@ export interface ListConversationsParams {
   viewer_user_id?: string;
   hidden?: "exclude" | "only" | "all";
   task_runs?: TaskRunConversationFilter;
-  /** Restricts the list to what this viewer may see; admins also see others' private rows as metadata. */
   viewer?: ConversationViewer;
   owner_kind?: "user" | "system_account";
   sort?: "title" | "status" | "created_at" | "updated_at";
@@ -240,7 +239,11 @@ function conversationListConds(p: ListConversationsParams) {
   if (taskRuns) tenantConds.push(taskRuns);
   if (p.viewer) {
     const searchesContent = Boolean(
-      p.q || p.referenced_skill_id || p.referenced_knowledge_source_id,
+      p.q ||
+        p.referenced_skill_id ||
+        p.referenced_knowledge_source_id ||
+        p.target_workflow_id ||
+        p.target_connector_id,
     );
     if (!p.viewer.is_admin || searchesContent) tenantConds.push(conversationReaderCond(p.viewer));
   }
@@ -330,7 +333,6 @@ export async function listConversations(
       .map((row) => row.id),
   );
   const readable = rows.map((row) => row.id).filter((id) => readableIds.has(id));
-  // Content queries only touch readable rows; the nil id keeps inArray non-empty.
   const conversationIds = readable.length > 0 ? readable : [NIL_CONVERSATION_ID];
   const rowIds = rows.map((row) => row.id);
   const messages = await exec
@@ -455,7 +457,6 @@ export async function listConversations(
 
 const NIL_CONVERSATION_ID = "00000000-0000-0000-0000-000000000000";
 
-/** Another person's private conversation as an admin sees it: that it exists, no content. */
 function metadataOnly(
   row: typeof conversations.$inferSelect,
   owners: Map<string, ConversationOwner>,
@@ -555,7 +556,6 @@ export async function setConversationHidden(
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   if (!row) return null;
-  // Hiding is a per-person view choice: whoever may read the conversation may hide it.
   const access = conversationAccessRowOf(row);
   if (access.task_run)
     await assertConversationWriter(exec, {

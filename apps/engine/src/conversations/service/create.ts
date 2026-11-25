@@ -48,7 +48,6 @@ export interface CreateConversationParams {
   playbook_mode?: "off" | "auto";
   intake_item_ids?: string[] | null;
   task_run?: TaskRunMarker | null;
-  /** Defaults to private; the chat dispatcher shares channel threads with the team. */
   visibility?: ConversationVisibility;
 }
 

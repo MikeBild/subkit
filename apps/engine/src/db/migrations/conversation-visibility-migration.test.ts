@@ -46,12 +46,14 @@ test(
       const cockpit = await conversation("cockpit");
       const slackChannel = await conversation("chat");
       const slackDm = await conversation("chat");
+      const slackGroup = await conversation("chat");
       const slackThread = await conversation("chat");
       const google = await conversation("chat");
       const slack = await workspace("slack", "T1");
       const gchat = await workspace("google_chat", "G1");
       await session(slack, "C0123ABC:root", slackChannel);
       await session(slack, "D0123ABC:root", slackDm);
+      await session(slack, "G0123ABC:root", slackGroup);
       await session(slack, "1712345678.000100", slackThread);
       await session(gchat, "spaces/AAA:root", google);
 
@@ -64,6 +66,7 @@ test(
       expect(byId.get(cockpit)).toBe("private");
       expect(byId.get(slackChannel)).toBe("team");
       expect(byId.get(slackDm)).toBe("private");
+      expect(byId.get(slackGroup)).toBe("private");
       expect(byId.get(slackThread)).toBe("private");
       expect(byId.get(google)).toBe("private");
 

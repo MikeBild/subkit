@@ -4,7 +4,7 @@ import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { canReadConversation } from "../core/access.ts";
 import { ACCESS_CASES, ACCESS_ROWS, type AccessRowKind } from "../core/access-fixtures.ts";
-import { conversationReaderCond } from "./access.ts";
+import { conversationReaderCond } from "./conversation-access.ts";
 
 const MARKER = {
   task_id: "00000000-0000-4000-8000-0000000000a1",

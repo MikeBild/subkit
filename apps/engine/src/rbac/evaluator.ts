@@ -1,3 +1,4 @@
+import { isBuiltinAdmin } from "@shared/owner.ts";
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { ceilingScopes } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -26,7 +27,6 @@ import {
   matchesPortalTokenAllowlist,
   type PermissionFacts,
 } from "./core/evaluator.ts";
-import { isBuiltinAdmin } from "./core/owner.ts";
 import { isOperatorPrincipal } from "./operator.ts";
 
 export type DecisionSource =

@@ -11,9 +11,14 @@ export {
 } from "../core/access.ts";
 export { buildMessages } from "../parts.ts";
 export {
+  hidesConversationFromReader,
   isConversationReadable,
   loadConversationAccess,
-} from "../service/access.ts";
+} from "../persistence/conversation-access.ts";
+export {
+  shareChannelThread,
+  storeConversationVisibility,
+} from "../persistence/conversation-visibility.ts";
 export {
   type CompactConversationParams,
   type CompactConversationResult,
@@ -55,7 +60,6 @@ export {
   taskRunApprovalRefusal,
   taskRunApprovalTrace,
 } from "../service/task-run-access.ts";
-export { shareChannelThread, storeConversationVisibility } from "../service/visibility.ts";
 export { isConversationTitleOpening, refreshConversationTitle } from "../title.ts";
 export {
   type ConversationTurnRelease,

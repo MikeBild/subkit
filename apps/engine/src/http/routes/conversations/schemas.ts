@@ -82,18 +82,8 @@ export const ConversationSchema = z
     title_locked: z.boolean().optional(),
     origin_client: z.string().nullable().optional(),
     surface: z.string().nullable().optional(),
-    visibility: z
-      .enum(["private", "team"])
-      .optional()
-      .describe(
-        "Who can read the conversation: private (only the owner) or team (everyone in the workspace; only the owner writes).",
-      ),
-    content_hidden: z
-      .boolean()
-      .optional()
-      .describe(
-        "True when an admin sees another person's private conversation in a list: metadata only, without title or content.",
-      ),
+    visibility: z.enum(["private", "team"]).optional(),
+    content_hidden: z.boolean().optional(),
     created_at: z.string(),
     updated_at: z.string(),
     outcome: z

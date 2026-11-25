@@ -40,7 +40,6 @@ export class TaskRunApprovalUnavailableError extends HttpError {
   }
 }
 
-/** A conversation the caller may not read: answered as not found so its existence stays hidden. */
 export class ConversationHiddenError extends HttpError {
   constructor() {
     super(404, "not_found", "conversation not found");

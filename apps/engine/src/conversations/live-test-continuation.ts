@@ -7,7 +7,7 @@ import { getWorkflow } from "../workflows/service.ts";
 import { canWriteConversation, conversationViewerOf } from "./core/access.ts";
 import { loadDraft } from "./draft.ts";
 import { conversationExecutionSuppression } from "./execution-suppression.ts";
-import { loadConversationAccess } from "./service/access.ts";
+import { loadConversationAccess } from "./persistence/conversation-access.ts";
 
 export async function continueConversationDevLiveTest(input: {
   db: Db;

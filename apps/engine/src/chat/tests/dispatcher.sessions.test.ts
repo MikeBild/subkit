@@ -6,6 +6,7 @@ import {
   chatWorkspaces,
   conversationElicitations,
   conversationMessages,
+  conversations,
   users,
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
@@ -96,6 +97,32 @@ describe("chat session mapping", () => {
     );
     expect(r.status).toBe("ok");
     expect(r.conversation_id).toBe(before.conversation_id);
+  });
+
+  test("a channel thread is shared with the team, also one stored private before", async () => {
+    const adapter = new FakeSlackAdapter();
+    const first = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
+    const id = first.conversation_id;
+    if (!id) throw new Error("no conversation");
+    const visibilityOf = async () =>
+      (
+        await ctx.testDb.db
+          .select({ visibility: conversations.visibility })
+          .from(conversations)
+          .where(eq(conversations.id, id))
+      )[0]?.visibility;
+    expect(await visibilityOf()).toBe("team");
+    await ctx.testDb.db
+      .update(conversations)
+      .set({ visibility: "private" })
+      .where(eq(conversations.id, id));
+    const reply = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("list executions", "U_MAP2"),
+    );
+    expect(reply.status).toBe("ok");
+    expect(reply.conversation_id).toBe(id);
+    expect(await visibilityOf()).toBe("team");
   });
 
   test("/new resets the channel binding — the next message starts fresh", async () => {

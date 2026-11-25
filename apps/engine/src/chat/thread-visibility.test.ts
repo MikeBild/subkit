@@ -6,8 +6,9 @@ describe("chatThreadVisibility", () => {
     expect(chatThreadVisibility({ platform: "slack", channel_id: "C0123" })).toBe("team");
   });
 
-  test("a Slack direct message stays private", () => {
+  test("a Slack direct or group message stays private", () => {
     expect(chatThreadVisibility({ platform: "slack", channel_id: "D0123" })).toBe("private");
+    expect(chatThreadVisibility({ platform: "slack", channel_id: "G0123" })).toBe("private");
   });
 
   test("a Google Chat space is shared, a direct message is not", () => {

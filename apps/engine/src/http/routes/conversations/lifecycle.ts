@@ -1,9 +1,5 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { conversationLifecycleOperations } from "../../../api/operations/conversation-lifecycle.ts";
-import {
-  shareConversationOperation,
-  unshareConversationOperation,
-} from "../../../api/operations/conversation-visibility.ts";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
 import * as svc from "../../../conversations/public/lifecycle.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -17,6 +13,6 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, operations.contextSnapshot);
   toHonoRoute(app, operations.compact);
   toHonoRoute(app, operations.fork);
-  toHonoRoute(app, shareConversationOperation);
-  toHonoRoute(app, unshareConversationOperation);
+  toHonoRoute(app, operations.share);
+  toHonoRoute(app, operations.unshare);
 }
