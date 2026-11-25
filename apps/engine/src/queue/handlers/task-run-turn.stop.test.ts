@@ -105,6 +105,45 @@ describe("stopping a task run turn", () => {
     });
   }, 180_000);
 
+  test("a worker that completes its turn after the stop cannot resume the run", async () => {
+    const { w, run } = await freshRun();
+    const turnStarted = Promise.withResolvers<void>();
+    const stopRecorded = Promise.withResolvers<void>();
+    let signalledBeforeCompletion = false;
+    const worker = workQueuedTurn({
+      runTurn: async (p) => {
+        turnStarted.resolve();
+        await stopRecorded.promise;
+        signalledBeforeCompletion = p.turn_abort_ctrl.signal.aborted;
+        return {} as never;
+      },
+    });
+    const stop = (async () => {
+      await turnStarted.promise;
+      await lifecycle.interruptTaskRunTurn(
+        w.tenant_id,
+        run.conversation_id,
+        w.owner.id,
+        db,
+        "user",
+        w.owner,
+      );
+      stopRecorded.resolve();
+    })();
+    expect(await Promise.all([worker, stop])).toEqual([true, undefined]);
+    expect(signalledBeforeCompletion).toBe(true);
+    expect(await runRow(w, run.id)).toMatchObject({
+      state: "waiting",
+      waiting_reason: "turn_stopped",
+      failure_code: null,
+    });
+    expect(await queuedJobs(run.id)).toHaveLength(0);
+    const scope = { tenant_id: w.tenant_id, task_run_id: run.id, now: FIXED_NOW };
+    expect(await advanceTaskRun(db, scope)).toBe("idle");
+    expect(await runRow(w, run.id)).toMatchObject({ state: "waiting" });
+    expect(await queuedJobs(run.id)).toHaveLength(0);
+  }, 180_000);
+
   test("a stopped turn waits for the person instead of failing the run", async () => {
     const { w, run } = await freshRun();
     await workQueuedTurn({

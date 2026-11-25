@@ -9,6 +9,7 @@ import { type TaskPlaybookFacts, taskPlaybookFacts } from "../core/plan-instance
 import {
   decideTaskRunResume,
   decideTaskRunState,
+  TASK_TURN_STOPPED,
   type TaskRunDecision,
   type TaskRunObservation,
   taskRunIsOpen,
@@ -352,9 +353,23 @@ export async function recordRunObservation(
       return { run: rowToTaskRun(seen), changed: false, enqueue: false };
     }
     const held = decided.state === "running" && taskHoldsRuns(task);
-    const decision: TaskRunDecision = held
-      ? { ...decided, state: "sleeping", sleep_reason: "paused", enqueue: false }
-      : decided;
+    const stopped =
+      run.state === "waiting" &&
+      run.waiting_reason === TASK_TURN_STOPPED &&
+      observation.turn_driver === "task" &&
+      (decided.state === "running" || decided.state === "sleeping");
+    const decision: TaskRunDecision = stopped
+      ? {
+          ...decided,
+          state: "waiting",
+          waiting_reason: TASK_TURN_STOPPED,
+          next_check_at: null,
+          sleep_reason: null,
+          enqueue: false,
+        }
+      : held
+        ? { ...decided, state: "sleeping", sleep_reason: "paused", enqueue: false }
+        : decided;
     const changed = decision.state !== run.state;
     const open = taskRunIsOpen(decision.state);
     const person: TaskActor | null =
