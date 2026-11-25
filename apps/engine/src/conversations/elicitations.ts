@@ -18,6 +18,7 @@ import { logger } from "../logging/index.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
 import { type ElicitationStatus, elicitationSources } from "./core/elicitation-status.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
+import { transitionConversation } from "./persistence/conversation-status.ts";
 import { applyPlaybookDecision } from "./playbook.ts";
 import { humanConfirmationContextFingerprint } from "./playbook-evidence.ts";
 import {
@@ -295,10 +296,12 @@ async function insertElicitation(
     })
     .returning();
   assertInsertRow(inserted, "elicitation");
-  await exec
-    .update(conversations)
-    .set({ status: "awaiting_input", updated_at: new Date() })
-    .where(eq(conversations.id, p.conversation_id));
+  await transitionConversation(exec, {
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    to: "awaiting_input",
+    set: { updated_at: new Date() },
+  });
   const inputKind =
     p.input && typeof p.input === "object" && p.input !== null
       ? ((p.input as { kind?: unknown }).kind ?? null)
@@ -740,12 +743,12 @@ export async function resolveElicitationAndReactivate(
       tx,
     );
     if (resolution.kind === "resolved") {
-      await tx
-        .update(conversations)
-        .set({ status: "active", updated_at: new Date() })
-        .where(
-          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
-        );
+      await transitionConversation(tx, {
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        to: "active",
+        set: { updated_at: new Date() },
+      });
     }
   });
   return resolution;
@@ -813,16 +816,13 @@ export async function expireElicitationAndReactivate(
       tx,
     );
     if (resolution.kind !== "resolved") return;
-    await tx
-      .update(conversations)
-      .set({ status: "active", updated_at: new Date() })
-      .where(
-        and(
-          eq(conversations.tenant_id, p.tenant_id),
-          eq(conversations.id, p.conversation_id),
-          eq(conversations.status, "awaiting_input"),
-        ),
-      );
+    await transitionConversation(tx, {
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      to: "active",
+      from: ["awaiting_input"],
+      set: { updated_at: new Date() },
+    });
     const toolCallId = resolution.record.tool_call_id;
     if (toolCallId) {
       await tx

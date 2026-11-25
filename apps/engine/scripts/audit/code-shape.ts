@@ -218,7 +218,10 @@ export const STATUS_WRITERS: ReadonlyMap<string, { column: string; writer: strin
       "conversationElicitations",
       { column: "status", writer: `${ENGINE}conversations/elicitations.ts` },
     ],
-    ["conversations", { column: "status", writer: null }],
+    [
+      "conversations",
+      { column: "status", writer: `${ENGINE}conversations/persistence/conversation-status.ts` },
+    ],
   ]);
 
 const STATUS_COLUMNS: ReadonlyMap<string, string> = new Map(

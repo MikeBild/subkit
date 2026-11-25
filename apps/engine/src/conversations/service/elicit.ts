@@ -5,7 +5,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { conversations, conversationToolCalls, users } from "../../db/schema/index.ts";
+import { conversationToolCalls, users } from "../../db/schema/index.ts";
 import {
   type LocalConfirmationPort,
   NO_LOCAL_CONFIRMATION_PORT,
@@ -27,6 +27,7 @@ import {
 import { checkLocalDecision, recordLocalDecision } from "../local-confirmation.ts";
 import { runLoop } from "../loop/index.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
+import { transitionConversation } from "../persistence/conversation-status.ts";
 import { isProseQuestionElicitation } from "../prose-question-answer.ts";
 import {
   interpretConfirmDecision,
@@ -328,10 +329,12 @@ async function settleElicitation(
     log.conversation.approval.rejected({ ...decisionLog, reason: p.reason });
   }
 
-  await exec
-    .update(conversations)
-    .set({ status: "active", updated_at: new Date() })
-    .where(eq(conversations.id, p.conversation_id));
+  await transitionConversation(exec, {
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    to: "active",
+    set: { updated_at: new Date() },
+  });
 
   const autoPersist = await applyElicitationOutcome({
     tenant_id: p.tenant_id,

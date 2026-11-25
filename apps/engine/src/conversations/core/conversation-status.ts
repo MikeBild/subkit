@@ -19,6 +19,9 @@ export function canTransitionConversation(
   return canTransitionIn(CONVERSATION_TRANSITIONS, from, to);
 }
 
-export function conversationSources(to: ConversationStatus): ConversationStatus[] {
-  return transitionSourcesIn(CONVERSATION_TRANSITIONS, to);
+export function conversationSources(
+  to: ConversationStatus,
+  allowed?: readonly ConversationStatus[],
+): ConversationStatus[] {
+  return transitionSourcesIn(CONVERSATION_TRANSITIONS, to, allowed);
 }

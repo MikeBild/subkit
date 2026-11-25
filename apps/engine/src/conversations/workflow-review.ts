@@ -43,6 +43,7 @@ import { readReviewTriggerState } from "../workflows/review-triggers.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { resolveElicitation } from "./elicitations.ts";
 import { commitWorkflowAtomic, workflowDefFromDraft } from "./persistence/commit-workflow.ts";
+import { transitionConversation } from "./persistence/conversation-status.ts";
 import {
   assertConversationWriter,
   readTaskRunScope,
@@ -785,12 +786,12 @@ export async function finalizeWorkflowReview(
             ),
           );
       }
-      await tx
-        .update(conversations)
-        .set({ status: "active", updated_at: now })
-        .where(
-          and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
-        );
+      await transitionConversation(tx, {
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        to: "active",
+        set: { updated_at: now },
+      });
       return { view: receiptView(completed), pair: pair_request_id !== null };
     })
     .then(({ view, pair }) => {

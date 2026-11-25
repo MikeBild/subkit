@@ -34,6 +34,7 @@ import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
 import { deriveConversationOutcome } from "../lifecycle-view.ts";
 import { conversationReaderCond } from "../persistence/conversation-access.ts";
+import { transitionConversation } from "../persistence/conversation-status.ts";
 import type { TurnFailure } from "../turn-failure.ts";
 import { cancelConversationTurns } from "../turns.ts";
 import type {
@@ -44,6 +45,21 @@ import type {
 } from "../types.ts";
 import { loadOwners, rowToRecord } from "./shared.ts";
 import { assertConversationWriter, ConversationHiddenError } from "./task-run-access.ts";
+
+async function abandonedConversation(exec: Executor, tenant_id: string, conversation_id: string) {
+  const [row] = await exec
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.tenant_id, tenant_id),
+        eq(conversations.id, conversation_id),
+        eq(conversations.status, "abandoned"),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
 
 export async function cancelConversation(
   tenant_id: string,
@@ -56,11 +72,13 @@ export async function cancelConversation(
   const bySystem = actor_id === null && actor_type === "system" && !principal;
   if (!bySystem)
     await assertConversationWriter(exec, { tenant_id, conversation_id, actor_id, principal });
-  const [row] = await exec
-    .update(conversations)
-    .set({ status: "abandoned", updated_at: new Date(now()) })
-    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
-    .returning();
+  const row =
+    (await transitionConversation(exec, {
+      tenant_id,
+      conversation_id,
+      to: "abandoned",
+      set: { updated_at: new Date(now()) },
+    })) ?? (await abandonedConversation(exec, tenant_id, conversation_id));
   if (!row) return null;
   await auditAwait(
     {

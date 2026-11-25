@@ -20,4 +20,10 @@ describe("conversation transitions", () => {
     expect(canTransitionConversation("abandoned", "active")).toBe(false);
     expect(canTransitionConversation("abandoned", "abandoned")).toBe(false);
   });
+
+  test("sources narrow to the states a caller allows", () => {
+    expect(conversationSources("active", ["awaiting_input", "abandoned"])).toEqual([
+      "awaiting_input",
+    ]);
+  });
 });

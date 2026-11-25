@@ -9,6 +9,7 @@ import type { ToolContext, ToolResult } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import type { WorkflowDefFromDraft } from "./commit-workflow.ts";
 import { proposeAuthoringCapabilityCandidate } from "./commit-workflow-skill-candidate.ts";
+import { transitionConversation } from "./conversation-status.ts";
 
 export async function persistAuthoringWorkflowDraft(input: {
   ctx: ToolContext;
@@ -184,10 +185,15 @@ export async function persistAuthoringWorkflowDraft(input: {
   );
   await ctx.db
     .update(conversations)
-    .set({ target_workflow_id: saved.workflow_id, status: "active", updated_at: new Date() })
+    .set({ target_workflow_id: saved.workflow_id, updated_at: new Date() })
     .where(
       and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
     );
+  await transitionConversation(ctx.db, {
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    to: "active",
+  });
   await ctx.setDraft(nextDraft);
   if (changed)
     await proposeAuthoringCapabilityCandidate({
