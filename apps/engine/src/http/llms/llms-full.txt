@@ -5720,7 +5720,7 @@ Testing the connector lists the folder with one entry. That confirms the address
 
 The private key stays in the vault. The connector holds only the names of the vault items, never the key itself.
 
-1. Store the key as a workspace secret in the vault, in the connector's environment, for example `subkit vault add sftp-deploy-key --env prod < deploy_key`. Supported formats are OpenSSH, RSA PEM and EC PEM. Convert a PKCS#8 key with `ssh-keygen -p -f deploy_key` first.
+1. Store the key as a workspace secret in the vault, in the connector's environment, for example `subkit vault add sftp-deploy-key --env prod < deploy_key`. Supported formats are OpenSSH, RSA PEM, EC PEM and PKCS#8, also encrypted. subkit turns a PKCS#8 key into a format the SSH client reads, in memory only. Supported key types are Ed25519, RSA and ECDSA on P-256, P-384 or P-521.
 2. If the key is encrypted, store its passphrase as a second secret, for example `sftp-deploy-key-passphrase`.
 3. Set `auth_type: "none"` on the connector and reference the items in `config.auth`:
 
@@ -5815,6 +5815,7 @@ A transform step with `language: "parse-file"` reads a file from the run and ret
 | `format` | `csv`, `xlsx`, `pdf`, `docx` or `zip`. Without it the type is read from the file itself. |
 | `sheet` | Spreadsheet sheet to read. Without it the first sheet is read. |
 | `max_rows` | Upper bound for table rows from a CSV or spreadsheet file, at most 10,000. |
+| `delimiter` | Field delimiter of a CSV file: `","`, `";"`, `"\t"` (tab) or `"\|"`. Without it the delimiter is detected. Saving refuses it next to a `format` other than `csv`; with a detected format, a spreadsheet ignores it. |
 
 | Format | Output |
 | --- | --- |
@@ -5828,7 +5829,7 @@ Every output also carries `format` and `filename`.
 
 Table formats return at most `max_rows` rows, 10,000 if you leave it out. `row_count` is the number of data rows that were read and `truncated` is `true` when rows were left out.
 
-- **CSV:** the first line is the header, and each row is an object keyed by it with string values. Empty lines are skipped and a byte order mark is ignored. The delimiter is detected from the first lines: comma, semicolon, tab or pipe; if none fits, a comma is used. A file that is not valid UTF-8 is read as Windows-1252, so a German Excel export with semicolons and umlauts comes out with proper columns. The whole file is read, so `row_count` counts every row, also past `max_rows`. An unclosed quote or a row with too few or too many fields fails the step with `parse_file_failed` and names the first broken row.
+- **CSV:** the first line is the header, and each row is an object keyed by it with string values. Empty lines are skipped and a byte order mark is ignored. Without `delimiter` the delimiter is detected from the first lines: comma, semicolon, tab or pipe; if none fits, a comma is used. Name it with `delimiter` when detection guesses wrong, for example when a column holds commas but the file is split at semicolons. A file that is not valid UTF-8 is read as Windows-1252, so a German Excel export with semicolons and umlauts comes out with proper columns. The whole file is read, so `row_count` counts every row, also past `max_rows`. An unclosed quote or a row with too few or too many fields fails the step with `parse_file_failed` and names the first broken row.
 - **XLSX:** only the chosen sheet is read, up to `max_rows` rows. `row_count` comes from the sheet's used range, so for a longer sheet it is the full length even though only `max_rows` rows are returned.
 
 A file may be at most 25 MB. The step does not accept an `expression`; everything is configured in the `file` block.
@@ -5843,7 +5844,7 @@ A file may be at most 25 MB. The step does not accept an `expression`; everythin
 | `sftp_path_outside_root` | The path leads outside the connector's folder. |
 | `sftp_key_item_missing` | The vault has no workspace secret with that name in the connector's environment. |
 | `sftp_key_not_private_key` | The vault item doesn't hold an SSH private key. |
-| `sftp_key_format_unsupported` | The key is in PKCS#8 or another format; store it as OpenSSH, RSA or EC PEM. |
+| `sftp_key_format_unsupported` | The key type or format can't sign in, for example DSA or X25519; store an Ed25519, RSA or ECDSA key as OpenSSH, PEM or PKCS#8. |
 | `sftp_key_passphrase_required` | The key is encrypted and `passphrase_item` is missing. |
 | `sftp_key_passphrase_wrong` | The passphrase doesn't open the key. |
 | `sftp_key_rejected` | The server refused the key for that username. |

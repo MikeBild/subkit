@@ -20215,6 +20215,16 @@
             "minimum": 1,
             "maximum": 10000,
             "description": "Upper bound for table rows returned from a CSV or spreadsheet file."
+          },
+          "delimiter": {
+            "type": "string",
+            "enum": [
+              ",",
+              ";",
+              "\t",
+              "|"
+            ],
+            "description": "Field delimiter of a CSV file: comma, semicolon, tab (`\\t`) or pipe. Without it the delimiter is detected from the first lines. Only for `format` `csv` or a detected format; a spreadsheet ignores it."
           }
         },
         "required": [

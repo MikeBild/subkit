@@ -34061,6 +34061,11 @@ export interface components {
             sheet?: string;
             /** @description Upper bound for table rows returned from a CSV or spreadsheet file. */
             max_rows?: number;
+            /**
+             * @description Field delimiter of a CSV file: comma, semicolon, tab (`\t`) or pipe. Without it the delimiter is detected from the first lines. Only for `format` `csv` or a detected format; a spreadsheet ignores it.
+             * @enum {string}
+             */
+            delimiter?: "," | ";" | "\t" | "|";
         };
         CallStep: {
             /** @enum {string} */
