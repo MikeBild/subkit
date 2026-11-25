@@ -186,6 +186,60 @@ describe("chat composer tray", () => {
       expect((await api("DELETE", `/v1/chat/composer/attachments/${id}`)).status).toBe(204);
   });
 
+  async function conversationsLinkedTo(fileId: string) {
+    const rows = await srv.db
+      .select({ resource_id: fileLinks.resource_id })
+      .from(fileLinks)
+      .where(
+        and(
+          eq(fileLinks.tenant_id, srv.tenantId),
+          eq(fileLinks.resource_type, "conversation"),
+          eq(fileLinks.file_id, fileId.replace(/^fid_/, "")),
+        ),
+      );
+    return rows.map((row) => row.resource_id);
+  }
+
+  for (const variant of ["named", "all"] as const)
+    test(`two overlapping claims (${variant}) attach a waiting file to one conversation only`, async () => {
+      for (let round = 0; round < 4; round++) {
+        const rivals = await srv.db
+          .insert(conversations)
+          .values([
+            { tenant_id: srv.tenantId, status: "active" },
+            { tenant_id: srv.tenantId, status: "active" },
+          ])
+          .returning();
+        const staged = (await (
+          await api(
+            "POST",
+            "/v1/chat/composer/attachments",
+            upload(`race-${round}.txt`, `${variant} ${round}`),
+          )
+        ).json()) as Staged;
+        const responses = await Promise.all(
+          rivals.map((rival) =>
+            api("POST", "/v1/chat/composer/attachments/claim", {
+              conversation_id: rival.id,
+              ...(variant === "named" ? { ids: [staged.id] } : {}),
+            }),
+          ),
+        );
+        const bodies = (await Promise.all(responses.map((res) => res.json()))) as Array<{
+          attachments?: unknown[];
+        }>;
+        const linked = await conversationsLinkedTo(staged.file.id);
+        expect(linked).toHaveLength(1);
+        if (variant === "named")
+          expect(responses.map((res) => res.status).sort()).toEqual([200, 404]);
+        else expect(bodies.map((body) => body.attachments?.length ?? 0).sort()).toEqual([0, 1]);
+        const after = (await (await api("GET", "/v1/chat/composer/attachments")).json()) as {
+          items: Staged[];
+        };
+        expect(after.items).toEqual([]);
+      }
+    });
+
   test("the tray holds at most ten files", async () => {
     for (let i = 0; i < 10; i++)
       expect(

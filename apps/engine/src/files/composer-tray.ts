@@ -75,8 +75,9 @@ export async function listComposerTray(
   db: Executor,
   owner: TrayOwner,
   now: Date,
+  options: { lock?: boolean } = {},
 ): Promise<TrayItem[]> {
-  const rows = await db
+  const query = db
     .select({ entry: chatComposerAttachments, file: files })
     .from(chatComposerAttachments)
     .innerJoin(
@@ -88,6 +89,9 @@ export async function listComposerTray(
     )
     .where(ownedBy(owner))
     .orderBy(desc(chatComposerAttachments.created_at), asc(chatComposerAttachments.id));
+  const rows = options.lock
+    ? await query.for("update", { of: chatComposerAttachments })
+    : await query;
   return rows.filter(
     (row) => row.file.deleted_at === null && row.entry.expires_at.getTime() > now.getTime(),
   );
@@ -109,9 +113,11 @@ export async function removeComposerFiles(
   db: Executor,
   owner: TrayOwner,
   ids: readonly string[],
-): Promise<void> {
-  if (ids.length === 0) return;
-  await db
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const removed = await db
     .delete(chatComposerAttachments)
-    .where(and(ownedBy(owner), inArray(chatComposerAttachments.id, [...ids])));
+    .where(and(ownedBy(owner), inArray(chatComposerAttachments.id, [...ids])))
+    .returning({ id: chatComposerAttachments.id });
+  return removed.map((row) => row.id);
 }
