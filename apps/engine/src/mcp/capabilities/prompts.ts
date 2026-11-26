@@ -15,7 +15,7 @@ import { logger } from "../../logging/index.ts";
 import { globalEmitter, type PubSubEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { can } from "../../rbac/evaluator.ts";
-import { skillExamplesFromBlob } from "../../skills/examples-blob.ts";
+import { skillExamplesFromBlob } from "../../skills/index.ts";
 import { paginate } from "./pagination.ts";
 
 const PREFIX = "skill_";
