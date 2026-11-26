@@ -54,7 +54,7 @@ jobs:
         id: resolve
         run: |
           set -euo pipefail
-          case "$WINDOWS_SIGNING" in certificate|cloud) ;; *) echo "::error::DESKTOP_WINDOWS_SIGNING must be certificate or cloud" >&2; exit 1 ;; esac
+          case "$WINDOWS_SIGNING" in certificate|cloud|none) ;; *) echo "::error::DESKTOP_WINDOWS_SIGNING must be certificate, cloud or none" >&2; exit 1 ;; esac
           if [ -z "$REQUESTED_TAG" ] && [ "$UNSIGNED_DRY_RUN" = "true" ]; then
             COMMIT=$(git rev-parse --verify "$GITHUB_SHA^{commit}")
           else
