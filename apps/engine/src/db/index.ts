@@ -208,6 +208,7 @@ export {
   userInvites,
   userSetupPreferences,
   vendorRecipeOverrides,
+  webhookHeldDeliveries,
   webhooksInbound,
   workflowAuthorityPairRequests,
   workflowAutohealPolicies,

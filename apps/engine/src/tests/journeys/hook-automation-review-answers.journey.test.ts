@@ -85,7 +85,7 @@ beforeAll(async () => {
   const webhookId = "refused-review-delivery";
   // allow-wall-clock: the HTTP ingress verifies the live signature window.
   const ts = Math.floor(Date.now() / 1000);
-  const refused = await fetch(`${ctx.baseUrl}/v1/hooks/${HOOK}`, {
+  const held = await fetch(`${ctx.baseUrl}/v1/hooks/${HOOK}`, {
     method: "POST",
     body,
     headers: {
@@ -95,7 +95,11 @@ beforeAll(async () => {
       "webhook-signature": sign(webhookId, ts, body),
     },
   });
-  expect(refused.status).toBe(409);
+  expect(held.status).toBe(202);
+  expect(await held.json()).toEqual({
+    status: "held",
+    reason: expect.stringMatching(/^execution_authority_/),
+  });
 }, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {

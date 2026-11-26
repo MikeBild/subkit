@@ -45,6 +45,9 @@ test("erasure schema classifies every product table and orders children before p
   const order = erasureTableOrder();
   expect(order.indexOf("conversation_messages")).toBeLessThan(order.indexOf("conversations"));
   expect(order.indexOf("user_invites")).toBeLessThan(order.indexOf("users"));
+  expect(order).toContain("webhook_held_deliveries");
+  expect(order.indexOf("webhook_held_deliveries")).toBeLessThan(order.indexOf("webhooks_inbound"));
+  expect(order.indexOf("webhook_held_deliveries")).toBeLessThan(order.indexOf("workflows"));
   expect(order).not.toContain("auth_identities");
   expect(order).not.toContain("hosted_tenant_usage");
 });

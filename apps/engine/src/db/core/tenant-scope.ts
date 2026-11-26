@@ -9,6 +9,7 @@ export const ROW_SCOPED_TABLES = [
   "vault_items",
   "tool_approvals",
   "webhooks_inbound",
+  "webhook_held_deliveries",
   "subscriptions",
   "chat_workspaces",
   "cockpit_push_keys",

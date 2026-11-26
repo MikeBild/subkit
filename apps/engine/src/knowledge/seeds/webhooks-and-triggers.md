@@ -4,7 +4,7 @@ name: subkit Platform Reference — Webhooks & Triggers
 description: How subkit receives inbound webhooks (public signed ingress, replay dedup, CRUD bindings) and how workflow triggers (request | webhook | schedule) start executions.
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron, inbound, signature-verification]
 scope: global
-version: 3
+version: 4
 ---
 
 # Webhooks & Triggers — overview
@@ -52,10 +52,12 @@ Processing pipeline (in order):
 6. Replay dedup on `(tenant_id, webhook_id, standard_webhook_id)` → `deduped` (HTTP 200, `{ deduped: true, inbound_id }`) on replay.
 7. Resolve the workflow's current version → `denied` reason `workflow_unresolved` if the workflow has no current version.
 8. Create an `executions` row and enqueue an `execution.run` job with `request_source = "webhook"`.
+9. Approval hold: when admission refuses with `execution_authority_required` (no approval yet) and the delivery was signature-verified (not the skip path), the delivery is stored in `webhook_held_deliveries`, unique on `(tenant_id, inbound_id, delivery_id)` where `delivery_id` is the normalized event id. A redelivery with the same id never adds a row: under a lock on the hook row the stored id is looked up first, so it is answered `held` again even when the hook is full or the limits changed, and only new ids count against the cap and size limit. The same id with a different payload (compared like a live redelivery, without transient signature headers) is refused HTTP 409 `execution_boundary_mismatch` and changes nothing, both while held and after approval before the replay ran. After a person grants the approval (and on each scheduler pass for hooks whose hold is cleared), each held row is claimed with a guarded `held → replaying` update that carries a claim token and a 5 minute lease, and admitted with the same execution idempotency key as a live delivery. Only after the run is queued does a token-guarded update settle it as `replayed`; a failed enqueue returns it to `held`, and the scheduler pass returns lapsed `replaying` leases to `held`. The admitted execution id stays on the row, so a retry never admits again: a still `queued` execution is enqueued as is (queue job id = execution id, pinned to its original workflow version), one that already left the queue settles the row as `replayed`, and an `aborted` or vanished execution settles it as `replay_failed` with `execution_aborted` or `execution_missing`. One delivery never becomes a second execution. A held row that already carries an admitted execution never expires: each scheduler pass resumes it (also past its 7 days, and also after its hook was deleted, which only clears `inbound_id`) until the run is queued, so no admitted execution is left queued without a job. States: `held → replaying → replayed`, `replaying → held`, `held → expired | replay_failed`. Limits: 100 held rows per hook, 1 MiB body, 7 days until `expired`. Payloads of `execution_privacy: sensitive` workflows are stored encrypted.
 
 Response shapes:
 - Accepted: HTTP 200 `{ accepted: true, inbound_id, execution_id, webhook_id }` (`webhook_id` is the normalized event id).
 - Deduped replay: HTTP 200 `{ deduped: true, inbound_id }`.
+- Held for approval: HTTP 202 `{ status: "held", reason: "execution_authority_required" }`; a held-store refusal answers HTTP 429 reason `held_delivery_over_capacity` or HTTP 413 reason `held_delivery_too_large` and stores nothing. Other admission refusals (expired, exhausted, revoked or changed approval, boundary or input mismatch) stay HTTP 409.
 - Denied: HTTP 401 `{ error: "denied", reason }` — reasons: `inactive`, `unknown_verifier`, `<verifier reason>`, `event_not_subscribed`, `workflow_unresolved`. The `unknown_verifier` denial additionally carries a `hint` string explaining the fix.
 - Not found: HTTP 404 `{ error: "not_found" }`.
 

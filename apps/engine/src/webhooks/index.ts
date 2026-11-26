@@ -1,5 +1,9 @@
 export * from "./events/catalog.ts";
 export * from "./events/outbox.ts";
+export {
+  replayHeldDeliveriesSafely,
+  runHeldDeliverySweep,
+} from "./inbound/held-deliveries.ts";
 export * from "./inbound/invocation-view.ts";
 export * from "./inbound/service.ts";
 export { HmacVerifierConfig } from "./inbound/verifiers/hmac.ts";

@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { executions } from "../../db/schema/index.ts";
+import { eq, sql } from "drizzle-orm";
+import { withSystemScope } from "../../db/index.ts";
+import { executions, webhookHeldDeliveries, webhooksInbound } from "../../db/schema/index.ts";
 import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
+import { HELD_DELIVERY_LIMITS } from "../../webhooks/inbound/core/held-delivery.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -47,7 +49,7 @@ afterAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("inbound webhook triggers execution", () => {
-  test("a valid signature without execution authority returns an actionable 409", async () => {
+  test("a valid signature without execution authority is accepted as held, not run", async () => {
     const wf = await seedWorkflow(ctx, {
       slug: "unapproved-events",
       name: "Unapproved events",
@@ -77,15 +79,50 @@ describe("inbound webhook triggers execution", () => {
         "webhook-signature": sign(webhookId, ts, body),
       },
     });
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({
-      error: "denied",
-      reason: "execution_authority_required",
-      hint: expect.stringContaining("finite execution authority"),
-    });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ status: "held", reason: "execution_authority_required" });
     expect(
       await ctx.db.select().from(executions).where(eq(executions.workflow_id, wf.id)),
     ).toHaveLength(0);
+    const deliver = (id: string, payload: string) =>
+      fetch(`${ctx.baseUrl}/v1/hooks/unapproved-events`, {
+        method: "POST",
+        body: payload,
+        headers: {
+          "content-type": "application/json",
+          "webhook-id": id,
+          "webhook-timestamp": String(ts),
+          "webhook-signature": sign(id, ts, payload),
+        },
+      });
+    const oversized = await deliver(
+      "oversized-event",
+      `{"blob":"${"x".repeat(HELD_DELIVERY_LIMITS.max_body_bytes)}"}`,
+    );
+    expect(oversized.status).toBe(413);
+    expect(await oversized.json()).toMatchObject({ reason: "held_delivery_too_large" });
+    const [hook] = await ctx.db
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(eq(webhooksInbound.slug, "unapproved-events"));
+    await withSystemScope(ctx.db, "journey fills the held deliveries of one hook", (tx) =>
+      tx.insert(webhookHeldDeliveries).values(
+        Array.from({ length: HELD_DELIVERY_LIMITS.per_hook }, (_, index) => ({
+          tenant_id: ctx.tenantId,
+          inbound_id: hook?.id ?? "",
+          workflow_id: wf.id,
+          delivery_id: `filler-${index}`,
+          event_type: "invoice.paid",
+          payload: {},
+          body_bytes: 2,
+          reason_code: "execution_authority_required",
+          expires_at: sql`clock_timestamp() + interval '1 hour'`,
+        })),
+      ),
+    );
+    const full = await deliver("over-capacity-event", body);
+    expect(full.status).toBe(429);
+    expect(await full.json()).toMatchObject({ reason: "held_delivery_over_capacity" });
   });
 
   test("AC1: valid signature accepted and execution enqueued", async () => {

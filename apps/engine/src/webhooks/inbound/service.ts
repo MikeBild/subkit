@@ -23,8 +23,10 @@ import { enqueueGateDiagnosis } from "../../queue/handlers/workflow-repair.ts";
 import type { ExecutionRunJob } from "../../queue/queues.ts";
 import type { WebhookTrigger } from "../../workflows/types.ts";
 import { admitWebhookExecution, webhookReplayMatches } from "./admission.ts";
-import { type InboundHoldReason, recordInboundAdmission } from "./admission-state.ts";
+import { holdInboundAdmission } from "./admission-state.ts";
+import { isHoldableRefusal } from "./core/held-delivery.ts";
 import { markSeenIfNew, wasSeen } from "./dedup.ts";
+import { holdSignedDelivery } from "./held-deliveries.ts";
 import { verifyGitHub } from "./verifiers/github.ts";
 import { HmacVerifierConfig, verifyHmac } from "./verifiers/hmac.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
@@ -529,45 +531,13 @@ type HandleOutcome =
       normalized: { id: string; timestamp: number; type: string };
     }
   | { status: "deduped"; inbound_id: string }
+  | { status: "held"; reason: string; inbound_id: string }
   | { status: "not_found" }
   | { status: "denied"; reason: string; inbound_id?: string; hint?: string };
 
 interface HandleInboundOptions {
   db: Db;
   boss: PgBoss;
-}
-
-async function holdInboundAdmission(
-  db: Db,
-  row: { tenant_id: string; id: string; workflow_id: string },
-  now: number | undefined,
-  reason: InboundHoldReason | null,
-  gate?: { boss: PgBoss; version_id: string },
-): Promise<void> {
-  try {
-    const changed = await recordInboundAdmission(
-      db,
-      { tenant_id: row.tenant_id, inbound_id: row.id, observed_at: new Date(now ?? Date.now()) },
-      reason,
-    );
-    if (changed && reason && gate)
-      await enqueueGateDiagnosis(gate.boss, db, {
-        tenant_id: row.tenant_id,
-        workflow_id: row.workflow_id,
-        version_id: gate.version_id,
-        environment: "prod",
-        source: "inbound_hook",
-      });
-  } catch (err) {
-    logger.warn({
-      module: "webhooks",
-      action: "inbound.admission_state_failed",
-      msg: "could not record the hook's admission state; the delivery was answered regardless",
-      tenant_id: row.tenant_id,
-      inbound_id: row.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
 }
 
 export async function handleInbound(
@@ -900,10 +870,36 @@ export async function handleInbound(
       db,
     );
     if (isAuthorityRefusalCode(code))
-      await holdInboundAdmission(db, row, input.now, code, {
-        boss,
+      await holdInboundAdmission(db, row, input.now, code, () =>
+        enqueueGateDiagnosis(boss, db, {
+          tenant_id: row.tenant_id,
+          workflow_id: row.workflow_id,
+          version_id: wf.current_version_id as string,
+          environment: "prod",
+          source: "inbound_hook",
+        }),
+      );
+    if (isHoldableRefusal(code, config?.skip !== true)) {
+      const held = await holdSignedDelivery(db, {
+        hook: row,
         version_id: wf.current_version_id,
+        delivery: verdict.normalized,
+        payload: inputPayload,
+        body_bytes: Buffer.byteLength(input.rawBody),
+        reason_code: code,
       });
+      if (held.status === "held") return { status: "held", reason: code, inbound_id: row.id };
+      if (held.status !== "settled")
+        return {
+          status: "denied",
+          reason:
+            held.status === "mismatch"
+              ? "execution_boundary_mismatch"
+              : `held_delivery_${held.status}`,
+          inbound_id: row.id,
+          hint,
+        };
+    }
     return { status: "denied", reason: code, inbound_id: row.id, hint };
   }
   const execution_id = admitted.execution_id;
@@ -964,6 +960,7 @@ export async function handleInbound(
     action: "inbound.accepted",
     msg: "inbound webhook accepted",
     slug: input.slug,
+    inbound_id: row.id,
     origin,
     webhook_id: verdict.normalized.id,
     event_type: verdict.normalized.type,

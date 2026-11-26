@@ -40,6 +40,12 @@ export const boss = {
     sent.push({ name, data, options });
     return (options.id as string | undefined) ?? `job-${sent.length}`;
   },
+  findJobs: async (name: string, options: { data?: { execution_id?: string } } = {}) =>
+    sent.filter(
+      (job) =>
+        job.name === name &&
+        (job.data as { execution_id?: string } | null)?.execution_id === options.data?.execution_id,
+    ),
 } as unknown as PgBoss;
 
 export async function setUpDeviceRunner(label: string): Promise<HttpTestServer> {

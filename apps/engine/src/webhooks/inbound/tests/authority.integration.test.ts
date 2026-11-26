@@ -74,7 +74,7 @@ describe("webhook execution authority admission", () => {
   test("a valid signature grants nothing; a later human grant can admit the unconsumed event", async () => {
     const input = delivery("no-authority");
     expect(await receive(input)).toMatchObject({
-      status: "denied",
+      status: "held",
       reason: "execution_authority_required",
     });
     expect(await rows()).toHaveLength(0);
@@ -153,7 +153,7 @@ describe("webhook execution authority admission", () => {
           )
       )[0]?.hold;
     expect(await receive(delivery("refused-1"))).toMatchObject({
-      status: "denied",
+      status: "held",
       reason: "execution_authority_required",
     });
     const first = await hold();
@@ -200,7 +200,7 @@ describe("webhook execution authority admission", () => {
   test("development authority does not authorize a production webhook", async () => {
     const authority = await ctx.grantAuthority("dev", 1);
     expect(await receive(delivery("wrong-environment"))).toMatchObject({
-      status: "denied",
+      status: "held",
       reason: "execution_authority_required",
     });
     expect(await reserved(authority.id)).toBe(0);
@@ -405,7 +405,7 @@ describe("webhook execution authority admission", () => {
       .set({ current_version_id: version.id })
       .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, ctx.workflowId)));
     expect(await receive(delivery("changed-version"))).toMatchObject({
-      status: "denied",
+      status: "held",
       reason: "execution_authority_required",
     });
     expect(await reserved(authority.id)).toBe(0);
