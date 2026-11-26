@@ -11,6 +11,7 @@ export const AREA_OF: Record<UsageOrigin, Area> = {
   summaries: "other",
   reviews: "other",
   knowledge: "other",
+  dictation: "other",
   other: "other",
 };
 

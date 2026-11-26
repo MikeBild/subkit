@@ -1168,6 +1168,11 @@ export const ModelPriceSchema = z.object({
     .describe(
       "Price per 1M tokens written to the prompt cache, at the TTL SubKit writes: for Anthropic models the one-hour cache write rate.",
     ),
+  audio_per_minute: z
+    .number()
+    .nonnegative()
+    .optional()
+    .describe("Price per minute of transcribed audio, for speech-to-text models."),
 });
 
 const TokensSection = z

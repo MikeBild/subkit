@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { actorFields } from "../../llm/index.ts";
 import {
   audioRefusal,
   getSpeechService,
@@ -57,6 +58,13 @@ const TranscribeBody = z
       .regex(/^[a-z]{2}$/)
       .optional()
       .describe("Spoken language as an ISO 639-1 code, e.g. de or en; improves accuracy."),
+    client_request_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        "One id per recording, reused on every retry of it. A retry with the same id returns the first transcript instead of transcribing and billing it again. Required when the transcription is billed to the operator budget (the engine operator's key); without it such a request is refused with client_request_id_required (HTTP 400) before anything is reserved or sent. A workspace key or the local model may omit it.",
+      ),
   })
   .openapi("SpeechTranscribeRequest");
 
@@ -132,9 +140,12 @@ const transcribeOperation = defineOperation<TranscribeInput, Transcription>({
     try {
       return await getSpeechService().transcribe({
         tenantId: scope.tenant_id,
+        clientRequestId: body.client_request_id,
+        db: scope.db,
         audio,
         contentType: body.content_type,
         language: body.language,
+        actor: actorFields(scope.principal),
       });
     } catch (error) {
       if (error instanceof SpeechError) return speechRejection(error);
@@ -148,8 +159,8 @@ const transcribeOperation = defineOperation<TranscribeInput, Transcription>({
     body: TranscribeBody,
     response: TranscriptionSchema,
     errors: {
-      400: "audio_empty",
-      409: "speech_unavailable",
+      400: "audio_empty or client_request_id_required",
+      409: "speech_unavailable, transcription_in_progress or transcription_unsettled",
       413: "audio_too_large",
       422: "no_speech",
       502: "transcription_failed",

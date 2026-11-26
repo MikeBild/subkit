@@ -11,6 +11,7 @@ export const ORIGIN_LABEL: Record<UsageOrigin, TranslationKey> = {
   reviews: "resource.usage.origin.reviews",
   knowledge: "resource.usage.origin.knowledge",
   workflowRuns: "resource.usage.origin.workflowRuns",
+  dictation: "resource.usage.origin.dictation",
   other: "resource.usage.origin.other",
 };
 
@@ -21,6 +22,7 @@ export const ORIGIN_HELP: Record<UsageOrigin, TranslationKey> = {
   reviews: "usage.originHelp.reviews",
   knowledge: "usage.originHelp.knowledge",
   workflowRuns: "usage.originHelp.workflowRuns",
+  dictation: "usage.originHelp.dictation",
   other: "usage.originHelp.other",
 };
 
@@ -31,6 +33,7 @@ export const ORIGIN_COLOR: Record<UsageOrigin, string> = {
   summaries: "var(--sk-usage-origin-summaries)",
   knowledge: "var(--sk-usage-origin-knowledge)",
   reviews: "var(--sk-usage-origin-reviews)",
+  dictation: "var(--sk-usage-origin-dictation)",
   other: "var(--sk-usage-origin-other)",
 };
 
@@ -41,6 +44,7 @@ export const LEGEND_ORDER: readonly UsageOrigin[] = [
   "summaries",
   "knowledge",
   "reviews",
+  "dictation",
   "other",
 ];
 

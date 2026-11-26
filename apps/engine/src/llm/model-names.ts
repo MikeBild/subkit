@@ -18,6 +18,9 @@ const MODEL_NAMES: Readonly<Record<string, string>> = Object.freeze({
   "gpt-4.1": "GPT-4.1",
   "gpt-4.1-mini": "GPT-4.1 mini",
   "gpt-4-turbo": "GPT-4 Turbo",
+  "gpt-4o-mini-transcribe": "GPT-4o mini Transcribe",
+  "gpt-4o-transcribe": "GPT-4o Transcribe",
+  "whisper-1": "Whisper",
   "gemini-2.5-pro": "Gemini 2.5 Pro",
   "gemini-2.5-flash": "Gemini 2.5 Flash",
 });

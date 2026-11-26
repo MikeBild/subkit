@@ -85,6 +85,7 @@ export const USAGE_ORIGINS = [
   "reviews",
   "knowledge",
   "workflowRuns",
+  "dictation",
   "other",
 ] as const;
 export type UsageOrigin = (typeof USAGE_ORIGINS)[number];
@@ -103,6 +104,7 @@ export const FLOW_ORIGIN: Readonly<Record<string, UsageOrigin>> = {
   discover: "knowledge",
   workflow_step: "workflowRuns",
   personal_notes: "other",
+  transcription: "dictation",
 };
 
 export function flowOrigin(flow: string): UsageOrigin {
@@ -521,6 +523,7 @@ function emptyOrigins(): Record<UsageOrigin, number> {
     reviews: 0,
     knowledge: 0,
     workflowRuns: 0,
+    dictation: 0,
     other: 0,
   };
 }

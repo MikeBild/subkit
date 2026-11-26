@@ -84,6 +84,7 @@ export interface ModelPrice {
   output_per_mtok: number;
   cache_read_per_mtok: number;
   cache_write_per_mtok: number;
+  audio_per_minute?: number | undefined;
   long_context?: LongContextPrice;
 }
 
@@ -97,6 +98,7 @@ export interface SourcedModelPrice extends ModelPrice {
 export interface PricedTokens extends TokenUsageBreakdown {
   model: string;
   calls?: number;
+  audio_seconds?: number;
   prompt_tokens_exceed?: number;
 }
 
@@ -159,7 +161,8 @@ export function priceCalls(
       (uncached / 1_000_000) * rate.input_per_mtok +
       (call.completion_tokens / 1_000_000) * rate.output_per_mtok +
       (call.cache_read_tokens / 1_000_000) * rate.cache_read_per_mtok +
-      (call.cache_creation_tokens / 1_000_000) * rate.cache_write_per_mtok;
+      (call.cache_creation_tokens / 1_000_000) * rate.cache_write_per_mtok +
+      ((call.audio_seconds ?? 0) / 60) * (found.rate.audio_per_minute ?? 0);
     savings +=
       (call.cache_read_tokens / 1_000_000) *
       Math.max(0, rate.input_per_mtok - rate.cache_read_per_mtok);

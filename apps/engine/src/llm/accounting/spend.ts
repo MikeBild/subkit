@@ -95,6 +95,7 @@ export async function pricedUsdWhere(
       completion: sql<number>`coalesce(sum(${llmUsage.completion_tokens}), 0)::float8`,
       cache_read: sql<number>`coalesce(sum(${llmUsage.cache_read_tokens}), 0)::float8`,
       cache_creation: sql<number>`coalesce(sum(${llmUsage.cache_creation_tokens}), 0)::float8`,
+      audio_seconds: sql<number>`coalesce(sum(${llmUsage.audio_seconds}), 0)::float8`,
     })
     .from(llmUsage)
     .where(and(eq(llmUsage.tenant_id, tenant_id), scope))
@@ -108,11 +109,20 @@ export async function pricedUsdWhere(
       completion_tokens: Number(row.completion ?? 0),
       cache_read_tokens: Number(row.cache_read ?? 0),
       cache_creation_tokens: Number(row.cache_creation ?? 0),
+      audio_seconds: Number(row.audio_seconds ?? 0),
       prompt_tokens_exceed: k > 0 ? (thresholds[k - 1] ?? -1) : -1,
     };
   });
   const priced = priceCalls(calls, prices, MODEL_PRICE_CATALOG_CURRENCY);
   return { amount: roundUsd(priced.amount), unpriced_calls: priced.unpriced_calls };
+}
+
+export function audioSpendUsd(tenant_id: string, model: string, audio_seconds: number): number {
+  const pricing = tenantPricing(tenant_id);
+  if (!pricing?.countable) return 0;
+  const silent = { prompt_tokens: 0, completion_tokens: 0, cache_read_tokens: 0 };
+  const call = { model, audio_seconds, cache_creation_tokens: 0, ...silent };
+  return priceCalls([call], pricing.prices, MODEL_PRICE_CATALOG_CURRENCY).amount;
 }
 
 export async function readSpend(

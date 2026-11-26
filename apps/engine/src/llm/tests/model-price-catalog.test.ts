@@ -13,6 +13,7 @@ import {
 import { bareModelId, priceCalls } from "../pricing.ts";
 import { knownContextModelIds } from "../runtime/ai-sdk-model.ts";
 import { ladderModelIds, routeTop, routeUp } from "../runtime/step-router.ts";
+import { DEFAULT_TRANSCRIPTION_MODEL } from "../runtime/transcription.ts";
 import type { LlmProviderKind } from "../types.ts";
 
 const catalogIds = (): Set<string> => new Set(MODEL_PRICE_CATALOG.map((p) => p.model));
@@ -32,6 +33,14 @@ function configDefaultModelIds(): string[] {
   walk(parsed);
   return found;
 }
+
+const silent = (model: string) => ({
+  model,
+  prompt_tokens: 0,
+  completion_tokens: 0,
+  cache_read_tokens: 0,
+  cache_creation_tokens: 0,
+});
 
 const LADDER_PROVIDERS: LlmProviderKind[] = ["anthropic", "openai", "gemini"];
 
@@ -113,6 +122,16 @@ describe("every release stays priced", () => {
   test("every model SubKit chooses on its own has a catalog price", () => {
     const unpriced = modelsSubKitChooses().filter((m) => !isPriced(m));
     expect(unpriced).toEqual([]);
+  });
+
+  test("the default OpenAI and Azure transcription model is priced per audio minute", () => {
+    const prices = effectiveModelPrices({});
+    for (const provider of ["openai", "azure"] as const) {
+      const model = `${provider}/${DEFAULT_TRANSCRIPTION_MODEL[provider]}`;
+      const cost = priceCalls([{ ...silent(model), audio_seconds: 60 }], prices, "USD");
+      expect(cost.unpriced_calls).toBe(0);
+      expect(cost.amount).toBeGreaterThan(0);
+    }
   });
 
   test("the models SubKit knows but does not price are exactly the named list", () => {

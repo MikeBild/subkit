@@ -38510,6 +38510,11 @@
             "type": "string",
             "pattern": "^[a-z]{2}$",
             "description": "Spoken language as an ISO 639-1 code, e.g. de or en; improves accuracy."
+          },
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "One id per recording, reused on every retry of it. A retry with the same id returns the first transcript instead of transcribing and billing it again. Required when the transcription is billed to the operator budget (the engine operator's key); without it such a request is refused with client_request_id_required (HTTP 400) before anything is reserved or sent. A workspace key or the local model may omit it."
           }
         },
         "required": [
@@ -76354,7 +76359,7 @@
             }
           },
           "400": {
-            "description": "audio_empty",
+            "description": "audio_empty or client_request_id_required",
             "content": {
               "application/json": {
                 "schema": {
@@ -76364,7 +76369,7 @@
             }
           },
           "409": {
-            "description": "speech_unavailable",
+            "description": "speech_unavailable, transcription_in_progress or transcription_unsettled",
             "content": {
               "application/json": {
                 "schema": {

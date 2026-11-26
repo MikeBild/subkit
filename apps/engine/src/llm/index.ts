@@ -1,5 +1,15 @@
 export * from "./accounting/index.ts";
 export { cacheReadReported } from "./core/cache-reporting.ts";
+export {
+  TranscriptionDispatchError,
+  type TranscriptionFailureOutcome,
+  transcriptionFailureOutcome,
+} from "./core/transcription-failure.ts";
+export {
+  RESERVATION_ESTIMATE_CAP_SECONDS,
+  reservationEstimateSeconds,
+  settledAudioSeconds,
+} from "./core/transcription-reservation.ts";
 export * from "./errors.ts";
 export { runExtractFlow } from "./flows/extract.ts";
 export { runGenerateFlow } from "./flows/generate.ts";
@@ -23,6 +33,16 @@ export {
   MODEL_PRICE_CATALOG,
   MODEL_PRICE_CATALOG_CURRENCY,
 } from "./model-price-catalog.ts";
+export {
+  priorTranscription,
+  reconcileTranscription,
+  releaseTranscription,
+  reserveTranscription,
+  settleTranscription,
+  sweepTranscriptionReservations,
+  type TranscriptionPrior,
+  type TranscriptionReservation,
+} from "./persistence/transcription-ledger.ts";
 export {
   type CostResult,
   findModelPrice,

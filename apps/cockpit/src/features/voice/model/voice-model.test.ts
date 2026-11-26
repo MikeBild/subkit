@@ -17,18 +17,29 @@ import {
 } from "./recorder-machine";
 import { encodeWav, mixToMono, rmsLevel, toBase64 } from "./wav";
 
+const RECORDING = "00000000-0000-4000-8000-000000000001";
+
 const run = (events: Parameters<typeof dictationReducer>[1][]): DictationState =>
   events.reduce(dictationReducer, initialDictation);
 
 describe("dictationReducer", () => {
   test("walks idle → requesting → recording → transcribing → idle", () => {
-    expect(run([{ type: "start" }])).toEqual({ phase: "requesting", session: 1 });
-    expect(run([{ type: "start" }, { type: "granted", session: 1, now: 100 }])).toMatchObject({
+    expect(run([{ type: "start", requestId: RECORDING }])).toEqual({
+      phase: "requesting",
+      session: 1,
+      requestId: RECORDING,
+    });
+    expect(
+      run([
+        { type: "start", requestId: RECORDING },
+        { type: "granted", session: 1, now: 100 },
+      ]),
+    ).toMatchObject({
       phase: "recording",
       startedAt: 100,
     });
     const done = run([
-      { type: "start" },
+      { type: "start", requestId: RECORDING },
       { type: "granted", session: 1, now: 100 },
       { type: "tick", session: 1, now: 1600, level: 2 },
       { type: "stop", session: 1 },
@@ -40,7 +51,7 @@ describe("dictationReducer", () => {
   test("tick tracks elapsed time and clamps the level", () => {
     expect(
       run([
-        { type: "start" },
+        { type: "start", requestId: RECORDING },
         { type: "granted", session: 1, now: 100 },
         { type: "tick", session: 1, now: 1600, level: 2 },
       ]),
@@ -49,27 +60,46 @@ describe("dictationReducer", () => {
 
   test("ignores events from an earlier session", () => {
     const state = run([
-      { type: "start" },
+      { type: "start", requestId: RECORDING },
       { type: "cancel" },
-      { type: "start" },
+      { type: "start", requestId: RECORDING },
       { type: "granted", session: 1, now: 5 },
     ]);
-    expect(state).toEqual({ phase: "requesting", session: 2 });
+    expect(state).toEqual({ phase: "requesting", session: 2, requestId: RECORDING });
   });
 
   test("a denied microphone returns to idle with the reason", () => {
     expect(
-      run([{ type: "start" }, { type: "denied", session: 1, error: "permission_denied" }]),
+      run([
+        { type: "start", requestId: RECORDING },
+        { type: "denied", session: 1, error: "permission_denied" },
+      ]),
     ).toEqual({ phase: "idle", session: 1, error: "permission_denied" });
   });
 
+  test("one recording keeps its request id until it is transcribed", () => {
+    expect(
+      run([
+        { type: "start", requestId: RECORDING },
+        { type: "granted", session: 1, now: 0 },
+        { type: "stop", session: 1 },
+      ]),
+    ).toEqual({ phase: "transcribing", session: 1, requestId: RECORDING });
+  });
+
   test("a second start while busy changes nothing", () => {
-    const recording = run([{ type: "start" }, { type: "granted", session: 1, now: 0 }]);
-    expect(dictationReducer(recording, { type: "start" })).toBe(recording);
+    const recording = run([
+      { type: "start", requestId: RECORDING },
+      { type: "granted", session: 1, now: 0 },
+    ]);
+    expect(dictationReducer(recording, { type: "start", requestId: RECORDING })).toBe(recording);
   });
 
   test("dismiss clears an error only when idle", () => {
-    const failed = run([{ type: "start" }, { type: "denied", session: 1, error: "no_microphone" }]);
+    const failed = run([
+      { type: "start", requestId: RECORDING },
+      { type: "denied", session: 1, error: "no_microphone" },
+    ]);
     expect(dictationReducer(failed, { type: "dismiss" })).toEqual({
       phase: "idle",
       session: 1,
@@ -80,7 +110,7 @@ describe("dictationReducer", () => {
   test("reachedLimit fires at the five minute cap", () => {
     const at = (now: number) =>
       run([
-        { type: "start" },
+        { type: "start", requestId: RECORDING },
         { type: "granted", session: 1, now: 0 },
         { type: "tick", session: 1, now, level: 0 },
       ]);

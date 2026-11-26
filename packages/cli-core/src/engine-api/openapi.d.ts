@@ -19044,7 +19044,7 @@ export interface paths {
                         "application/json": components["schemas"]["SpeechTranscription"];
                     };
                 };
-                /** @description audio_empty */
+                /** @description audio_empty or client_request_id_required */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -19053,7 +19053,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description speech_unavailable */
+                /** @description speech_unavailable, transcription_in_progress or transcription_unsettled */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -39095,6 +39095,11 @@ export interface components {
             content_base64: string;
             /** @description Spoken language as an ISO 639-1 code, e.g. de or en; improves accuracy. */
             language?: string;
+            /**
+             * Format: uuid
+             * @description One id per recording, reused on every retry of it. A retry with the same id returns the first transcript instead of transcribing and billing it again. Required when the transcription is billed to the operator budget (the engine operator's key); without it such a request is refused with client_request_id_required (HTTP 400) before anything is reserved or sent. A workspace key or the local model may omit it.
+             */
+            client_request_id?: string;
         };
         KnowledgeSourceVersionListResponse: {
             items: components["schemas"]["KnowledgeSourceVersion"][];
