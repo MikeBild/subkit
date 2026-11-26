@@ -1,4 +1,4 @@
-import { availableParallelism } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import variant from "@jitl/quickjs-singlefile-cjs-release-sync";
 import {
   newQuickJSWASMModuleFromVariant,
@@ -7,7 +7,7 @@ import {
 } from "quickjs-emscripten-core";
 import { getConfig } from "../../config/loader.ts";
 import type { TableParseOptions } from "../../docs-ingestion/index.ts";
-import { readEnv } from "../../env.ts";
+import { type EnvKey, readEnv } from "../../env.ts";
 import { getContext } from "../../logging/context.ts";
 import { logger } from "../../logging/index.ts";
 import { recordSandboxWorkerEvent } from "../../observability/instrumentation.ts";
@@ -432,6 +432,15 @@ const workerAdmission = {
   },
 };
 
+export function workerEnv(
+  platform: NodeJS.Platform = process.platform,
+  read: (name: EnvKey) => string | undefined = readEnv,
+): Record<string, string> {
+  const base = { PATH: read("PATH") ?? "", NODE_ENV: read("NODE_ENV") ?? "production" };
+  const systemRoot = read("SYSTEMROOT");
+  return platform === "win32" && systemRoot ? { ...base, SYSTEMROOT: systemRoot } : base;
+}
+
 class WorkerLane {
   private child: ReturnType<typeof Bun.spawn> | null = null;
   private readiness: Promise<void> | null = null;
@@ -675,8 +684,8 @@ class WorkerLane {
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
-      cwd: "/tmp",
-      env: { PATH: readEnv("PATH") ?? "", NODE_ENV: readEnv("NODE_ENV") ?? "production" },
+      cwd: tmpdir(),
+      env: workerEnv(),
       ipc: (message, source) => {
         if (source !== this.child) return;
         if (isReadyMessage(message)) {

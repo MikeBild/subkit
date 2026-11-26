@@ -9,6 +9,7 @@ const EnvSchema = z.object({
   ENGINE_LISTEN_HOST: text,
   PORT: text,
   PATH: text,
+  SYSTEMROOT: text,
   ENGINE_VERSION: text,
   SUBKIT_BOOTSTRAP_KEY: text,
   SUBKIT_CONFIG: text,
