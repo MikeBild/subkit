@@ -27,7 +27,10 @@ export {
   pathChoice,
   releaseVersion,
   resolveLink,
+  type SpyEvent,
+  type SpyMode,
   safeDecode,
   sectionText,
+  spyMode,
   tableOfContents,
 } from "./docs-model";
