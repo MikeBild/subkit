@@ -504,6 +504,7 @@ export {
 export {
   abortTaskRunOperation,
   completeTaskRunOperation,
+  continueTaskRunInNewConversationOperation,
   getTaskRunOperation,
   listTaskRunsOperation,
   rejectTaskRunResultOperation,

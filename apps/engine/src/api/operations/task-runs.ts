@@ -5,6 +5,7 @@ import { errorFields, logger } from "../../logging/index.ts";
 import {
   abortTaskRun,
   completeTaskRun,
+  continueTaskRunInNewConversation,
   countTaskRuns,
   getTask,
   getTaskRun,
@@ -14,6 +15,8 @@ import {
   startTaskRun,
   type TaskAdmissionReason,
   type TaskRun,
+  type TaskRunContinuation,
+  type TaskRunContinuationRefusal,
   TaskRunSchema,
   taskServiceDeps,
 } from "../../tasks/index.ts";
@@ -472,6 +475,85 @@ export const rejectTaskRunResultOperation = defineOperation<IdInput, TaskRun>({
     params: IdParam,
     response: TaskRunSchema,
     errors: RunFailures,
+    toInput: ({ param }) => idFrom(param),
+    toBody: (run) => run,
+  },
+});
+
+const CONTINUATION_REFUSALS: Readonly<Record<TaskRunContinuationRefusal, Rejection>> = {
+  not_owner: reject.status(
+    403,
+    "task_run_owner_only",
+    "Only the owner of this task can continue its run in a new conversation.",
+  ),
+  not_held: reject.status(
+    409,
+    "task_run_not_held",
+    "This run is not waiting for a new conversation; only a run whose conversation was abandoned can continue in a new one.",
+  ),
+  paused: reject.status(409, "paused", ADMISSION_MESSAGES.paused),
+};
+
+function continuationRejection(
+  outcome: Exclude<TaskRunContinuation, { continued: true }>,
+): Rejection {
+  if (!("run" in outcome)) return CONTINUATION_REFUSALS[outcome.reason];
+  return reject.status(409, RUN_CODES.conflict, "The run has ended and cannot continue.", {
+    task_run_id: outcome.run.id,
+    state: outcome.run.state,
+    failure_code: outcome.run.failure_code,
+  });
+}
+
+export const continueTaskRunInNewConversationOperation = defineOperation<IdInput, TaskRun>({
+  id: "task_run.new_conversation",
+  summary:
+    "Continue a run whose conversation was abandoned in a new conversation owned by the same person",
+  permission: "task:run",
+  effect: "write",
+  audit: AuditAction.TASK_RUN_RESUMED,
+  async handler(scope, { id }) {
+    const principal = await personInBrowser(scope);
+    if (isRejection(principal)) return principal;
+    let outcome: TaskRunContinuation;
+    try {
+      outcome = await continueTaskRunInNewConversation(
+        { tenant_id: scope.tenant_id, principal, task_run_id: id, source: runSource(scope) },
+        scope.db,
+      );
+    } catch (error) {
+      return taskRejection(error, RUN_CODES);
+    }
+    if (!outcome.continued) return continuationRejection(outcome);
+    try {
+      await enqueueTurn(scope, outcome.run);
+    } catch (error) {
+      logger.warn({
+        module: "tasks",
+        action: "task_run.continuation_not_queued",
+        msg: "the run moved to a new conversation, but its next turn was not queued; the sweep continues the run",
+        tenant_id: scope.tenant_id,
+        task_run_id: outcome.run.id,
+        ...errorFields(error),
+      });
+    }
+    return outcome.run;
+  },
+  http: {
+    method: "post",
+    path: "/v1/task-runs/{id}/new-conversation",
+    tags: ["tasks"],
+    params: IdParam,
+    response: TaskRunSchema,
+    success: {
+      status: 200,
+      description: "The run continues in a new conversation; follow it through its conversation_id",
+    },
+    errors: {
+      403: "A signed browser session of the task owner is required",
+      404: RunFailures[404],
+      409: "The run is not waiting for a new conversation, the task is paused, or the run ended",
+    },
     toInput: ({ param }) => idFrom(param),
     toBody: (run) => run,
   },

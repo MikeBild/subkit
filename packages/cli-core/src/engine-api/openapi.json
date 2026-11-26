@@ -74800,6 +74800,72 @@
         }
       }
     },
+    "/v1/task-runs/{id}/new-conversation": {
+      "post": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "Continue a run whose conversation was abandoned in a new conversation owned by the same person",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run continues in a new conversation; follow it through its conversation_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRun"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A signed browser session of the task owner is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task run not found or not visible to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The run is not waiting for a new conversation, the task is paused, or the run ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tasks/{id}/grant-preview": {
       "get": {
         "tags": [

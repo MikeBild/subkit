@@ -10,6 +10,7 @@ import {
 import {
   abortTaskRunOperation,
   completeTaskRunOperation,
+  continueTaskRunInNewConversationOperation,
   getTaskRunOperation,
   listTaskRunsOperation,
   rejectTaskRunResultOperation,
@@ -43,6 +44,7 @@ export function registerTaskRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, abortTaskRunOperation);
   toHonoRoute(app, completeTaskRunOperation);
   toHonoRoute(app, rejectTaskRunResultOperation);
+  toHonoRoute(app, continueTaskRunInNewConversationOperation);
   toHonoRoute(app, previewTaskGrantOperation);
   toHonoRoute(app, listTaskGrantsOperation);
   toHonoRoute(app, grantTaskAuthorityOperation);
