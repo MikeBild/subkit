@@ -184,6 +184,24 @@ export async function settleTranscription(
   return settled.length > 0;
 }
 
+export async function reconcileTranscription(
+  key: TranscriptionKey & { readonly latency_ms: number },
+  exec: Executor,
+): Promise<boolean> {
+  const reconciled = await exec
+    .update(llmUsage)
+    .set({
+      reservation: "reconciliation_required",
+      lease_until: null,
+      latency_ms: Math.max(0, Math.round(key.latency_ms)),
+      result: "error",
+      error: "transcription_failed",
+    })
+    .where(guarded(key, "lapse"))
+    .returning({ id: llmUsage.id });
+  return reconciled.length > 0;
+}
+
 export async function releaseTranscription(
   key: TranscriptionKey & { readonly latency_ms: number },
   exec: Executor,

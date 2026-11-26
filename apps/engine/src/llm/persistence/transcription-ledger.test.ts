@@ -11,6 +11,7 @@ import { seedTenant } from "../../test-helpers/seed.ts";
 import { readSpend } from "../accounting/spend.ts";
 import {
   priorTranscription,
+  reconcileTranscription,
   releaseTranscription,
   reserveTranscription,
   settleTranscription,
@@ -132,6 +133,26 @@ describe.skipIf(skip)("transcription reservation ledger", () => {
       false,
     );
     expect(await reserveTranscription(reservation(4), testDb.db)).toEqual({ kind: "reserved" });
+    expect(await testDb.db.select().from(llmUsage)).toHaveLength(1);
+  });
+
+  test("an ambiguous failure retains its charge and cannot reserve again", async () => {
+    await reserveTranscription(reservation(6), testDb.db);
+    expect(await reconcileTranscription({ ...reservation(6), latency_ms: 30 }, testDb.db)).toBe(
+      true,
+    );
+    expect(await rowOf(6)).toMatchObject({
+      reservation: "reconciliation_required",
+      audio_seconds: 300,
+      lease_until: null,
+      result: "error",
+      error: "transcription_failed",
+    });
+    expect((await readSpend(tenant, testDb.db)).spent_usd).toBeCloseTo(0.015, 6);
+    expect(await reserveTranscription(reservation(6), testDb.db)).toEqual({ kind: "unsettled" });
+    expect(await reconcileTranscription({ ...reservation(6), latency_ms: 30 }, testDb.db)).toBe(
+      false,
+    );
     expect(await testDb.db.select().from(llmUsage)).toHaveLength(1);
   });
 

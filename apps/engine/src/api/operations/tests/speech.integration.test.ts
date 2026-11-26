@@ -153,7 +153,7 @@ describe("speech routes", () => {
     ]);
   });
 
-  test("a failed provider call releases its reservation before the local fallback", async () => {
+  test("a failed provider call retains its reservation for reconciliation", async () => {
     useFakeSpeech(new Error("HTTP 500"));
     const client_request_id = "00000000-0000-4000-8000-000000000915";
     const result = await post("/v1/speech/transcriptions", { ...recording, client_request_id });
@@ -162,7 +162,9 @@ describe("speech routes", () => {
       .select()
       .from(llmUsage)
       .where(eq(llmUsage.client_request_id, client_request_id));
-    expect(rows).toMatchObject([{ reservation: "released", audio_seconds: 0, result: "error" }]);
+    expect(rows).toMatchObject([
+      { reservation: "reconciliation_required", audio_seconds: 300, result: "error" },
+    ]);
   });
 
   test("refuses a request id that is not a uuid", async () => {

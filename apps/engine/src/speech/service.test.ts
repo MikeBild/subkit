@@ -38,7 +38,7 @@ interface LedgerRow {
 function memoryLedger(fits: () => boolean = () => true) {
   const rows = new Map<string, LedgerRow>();
   const steps: string[] = [];
-  const move = (id: string, event: "settle" | "release", patch: Partial<LedgerRow>) => {
+  const move = (id: string, event: "settle" | "lapse", patch: Partial<LedgerRow>) => {
     const row = rows.get(id);
     const next = reservationTransition(row?.state ?? null, event);
     if (!row || !next) return false;
@@ -73,7 +73,7 @@ function memoryLedger(fits: () => boolean = () => true) {
         seconds: input.audioSeconds,
         transcript: input.transcript,
       }),
-    release: async (input) => move(input.clientRequestId, "release", { seconds: 0 }),
+    reconcile: async (input) => move(input.clientRequestId, "lapse", {}),
   };
   return { ledger, rows, steps };
 }
@@ -243,12 +243,28 @@ describe("operator key reservation", () => {
     expect(rows.get("rec-1")).toMatchObject({ state: "settled", seconds: 300 });
   });
 
-  test("a provider failure releases the reservation before the local fallback", async () => {
+  test("a provider failure retains the reservation for reconciliation before the local fallback", async () => {
     const { speech, steps, rows } = service({ transcribers: withOpenai(new Error("HTTP 500")) });
     expect((await speech.transcribe(request)).transcriber).toBe("local");
-    expect(steps).toEqual(["reserve:openai:300", "release:openai"]);
-    expect(rows.get("rec-1")).toMatchObject({ state: "released", seconds: 0 });
+    expect(steps).toEqual(["reserve:openai:300", "lapse:openai"]);
+    expect(rows.get("rec-1")).toMatchObject({ state: "reconciliation_required", seconds: 300 });
   });
+
+  test.each(["request timed out", "connection reset"])(
+    "an ambiguous provider failure (%s) stays charged and refuses retries",
+    async (message) => {
+      const { speech, rows, calls } = service({ transcribers: withOpenai(new Error(message)) });
+      expect((await speech.transcribe(request)).transcriber).toBe("local");
+      expect(rows.get("rec-1")).toMatchObject({
+        state: "reconciliation_required",
+        seconds: 300,
+      });
+      await expect(speech.transcribe(request)).rejects.toMatchObject({
+        code: "transcription_unsettled",
+      });
+      expect(calls).toEqual(["openai", "local"]);
+    },
+  );
 
   test("an empty result is still settled because the provider charged it", async () => {
     const { speech, steps } = service({ transcribers: withOpenai("  ") });

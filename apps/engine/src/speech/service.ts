@@ -149,7 +149,7 @@ export function createSpeechService(deps: SpeechServiceDeps) {
 
   const ledgerStep = async (
     request: TranscribeRequest,
-    step: "settle" | "release",
+    step: "settle" | "reconcile",
     write: () => Promise<boolean>,
   ): Promise<void> => {
     try {
@@ -263,8 +263,8 @@ export function createSpeechService(deps: SpeechServiceDeps) {
       } catch (error) {
         if (error instanceof SpeechError && error.code === "no_speech") throw error;
         if (metered)
-          await ledgerStep(request, "release", () =>
-            deps.ledger.release({ ...request, latencyMs: deps.clock() - started }),
+          await ledgerStep(request, "reconcile", () =>
+            deps.ledger.reconcile({ ...request, latencyMs: deps.clock() - started }),
           );
         if (request.signal?.aborted) throw error;
         const failure =

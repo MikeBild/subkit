@@ -30,6 +30,7 @@ export {
 } from "./model-price-catalog.ts";
 export {
   priorTranscription,
+  reconcileTranscription,
   releaseTranscription,
   reserveTranscription,
   settleTranscription,
