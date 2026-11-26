@@ -223,6 +223,53 @@ describe("docs deep links", () => {
   });
 
   isolated(
+    "the anchor stays current while it is revealed and the spy follows once the reader scrolls",
+    async () => {
+      const { first, second } = sections("web-clipper");
+      const view = await mount(`/docs/web-clipper#${second.anchor}`);
+      const window = view.dom.window;
+      const tops = new Map([
+        [first.anchor, 0],
+        [second.anchor, 196],
+      ]);
+      window.HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+        const top = this.dataset.testid === "docs-scroll" ? 0 : (tops.get(this.id) ?? 2000);
+        return {
+          top,
+          bottom: top,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 0,
+          x: 0,
+          y: top,
+        } as DOMRect;
+      };
+      const marked = () =>
+        [...window.document.querySelectorAll('[data-testid="docs-toc-link"]')]
+          .filter((link) => link.getAttribute("data-current") === "true")
+          .map((link) => link.getAttribute("href"));
+      try {
+        const region = view.region();
+        expect(marked()).toEqual([`/docs/web-clipper#${second.anchor}`]);
+
+        await act(async () => {
+          region.dispatchEvent(new window.Event("scroll"));
+        });
+        expect(marked()).toEqual([`/docs/web-clipper#${second.anchor}`]);
+
+        await act(async () => {
+          region.dispatchEvent(new window.Event("wheel", { bubbles: true }));
+          region.dispatchEvent(new window.Event("scroll"));
+        });
+        expect(marked()).toEqual([`/docs/web-clipper#${first.anchor}`]);
+      } finally {
+        await view.close();
+      }
+    },
+  );
+
+  isolated(
     "a new chapter starts at the top and back returns to where the reader left off",
     async () => {
       const other = DOCS.pages.find((page) => page.slug !== "web-clipper");

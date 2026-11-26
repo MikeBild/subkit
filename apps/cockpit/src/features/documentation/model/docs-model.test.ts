@@ -22,6 +22,7 @@ import {
   releaseVersion,
   resolveLink,
   safeDecode,
+  spyMode,
   tableOfContents,
 } from "@/features/documentation/model/docs-model";
 
@@ -214,6 +215,17 @@ describe("docs model", () => {
     expect(activeHeading(positions, 96, true, "c", 600)).toBe("c");
     expect(activeHeading(positions, 96, true, "a", 600)).toBe("d");
     expect(activeHeading([], 96, true)).toBeUndefined();
+  });
+
+  test.each([
+    ["following", { type: "navigate", hash: "how" }, "held"],
+    ["following", { type: "navigate", hash: "" }, "following"],
+    ["held", { type: "navigate", hash: "" }, "following"],
+    ["held", { type: "navigate", hash: "how" }, "held"],
+    ["held", { type: "input" }, "following"],
+    ["following", { type: "input" }, "following"],
+  ] as const)("the scroll spy in %p after %p is %p", (mode, event, expected) => {
+    expect(spyMode(mode, event)).toBe(expected);
   });
 
   test("an article repeats its summary only when the body does not already say it", () => {
