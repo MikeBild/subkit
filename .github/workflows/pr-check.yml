@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  ONNXRUNTIME_NODE_INSTALL: skip
   LANG: C.UTF-8
   LC_ALL: C.UTF-8
   TZ: UTC
