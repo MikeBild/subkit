@@ -49,3 +49,32 @@ test("database error chains preserve classification without native value details
   expect(JSON.stringify(errorFields(native))).not.toContain("private-canary");
   expect(JSON.stringify(errorFields(wrapped))).not.toContain("private-canary");
 });
+
+test("log fields keep a shared value at every reference and mark only real cycles", () => {
+  reconfigureLogger({ format: "ndjson", level: "trace" });
+  const original = process.stdout.write;
+  let captured = "";
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    captured += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+    return true;
+  }) as typeof process.stdout.write;
+  const argv = ["bun", "agent.js"];
+  const cyclic: Record<string, unknown> = { label: "loop" };
+  cyclic.self = cyclic;
+  try {
+    logger.info({
+      module: "database-safety",
+      action: "shared-reference",
+      msg: "shared reference",
+      top: argv,
+      outer: argv,
+      cyclic,
+    });
+    const line = JSON.parse(captured.trim().split("\n").at(-1) ?? "{}");
+    expect([line.top, line.outer]).toEqual([argv, argv]);
+    expect(line.cyclic).toEqual({ label: "loop", self: "[circular]" });
+  } finally {
+    process.stdout.write = original;
+    _resetLoggerForTests();
+  }
+});

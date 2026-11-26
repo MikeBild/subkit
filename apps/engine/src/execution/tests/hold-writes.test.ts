@@ -430,4 +430,40 @@ describe("hold-writes · HTTP", () => {
     }
     expect(hitsFor("/send")).toHaveLength(0);
   });
+
+  test("a placeholder value used twice in the body is held and sent twice, not marked circular", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-shared-placeholder",
+      steps: [
+        {
+          kind: "request",
+          id: "send",
+          method: "POST",
+          url: `${mock.baseUrl}/shared-argv`,
+          body: { top: "${input.arr}", outer: { arr: "${input.arr}" } },
+        },
+      ],
+    });
+    const expectedBody = { top: ["bun", "agent.js"], outer: { arr: ["bun", "agent.js"] } };
+    const run = (holdWrites: boolean) =>
+      runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: { arr: ["bun", "agent.js"] },
+        ...(holdWrites ? { options: { hold_writes: true } } : {}),
+      });
+
+    const held = await run(true);
+    const heldStep = held.steps.find((s) => s.step_key === "send");
+    expect(heldStep?.held).toBe(true);
+    expect((heldStep?.held_request as HeldRequest | undefined)?.body).toEqual(expectedBody);
+    expect(hitsFor("/shared-argv")).toHaveLength(0);
+
+    const live = await run(false);
+    expect(live.status).toBe("succeeded");
+    expect(wireBodies.filter((entry) => entry.url === "/shared-argv")).toEqual([
+      { url: "/shared-argv", body: expectedBody },
+    ]);
+  });
 });
