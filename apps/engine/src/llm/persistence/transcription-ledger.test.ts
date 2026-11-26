@@ -119,7 +119,7 @@ describe.skipIf(skip)("transcription reservation ledger", () => {
     expect(await testDb.db.select().from(llmUsage)).toHaveLength(1);
   });
 
-  test("a provider failure releases the charge and a retry reserves the same row again", async () => {
+  test("a definite provider rejection releases the charge and a retry reserves the same row again", async () => {
     await reserveTranscription(reservation(4), testDb.db);
     expect(await releaseTranscription({ ...reservation(4), latency_ms: 30 }, testDb.db)).toBe(true);
     expect(await rowOf(4)).toMatchObject({

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { llmUsage } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
+import { TranscriptionDispatchError } from "../../../llm/core/transcription-failure.ts";
 import { setSpeechServiceForTests } from "../../../speech/index.ts";
 import { SpeechError, type Transcriber } from "../../../speech/port.ts";
 import { transcriptionLedger } from "../../../speech/providers/ledger.ts";
@@ -153,18 +154,37 @@ describe("speech routes", () => {
     ]);
   });
 
-  test("a failed provider call retains its reservation for reconciliation", async () => {
-    useFakeSpeech(new Error("HTTP 500"));
+  const usageOf = (client_request_id: string) =>
+    ctx.db.select().from(llmUsage).where(eq(llmUsage.client_request_id, client_request_id));
+
+  test("a definite provider rejection releases its reservation and frees the budget", async () => {
+    useFakeSpeech(
+      new TranscriptionDispatchError(new Error("invalid api key"), [
+        { phase: "answered", status: 401 },
+      ]),
+    );
+    const client_request_id = "00000000-0000-4000-8000-000000000916";
+    const result = await post("/v1/speech/transcriptions", { ...recording, client_request_id });
+    expect(result.status).toBe(409);
+    expect(await usageOf(client_request_id)).toMatchObject([
+      { reservation: "released", audio_seconds: 0, result: "error" },
+    ]);
+  });
+
+  test("an ambiguous provider failure stays charged and its retry is refused", async () => {
+    useFakeSpeech(
+      new TranscriptionDispatchError(new Error("request timed out"), [{ phase: "sent" }]),
+    );
     const client_request_id = "00000000-0000-4000-8000-000000000915";
     const result = await post("/v1/speech/transcriptions", { ...recording, client_request_id });
     expect(result.status).toBe(409);
-    const rows = await ctx.db
-      .select()
-      .from(llmUsage)
-      .where(eq(llmUsage.client_request_id, client_request_id));
-    expect(rows).toMatchObject([
+    expect(await usageOf(client_request_id)).toMatchObject([
       { reservation: "reconciliation_required", audio_seconds: 300, result: "error" },
     ]);
+    const calls = seen.length;
+    const retry = await post("/v1/speech/transcriptions", { ...recording, client_request_id });
+    expect(retry).toMatchObject({ status: 409, body: { code: "transcription_unsettled" } });
+    expect(seen).toHaveLength(calls);
   });
 
   test("refuses a request id that is not a uuid", async () => {
@@ -179,5 +199,45 @@ describe("speech routes", () => {
   test("requires credentials", async () => {
     useFakeSpeech("never");
     expect((await post("/v1/speech/transcriptions", recording, false)).status).toBe(401);
+  });
+});
+
+describe("transcription ledger adapter", () => {
+  const key = (clientRequestId: string) => ({
+    tenantId: ctx.tenantId,
+    clientRequestId,
+    db: ctx.db,
+  });
+  const reservation = (clientRequestId: string) => ({
+    ...key(clientRequestId),
+    transcriber: "openai" as const,
+    model: undefined,
+    estimateSeconds: 10,
+    actor: undefined,
+  });
+
+  test("a second reservation of an open request is answered as in progress", async () => {
+    const id = "00000000-0000-4000-8000-000000000917";
+    expect(await transcriptionLedger.reserve(reservation(id))).toEqual({ kind: "reserved" });
+    expect(await transcriptionLedger.reserve(reservation(id))).toEqual({ kind: "in_progress" });
+    expect(await transcriptionLedger.release({ ...key(id), latencyMs: 5 })).toBe(true);
+    expect(await transcriptionLedger.reserve(reservation(id))).toEqual({ kind: "reserved" });
+    expect(await transcriptionLedger.reconcile({ ...key(id), latencyMs: 5 })).toBe(true);
+    expect(await transcriptionLedger.prior(key(id))).toEqual({ kind: "unsettled" });
+  });
+
+  test("a settled transcript of an unknown transcriber is never replayed", async () => {
+    const id = "00000000-0000-4000-8000-000000000918";
+    await transcriptionLedger.reserve(reservation(id));
+    await ctx.db
+      .update(llmUsage)
+      .set({
+        reservation: "settled",
+        lease_until: null,
+        model: "elsewhere/model",
+        transcript: "stored",
+      })
+      .where(eq(llmUsage.client_request_id, id));
+    expect(await transcriptionLedger.prior(key(id))).toEqual({ kind: "unsettled" });
   });
 });

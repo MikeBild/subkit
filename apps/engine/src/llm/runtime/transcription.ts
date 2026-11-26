@@ -4,10 +4,15 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { type TranscriptionModel, transcribe } from "ai";
 import type { Executor } from "../../db/index.ts";
 import { checkAndDecrement } from "../accounting/budget.ts";
+import {
+  recordingFetch,
+  type TranscriptionAttempt,
+  TranscriptionDispatchError,
+} from "../core/transcription-failure.ts";
 import { LlmError } from "../errors.ts";
 import { modelKeyOwner, readLlmSetting } from "./model-init.ts";
 import { assertOperatorKeyAllowed } from "./operator-key-guard.ts";
-import { fetchWithResponseTimeout } from "./response-timeout.ts";
+import { fetchWithResponseTimeout, type ResponseFetch } from "./response-timeout.ts";
 
 export type TranscriptionProviderId = "openai" | "azure" | "gemini";
 
@@ -82,19 +87,17 @@ export const transcriptionModelName = (
 function keyedOptions(
   setting: string,
   tenantId: string,
+  fetch: ResponseFetch,
   baseUrlSetting?: string,
 ): Record<string, unknown> {
-  const options: Record<string, unknown> = {
-    apiKey: readLlmSetting(setting, tenantId),
-    fetch: fetchWithResponseTimeout(),
-  };
+  const options: Record<string, unknown> = { apiKey: readLlmSetting(setting, tenantId), fetch };
   const baseURL = baseUrlSetting ? readLlmSetting(baseUrlSetting, tenantId) : undefined;
   if (baseURL) options.baseURL = baseURL;
   return options;
 }
 
-function azureOptions(tenantId: string): Record<string, unknown> {
-  const options = keyedOptions("AZURE_API_KEY", tenantId, "AZURE_BASE_URL");
+function azureOptions(tenantId: string, fetch: ResponseFetch): Record<string, unknown> {
+  const options = keyedOptions("AZURE_API_KEY", tenantId, fetch, "AZURE_BASE_URL");
   const resourceName = readLlmSetting("AZURE_RESOURCE_NAME", tenantId);
   const apiVersion = readLlmSetting("AZURE_API_VERSION", tenantId);
   if (resourceName) options.resourceName = resourceName;
@@ -106,25 +109,36 @@ function transcriptionModel(
   provider: TranscriptionProviderId,
   tenantId: string,
   modelId: string,
+  fetch: ResponseFetch,
 ): TranscriptionModel {
   if (provider === "openai")
-    return createOpenAI(keyedOptions("OPENAI_API_KEY", tenantId)).transcription(modelId);
-  if (provider === "azure") return createAzure(azureOptions(tenantId)).transcription(modelId);
+    return createOpenAI(keyedOptions("OPENAI_API_KEY", tenantId, fetch)).transcription(modelId);
+  if (provider === "azure")
+    return createAzure(azureOptions(tenantId, fetch)).transcription(modelId);
   return createGoogleGenerativeAI(
-    keyedOptions("GEMINI_API_KEY", tenantId, "GEMINI_BASE_URL"),
+    keyedOptions("GEMINI_API_KEY", tenantId, fetch, "GEMINI_BASE_URL"),
   ).transcription(modelId);
 }
 
-export async function transcribeAudio(request: TranscribeAudioRequest): Promise<TranscribedAudio> {
+export async function transcribeAudio(
+  request: TranscribeAudioRequest,
+  base: ResponseFetch = globalThis.fetch,
+): Promise<TranscribedAudio> {
   const modelId = request.model || DEFAULT_TRANSCRIPTION_MODEL[request.provider];
-  const result = await transcribe({
-    model: transcriptionModel(request.provider, request.tenantId, modelId),
-    audio: request.audio,
-    maxRetries: 1,
-    ...(request.language && request.provider !== "gemini"
-      ? { providerOptions: { [request.provider]: { language: request.language } } }
-      : {}),
-    ...(request.signal ? { abortSignal: request.signal } : {}),
-  });
-  return { text: result.text, model: modelId, audio_seconds: result.durationInSeconds };
+  const attempts: TranscriptionAttempt[] = [];
+  const fetch = fetchWithResponseTimeout(undefined, recordingFetch(attempts, base));
+  try {
+    const result = await transcribe({
+      model: transcriptionModel(request.provider, request.tenantId, modelId, fetch),
+      audio: request.audio,
+      maxRetries: 1,
+      ...(request.language && request.provider !== "gemini"
+        ? { providerOptions: { [request.provider]: { language: request.language } } }
+        : {}),
+      ...(request.signal ? { abortSignal: request.signal } : {}),
+    });
+    return { text: result.text, model: modelId, audio_seconds: result.durationInSeconds };
+  } catch (error) {
+    throw new TranscriptionDispatchError(error, attempts);
+  }
 }

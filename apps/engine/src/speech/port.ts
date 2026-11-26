@@ -71,6 +71,7 @@ export interface TranscriptionLedger {
       readonly transcript: string;
     },
   ): Promise<boolean>;
+  release(input: TranscriptionLedgerKey & { readonly latencyMs: number }): Promise<boolean>;
   reconcile(input: TranscriptionLedgerKey & { readonly latencyMs: number }): Promise<boolean>;
 }
 

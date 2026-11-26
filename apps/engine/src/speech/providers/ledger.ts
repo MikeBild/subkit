@@ -1,6 +1,7 @@
 import {
   priorTranscription,
   reconcileTranscription,
+  releaseTranscription,
   reserveTranscription,
   settleTranscription,
   type TranscriptionPrior,
@@ -53,6 +54,8 @@ export const transcriptionLedger: TranscriptionLedger = {
       },
       input.db,
     ),
+  release: (input) =>
+    releaseTranscription({ ...keyOf(input), latency_ms: input.latencyMs }, input.db),
   reconcile: (input) =>
     reconcileTranscription({ ...keyOf(input), latency_ms: input.latencyMs }, input.db),
 };

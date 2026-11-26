@@ -12,6 +12,12 @@ import { seedTenant } from "../../test-helpers/seed.ts";
 import { now } from "../../utils/clock.ts";
 import { currentMonthBucket, recordUsage } from "../accounting/budget.ts";
 import {
+  type TranscriptionAttempt,
+  TranscriptionDispatchError,
+  transcriptionFailureOutcome,
+} from "../core/transcription-failure.ts";
+import {
+  transcribeAudio,
   transcriptionKeyOwner,
   transcriptionModelName,
   transcriptionSpendAllows,
@@ -139,5 +145,81 @@ describe.skipIf(skip)("who may transcribe with which key", () => {
 
   test("a provider without credentials is never offered", async () => {
     expect(await transcriptionKeyOwner("gemini", selfHosted, testDb.db)).toBeNull();
+  });
+});
+
+describe.skipIf(skip)("what a failed provider call proves", () => {
+  const audio = new Uint8Array([82, 73, 70, 70]);
+  const call = (base: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) =>
+    transcribeAudio({ provider: "openai", tenantId: selfHosted, audio }, base);
+  const failureOf = async (pending: Promise<unknown>) => {
+    const error = await pending.then(
+      () => null,
+      (rejection: unknown) => rejection,
+    );
+    if (!(error instanceof TranscriptionDispatchError))
+      throw new Error("expected a dispatch error");
+    return error;
+  };
+  const answer = (status: number, body: string) => async () =>
+    new Response(body, { status, headers: { "content-type": "application/json" } });
+
+  test("a transcript and its duration come back from the provider", async () => {
+    expect(await call(answer(200, JSON.stringify({ text: "hello", duration: 1.5 })))).toMatchObject(
+      {
+        text: "hello",
+        model: "gpt-4o-mini-transcribe",
+      },
+    );
+  });
+
+  test("a rejected key is a definite rejection that releases the reservation", async () => {
+    const error = await failureOf(
+      call(answer(401, JSON.stringify({ error: { message: "invalid api key" } }))),
+    );
+    expect(error.attempts).toEqual([{ phase: "answered", status: 401 } as TranscriptionAttempt]);
+    expect(transcriptionFailureOutcome(error)).toBe("release");
+  });
+
+  test("a malformed answer after sending stays charged", async () => {
+    const error = await failureOf(call(answer(200, "not json")));
+    expect(error.attempts).toEqual([{ phase: "answered", status: 200 }]);
+    expect(transcriptionFailureOutcome(error)).toBe("reconcile");
+  });
+
+  test("a refused connection never reached the provider, even when retried", async () => {
+    const error = await failureOf(
+      call(async () => {
+        throw Object.assign(new TypeError("Unable to connect"), { code: "ECONNREFUSED" });
+      }),
+    );
+    expect(error.attempts).toEqual([{ phase: "unsent" }, { phase: "unsent" }]);
+    expect(transcriptionFailureOutcome(error)).toBe("release");
+  });
+
+  test("a reset connection after sending stays charged", async () => {
+    const error = await failureOf(
+      call(async () => {
+        throw Object.assign(new TypeError("socket closed"), { code: "ECONNRESET" });
+      }),
+    );
+    expect(transcriptionFailureOutcome(error)).toBe("reconcile");
+  });
+
+  test("an abort before sending never reaches the provider", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let dispatched = 0;
+    const error = await failureOf(
+      transcribeAudio(
+        { provider: "openai", tenantId: selfHosted, audio, signal: controller.signal },
+        async () => {
+          dispatched += 1;
+          return new Response("{}");
+        },
+      ),
+    );
+    expect(dispatched).toBe(0);
+    expect(transcriptionFailureOutcome(error)).toBe("release");
   });
 });

@@ -1,4 +1,8 @@
-import { reservationEstimateSeconds, settledAudioSeconds } from "../llm/index.ts";
+import {
+  reservationEstimateSeconds,
+  settledAudioSeconds,
+  transcriptionFailureOutcome,
+} from "../llm/index.ts";
 import { logger } from "../logging/index.ts";
 import type { LocalModelState } from "./core/model-files.ts";
 import {
@@ -149,7 +153,7 @@ export function createSpeechService(deps: SpeechServiceDeps) {
 
   const ledgerStep = async (
     request: TranscribeRequest,
-    step: "settle" | "reconcile",
+    step: "settle" | "release" | "reconcile",
     write: () => Promise<boolean>,
   ): Promise<void> => {
     try {
@@ -262,10 +266,22 @@ export function createSpeechService(deps: SpeechServiceDeps) {
         return transcription;
       } catch (error) {
         if (error instanceof SpeechError && error.code === "no_speech") throw error;
-        if (metered)
-          await ledgerStep(request, "reconcile", () =>
-            deps.ledger.reconcile({ ...request, latencyMs: deps.clock() - started }),
+        if (metered) {
+          const outcome = transcriptionFailureOutcome(error);
+          logger.info({
+            module: "speech",
+            action: `transcribe.${outcome}`,
+            msg:
+              outcome === "release"
+                ? "the provider definitely did not bill this attempt; its reservation is released"
+                : "the provider may have billed this attempt; it stays charged until reconciled",
+            ...correlation(request),
+            transcriber: id,
+          });
+          await ledgerStep(request, outcome, () =>
+            deps.ledger[outcome]({ ...request, latencyMs: deps.clock() - started }),
           );
+        }
         if (request.signal?.aborted) throw error;
         const failure =
           error instanceof SpeechError

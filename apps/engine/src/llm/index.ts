@@ -1,6 +1,11 @@
 export * from "./accounting/index.ts";
 export { cacheReadReported } from "./core/cache-reporting.ts";
 export {
+  TranscriptionDispatchError,
+  type TranscriptionFailureOutcome,
+  transcriptionFailureOutcome,
+} from "./core/transcription-failure.ts";
+export {
   RESERVATION_ESTIMATE_CAP_SECONDS,
   reservationEstimateSeconds,
   settledAudioSeconds,

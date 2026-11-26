@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Executor } from "../db/index.ts";
 import {
+  type TranscriptionAttempt,
+  TranscriptionDispatchError,
+} from "../llm/core/transcription-failure.ts";
+import {
   priorAttempt,
   reservationTransition,
   type TranscriptionReservationState,
@@ -38,7 +42,7 @@ interface LedgerRow {
 function memoryLedger(fits: () => boolean = () => true) {
   const rows = new Map<string, LedgerRow>();
   const steps: string[] = [];
-  const move = (id: string, event: "settle" | "lapse", patch: Partial<LedgerRow>) => {
+  const move = (id: string, event: "settle" | "release" | "lapse", patch: Partial<LedgerRow>) => {
     const row = rows.get(id);
     const next = reservationTransition(row?.state ?? null, event);
     if (!row || !next) return false;
@@ -73,6 +77,7 @@ function memoryLedger(fits: () => boolean = () => true) {
         seconds: input.audioSeconds,
         transcript: input.transcript,
       }),
+    release: async (input) => move(input.clientRequestId, "release", { seconds: 0 }),
     reconcile: async (input) => move(input.clientRequestId, "lapse", {}),
   };
   return { ledger, rows, steps };
@@ -243,28 +248,86 @@ describe("operator key reservation", () => {
     expect(rows.get("rec-1")).toMatchObject({ state: "settled", seconds: 300 });
   });
 
-  test("a provider failure retains the reservation for reconciliation before the local fallback", async () => {
-    const { speech, steps, rows } = service({ transcribers: withOpenai(new Error("HTTP 500")) });
-    expect((await speech.transcribe(request)).transcriber).toBe("local");
-    expect(steps).toEqual(["reserve:openai:300", "lapse:openai"]);
-    expect(rows.get("rec-1")).toMatchObject({ state: "reconciliation_required", seconds: 300 });
-  });
+  const dispatchFailure = (...attempts: TranscriptionAttempt[]) =>
+    new TranscriptionDispatchError(new Error("provider call failed"), attempts);
 
-  test.each(["request timed out", "connection reset"])(
-    "an ambiguous provider failure (%s) stays charged and refuses retries",
-    async (message) => {
-      const { speech, rows, calls } = service({ transcribers: withOpenai(new Error(message)) });
+  test.each([
+    ["key rejected", dispatchFailure({ phase: "answered", status: 401 })],
+    ["payload too large", dispatchFailure({ phase: "answered", status: 413 })],
+    [
+      "rate limited twice",
+      dispatchFailure(...[429, 429].map((status) => ({ phase: "answered" as const, status }))),
+    ],
+    ["connection refused", dispatchFailure({ phase: "unsent" })],
+    ["refused before sending", dispatchFailure()],
+  ])(
+    "a definite rejection (%s) releases the reservation before the fallback",
+    async (_, failure) => {
+      const { speech, steps, rows, calls } = service({ transcribers: withOpenai(failure) });
       expect((await speech.transcribe(request)).transcriber).toBe("local");
-      expect(rows.get("rec-1")).toMatchObject({
-        state: "reconciliation_required",
-        seconds: 300,
-      });
-      await expect(speech.transcribe(request)).rejects.toMatchObject({
-        code: "transcription_unsettled",
-      });
+      expect(steps).toEqual(["reserve:openai:300", "release:openai"]);
+      expect(rows.get("rec-1")).toMatchObject({ state: "released", seconds: 0 });
       expect(calls).toEqual(["openai", "local"]);
     },
   );
+
+  test("a definite rejection frees the budget for the next metered transcriber", async () => {
+    const { speech, steps } = service({
+      keyOwner: async (id) => (id === "openai" || id === "azure" ? "operator" : null),
+      transcribers: {
+        ...withOpenai(dispatchFailure({ phase: "answered", status: 403 })),
+        azure: fixed("azure", "azure text"),
+      },
+    });
+    expect(await speech.transcribe(request)).toMatchObject({ transcriber: "azure" });
+    expect(steps).toEqual([
+      "reserve:openai:300",
+      "release:openai",
+      "reserve:azure:300",
+      "settle:azure",
+    ]);
+  });
+
+  test.each([
+    ["timeout after sending", dispatchFailure({ phase: "sent" })],
+    ["server error", dispatchFailure({ phase: "answered", status: 502 })],
+    ["malformed answer", dispatchFailure({ phase: "answered", status: 200 })],
+    [
+      "rejection after a server error",
+      dispatchFailure({ phase: "answered", status: 500 }, { phase: "answered", status: 429 }),
+    ],
+    ["unknown failure", new Error("connection reset")],
+  ])("an ambiguous failure (%s) stays charged and refuses retries", async (_, failure) => {
+    const { speech, steps, rows, calls } = service({ transcribers: withOpenai(failure) });
+    expect((await speech.transcribe(request)).transcriber).toBe("local");
+    expect(steps).toEqual(["reserve:openai:300", "lapse:openai"]);
+    expect(rows.get("rec-1")).toMatchObject({ state: "reconciliation_required", seconds: 300 });
+    await expect(speech.transcribe(request)).rejects.toMatchObject({
+      code: "transcription_unsettled",
+      status: 409,
+    });
+    expect(calls).toEqual(["openai", "local"]);
+  });
+
+  test("an abort after sending stays charged and is passed on", async () => {
+    const controller = new AbortController();
+    const { speech, rows } = service({
+      transcribers: {
+        ...withOpenai(""),
+        openai: {
+          id: "openai",
+          transcribe: async () => {
+            controller.abort();
+            throw dispatchFailure({ phase: "sent" });
+          },
+        },
+      },
+    });
+    await expect(
+      speech.transcribe({ ...request, signal: controller.signal }),
+    ).rejects.toBeInstanceOf(TranscriptionDispatchError);
+    expect(rows.get("rec-1")?.state).toBe("reconciliation_required");
+  });
 
   test("an empty result is still settled because the provider charged it", async () => {
     const { speech, steps } = service({ transcribers: withOpenai("  ") });
@@ -362,6 +425,19 @@ describe("operator key reservation", () => {
     expect(calls).toEqual(["openai", "local"]);
     expect(steps).toEqual([]);
     expect(asked).toBe(0);
+  });
+
+  test("a refused ledger write leaves the reservation to the sweep and still falls back", async () => {
+    const memory = memoryLedger();
+    const failure = new TranscriptionDispatchError(new Error("bad audio"), [
+      { phase: "answered", status: 400 },
+    ]);
+    const { speech } = service({
+      ledger: { ...memory.ledger, release: async () => false },
+      transcribers: withOpenai(failure),
+    });
+    expect((await speech.transcribe(request)).transcriber).toBe("local");
+    expect(memory.rows.get("rec-1")?.state).toBe("reserved");
   });
 
   test("a failing ledger write leaves the reservation to the sweep and still answers", async () => {
