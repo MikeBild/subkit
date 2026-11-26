@@ -15,6 +15,7 @@ import { logger } from "../../logging/index.ts";
 import { globalEmitter, type PubSubEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { skillExamplesFromBlob } from "../../skills/index.ts";
 import { paginate } from "./pagination.ts";
 
 const PREFIX = "skill_";
@@ -157,7 +158,7 @@ export function registerPromptsCapability(p: RegisterPromptsParams): void {
     }
     const argumentDescriptors = toPromptArguments(row.arguments);
     const argumentValues = validatePromptArguments(argumentDescriptors, req.params.arguments);
-    const examples: unknown[] = Array.isArray(row.examples) ? row.examples : [];
+    const examples: unknown[] = skillExamplesFromBlob(row.examples).examples;
     const messages: Array<{
       role: "user" | "assistant";
       content: { type: "text"; text: string };

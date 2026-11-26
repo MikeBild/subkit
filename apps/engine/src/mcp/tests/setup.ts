@@ -91,7 +91,7 @@ interface ConnectorSeed {
 interface SkillSeed {
   title: string;
   body: string;
-  examples: unknown[];
+  examples: unknown;
   arguments: unknown[];
 }
 
@@ -357,7 +357,12 @@ export async function startMcpTestSuite(
         scope: "global",
         title: overrides.title ?? "How to bake bread",
         body: overrides.body ?? "Mix flour, water, salt. Bake.",
-        examples: overrides.examples ?? ["example one", "example two"],
+        examples: overrides.examples ?? {
+          examples: ["example one", "example two"],
+          best_practices: [],
+          pitfalls: [],
+          doc_refs: [],
+        },
         arguments: overrides.arguments ?? [],
         lifecycle: "active",
         version: 1,
