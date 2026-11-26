@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { backoffDelay } from "@shared/backoff.ts";
-import { backoffMs, parseRetryAfter } from "./retry.ts";
+import { backoffDelay, retryAfterHeaderMs } from "@shared/backoff.ts";
+import { backoffMs } from "./retry.ts";
 
 const RATE_LIMIT_MAX_WAIT_MS = 60 * 60_000;
 const SECONDARY_MIN_WAIT_MS = 60_000;
@@ -42,7 +42,7 @@ function bodyMessages(body: unknown): string[] {
 }
 
 export function rateLimitDelayMs(input: RateLimitInput): RateLimitVerdict {
-  const retryAfter = parseRetryAfter(input.headers["retry-after"] ?? null);
+  const retryAfter = retryAfterHeaderMs(input.headers["retry-after"], input.now_ms);
   const exhausted = input.headers["x-ratelimit-remaining"]?.trim() === "0";
   const messageSignal = bodyMessages(input.body).some((message) =>
     RATE_LIMIT_MESSAGE.test(message),

@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { retryAfterSecondsUntil } from "@shared/backoff.ts";
 import type { Context } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index.ts";
@@ -139,11 +140,6 @@ const callerBudgetStatuses = {
   invalid: { status: 400, error: "invalid" },
 } as const;
 
-export function retryAfterSeconds(resetsAt: unknown, currentTime = now()): number | undefined {
-  const resetAt = typeof resetsAt === "string" ? Date.parse(resetsAt) : Number.NaN;
-  return Number.isNaN(resetAt) ? undefined : Math.max(1, Math.ceil((resetAt - currentTime) / 1000));
-}
-
 function refusalDetails(refusal: RunRefusal): Record<string, unknown> | undefined {
   const raw = refusal.details;
   const execution = refusal.execution_id ? { execution_id: refusal.execution_id } : undefined;
@@ -173,7 +169,9 @@ export function refusalResponse(
         callerBudgetStatuses.invalid;
       const usage = (refusal.details as { usage?: Record<string, unknown> } | undefined)?.usage;
       const retryAfter =
-        refusal.code === "rate_limited" ? retryAfterSeconds(usage?.resetsAt) : undefined;
+        refusal.code === "rate_limited"
+          ? retryAfterSecondsUntil(usage?.resetsAt, now())
+          : undefined;
       if (retryAfter !== undefined) c.header("Retry-After", String(retryAfter));
       return c.json(
         {

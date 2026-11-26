@@ -1,3 +1,4 @@
+import { retryAfterHeaderMs } from "@shared/backoff.ts";
 import {
   AuthorityDispatchError,
   executePlannedHttpRequest,
@@ -21,7 +22,7 @@ import {
   rateLimitNow,
   rateLimitSleepOverride,
 } from "./rate-limit.ts";
-import { backoffMs, isIdempotent, parseRetryAfter, type RetryPolicy } from "./retry.ts";
+import { backoffMs, isIdempotent, type RetryPolicy } from "./retry.ts";
 
 export interface FetchAttemptResult {
   status: number;
@@ -241,7 +242,7 @@ export async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult>
             })
           : ({ kind: "none" } as const);
       if (rateLimit.kind !== "none") {
-        const after = parseRetryAfter(res.headers["retry-after"] ?? null);
+        const after = retryAfterHeaderMs(res.headers["retry-after"], Date.now());
         const health_hint = healthHintMeta(res.status, res.headers, {
           slug: p.connector_slug,
           url: p.url,

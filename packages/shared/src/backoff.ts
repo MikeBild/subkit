@@ -34,3 +34,36 @@ export function backoffDelay(
   const delay = applyJitter(ceiling, random, options.jitter ?? "equal");
   return options.round === false ? delay : Math.round(delay);
 }
+
+export function retryAfterHeaderMs(
+  header: string | null | undefined,
+  nowMs: number,
+): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  const seconds = Number.parseFloat(trimmed);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(trimmed);
+  return Number.isNaN(date) ? null : Math.max(0, date - nowMs);
+}
+
+export function retryAfterDeltaSeconds(value: string | null | undefined): number | null {
+  return value && /^\d{1,6}$/.test(value) ? Number(value) : null;
+}
+
+function nonNegativeSeconds(raw: unknown): number | undefined {
+  const seconds =
+    typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : undefined;
+}
+
+export function retryAfterSecondsFromDetails(details: unknown): number | undefined {
+  if (!details || typeof details !== "object") return undefined;
+  const fields = details as Record<string, unknown>;
+  return nonNegativeSeconds(fields.retry_after ?? fields.retryAfter ?? fields.retry_after_seconds);
+}
+
+export function retryAfterSecondsUntil(resetsAt: unknown, nowMs: number): number | undefined {
+  const resetAt = typeof resetsAt === "string" ? Date.parse(resetsAt) : Number.NaN;
+  return Number.isNaN(resetAt) ? undefined : Math.max(1, Math.ceil((resetAt - nowMs) / 1000));
+}

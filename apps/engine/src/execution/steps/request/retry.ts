@@ -22,20 +22,6 @@ export function backoffMs(
   });
 }
 
-export function parseRetryAfter(header: string | null): number | null {
-  if (!header) return null;
-  const trimmed = header.trim();
-  const numeric = Number.parseFloat(trimmed);
-  if (Number.isFinite(numeric)) {
-    return Math.max(0, numeric * 1000);
-  }
-  const date = Date.parse(trimmed);
-  if (!Number.isNaN(date)) {
-    return Math.max(0, date - Date.now());
-  }
-  return null;
-}
-
 export function isIdempotent(method: string): boolean {
   return method === "GET" || method === "HEAD" || method === "OPTIONS";
 }

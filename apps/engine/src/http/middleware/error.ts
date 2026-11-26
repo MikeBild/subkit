@@ -1,3 +1,4 @@
+import { retryAfterSecondsFromDetails } from "@shared/backoff.ts";
 import { PROVIDER_LIMITED, PROVIDER_QUOTA_EXHAUSTED } from "@shared/error-taxonomy.ts";
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -81,18 +82,6 @@ function captureToRing(
   });
 }
 
-function readRetryAfter(details: unknown): number | undefined {
-  if (!details || typeof details !== "object") return undefined;
-  const d = details as Record<string, unknown>;
-  const raw = d.retry_after ?? d.retryAfter ?? d.retry_after_seconds;
-  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return Math.ceil(raw);
-  if (typeof raw === "string") {
-    const n = Number(raw);
-    if (Number.isFinite(n) && n >= 0) return Math.ceil(n);
-  }
-  return undefined;
-}
-
 function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   const quota = hostedQuotaError(err);
   if (quota) return envelope(c, quota.status, quota.code, quota.message);
@@ -120,7 +109,7 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   }
   if (err instanceof LlmSpendLimitReached) {
     captureToRing(c, err, 429, "llm_spend_limit_reached", "llm_quota");
-    const retryAfter = readRetryAfter(err.details) ?? 60;
+    const retryAfter = retryAfterSecondsFromDetails(err.details) ?? 60;
     return envelope(c, 429, "llm_spend_limit_reached", err.message, {
       hint: "raise the provider quota or wait for the reset window before retrying",
       retry_after: retryAfter,
@@ -145,7 +134,7 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
       const code =
         providerErr.kind === "quota_exhausted" ? PROVIDER_QUOTA_EXHAUSTED : PROVIDER_LIMITED;
       captureToRing(c, providerErr, 429, code, "llm_provider");
-      const retryAfter = readRetryAfter(providerErr.details) ?? 30;
+      const retryAfter = retryAfterSecondsFromDetails(providerErr.details) ?? 30;
       return envelope(c, 429, code, providerErr.message, {
         hint:
           providerErr.kind === "quota_exhausted"

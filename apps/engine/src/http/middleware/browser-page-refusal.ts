@@ -1,3 +1,4 @@
+import { retryAfterDeltaSeconds } from "@shared/backoff.ts";
 import type { MiddlewareHandler } from "hono";
 import { canonicalBrowserPath } from "../../auth/index.ts";
 import { logger } from "../../logging/index.ts";
@@ -5,11 +6,6 @@ import { isBrowserNavigation, isBrowserPageRoute } from "../browser-pages.ts";
 import type { AppEnv } from "../openapi.ts";
 import { renderBrowserRefusalPage } from "../routes/browser-refusal-page.ts";
 import { HTML_PAGE_HEADERS, NEGOTIATED_VARY, resolvePageLook } from "../routes/oauth/ui.ts";
-
-function retryAfterSeconds(value: string | null): number | null {
-  if (!value || !/^\d{1,6}$/.test(value)) return null;
-  return Number(value);
-}
 
 async function refusalCode(response: Response): Promise<string> {
   try {
@@ -46,7 +42,7 @@ export function browserPageRefusalMiddleware(): MiddlewareHandler<AppEnv> {
       look: resolvePageLook(c.req.raw.headers),
       code,
       status: response.status,
-      retryAfterSeconds: retryAfterSeconds(retryAfter),
+      retryAfterSeconds: retryAfterDeltaSeconds(retryAfter),
       reloadHref: c.req.method === "GET" ? `${url.pathname}${url.search}` : null,
     });
     c.res = undefined;
