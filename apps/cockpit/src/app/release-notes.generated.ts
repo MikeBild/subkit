@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "0ea6a3517d1c18d0952b282fcfd5f4fa8734cde9",
+  "source": "e5bf79932aa0463e2888cecdd406fad688b8ec75",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2402,6 +2402,19 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "The Mac download and the desktop update always point at a release that has the Mac app. If the app for a new release is missing, the previous complete release stays the latest one.",
         "A file you upload stays available for a day before cleanup can remove it, even when nothing links to it yet, so a chat or workflow that picks it up a little later still finds it."
       ]
+    },
+    {
+      "version": "v13.1.0",
+      "notes": [],
+      "highlights": [
+        "Conversations are private by default. Only you can read your conversations, admins included. You choose to share one with your team and can take it back at any time. Admins can delete someone’s private conversation without reading it. Threads in Slack or Google Chat channels are shared, direct messages stay private.",
+        "Secrets, approvals, webhooks and subscriptions are now separated per workspace by the database itself, also in SubKit Cloud, without any extra database role.",
+        "SFTP connectors sign in with PKCS#8 keys too: RSA, ECDSA and Ed25519, with or without a passphrase.",
+        "Reading CSV files in a workflow takes an optional delimiter: comma, semicolon, tab or pipe. Without one, SubKit still detects it.",
+        "When a run asks a question in a conversation you already closed, it now stops with that reason under “Needs you”, so you can continue or cancel it instead of waiting for the question to expire.",
+        "“What’s new” shows the notes of every version, including 13.0.1 and 13.0.2, and formats code in them.",
+        "Many smaller fixes and a cleaner Cockpit: one confirm dialog, shared list controls, clearer status badges and copy feedback."
+      ]
     }
   ],
   "unpublished": {
@@ -2507,6 +2520,16 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "When a run asks a question in a conversation you already closed, it now stops with that reason under “Needs you”, so you can continue or cancel it instead of waiting for the question to expire.",
       "“What’s new” shows the notes of every version, including 13.0.1 and 13.0.2, and formats code in them.",
       "Many smaller fixes and a cleaner Cockpit: one confirm dialog, shared list controls, clearer status badges and copy feedback."
+    ],
+    "13.1.1": [
+      "A task run that stopped because its conversation was closed can continue in a new conversation. Choose “Continue in a new conversation” next to “Stop run”: the plan carries over and the run asks its question there.",
+      "Dictate instead of typing: voice dictation in the Cockpit, the desktop app and the CLI.",
+      "SubKit for Windows: the CLI has an installer, and the desktop app runs on Windows. Builds are not code signed yet, so updates are checked against the signed checksums.",
+      "Statistics show how often people are asked to confirm, per turn and per task run.",
+      "Request steps take bounded placeholders in headers and send form fields and idempotency keys as written. Runtime request URLs stay within the hosts allowed at install.",
+      "Template recipes install with their install inputs from the Cockpit and the CLI.",
+      "Waiting for an OAuth sign-in reads the pending credential through the tenant row scope, also on superuser database logins. Docker Compose no longer needs an init script for the tenant role, the engine creates it.",
+      "Many smaller fixes for the inbox, paging, prompt caching, connector checks and security scans."
     ]
   }
 };
