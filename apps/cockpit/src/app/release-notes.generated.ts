@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "e5bf79932aa0463e2888cecdd406fad688b8ec75",
+  "source": "fa8329bed07fdba6e9748e66e2afe3a6154f31b5",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2415,6 +2415,20 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "“What’s new” shows the notes of every version, including 13.0.1 and 13.0.2, and formats code in them.",
         "Many smaller fixes and a cleaner Cockpit: one confirm dialog, shared list controls, clearer status badges and copy feedback."
       ]
+    },
+    {
+      "version": "v13.1.1",
+      "notes": [],
+      "highlights": [
+        "A task run that stopped because its conversation was closed can continue in a new conversation. Choose “Continue in a new conversation” next to “Stop run”: the plan carries over and the run asks its question there.",
+        "Dictate instead of typing: voice dictation in the Cockpit, the desktop app and the CLI.",
+        "SubKit for Windows: the CLI has an installer, and the desktop app runs on Windows. Builds are not code signed yet, so updates are checked against the signed checksums.",
+        "Statistics show how often people are asked to confirm, per turn and per task run.",
+        "Request steps take bounded placeholders in headers and send form fields and idempotency keys as written. Runtime request URLs stay within the hosts allowed at install.",
+        "Template recipes install with their install inputs from the Cockpit and the CLI.",
+        "Waiting for an OAuth sign-in reads the pending credential through the tenant row scope, also on superuser database logins. Docker Compose no longer needs an init script for the tenant role, the engine creates it.",
+        "Many smaller fixes for the inbox, paging, prompt caching, connector checks and security scans."
+      ]
     }
   ],
   "unpublished": {
@@ -2530,6 +2544,10 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "Template recipes install with their install inputs from the Cockpit and the CLI.",
       "Waiting for an OAuth sign-in reads the pending credential through the tenant row scope, also on superuser database logins. Docker Compose no longer needs an init script for the tenant role, the engine creates it.",
       "Many smaller fixes for the inbox, paging, prompt caching, connector checks and security scans."
+    ],
+    "13.1.2": [
+      "SubKit Desktop for Windows: the desktop app now ships for Windows x64 with automatic updates. Builds are not code signed yet, so every update is checked against the signed checksums before it installs.",
+      "Smaller fixes for the desktop build on Windows."
     ]
   }
 };
