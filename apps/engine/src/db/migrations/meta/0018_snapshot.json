@@ -1,6 +1,6 @@
 {
-  "id": "6d5946e7-4a2d-4992-98ac-e081e1f51302",
-  "prevId": "fc3d6072-8508-4771-929b-c596eeb38948",
+  "id": "ce237411-64a3-4794-939a-42bd28264fa0",
+  "prevId": "6d5946e7-4a2d-4992-98ac-e081e1f51302",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -16224,6 +16224,12 @@
         "deleted_step_id": {
           "name": "deleted_step_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_result": {
+          "name": "deleted_result",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

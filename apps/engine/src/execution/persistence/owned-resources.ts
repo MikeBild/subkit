@@ -100,6 +100,7 @@ async function ledgerRows(
       state: ownedResources.state,
       deleted_execution_id: ownedResources.deleted_execution_id,
       deleted_step_id: ownedResources.deleted_step_id,
+      deleted_result: ownedResources.deleted_result,
     })
     .from(ownedResources)
     .where(scopeOf(correlation, keys))
@@ -112,9 +113,14 @@ export type OwnedDeleteReplay = {
   step_id: string | null;
 };
 
-export type OwnedDeleteClaimDecision = OwnedDeleteDecision & {
-  replayed_from?: OwnedDeleteReplay[];
-};
+export type OwnedDeleteClaimDecision =
+  | Exclude<OwnedDeleteDecision, { replay: true }>
+  | {
+      allow: true;
+      replay: true;
+      replayed_from: OwnedDeleteReplay[];
+      replayed_result: { execution_id: string | null; stored: unknown };
+    };
 
 export async function claimOwnedDelete(
   db: Executor,
@@ -155,7 +161,15 @@ export async function claimOwnedDelete(
           },
           tx,
         );
-        return { ...verdict, replayed_from };
+        const [first] = rows;
+        return {
+          ...verdict,
+          replayed_from,
+          replayed_result: {
+            execution_id: first?.deleted_execution_id ?? null,
+            stored: first?.deleted_result ?? null,
+          },
+        };
       }
       const guard = ownedResourceGuard("delete_reserved");
       await tx
@@ -187,7 +201,7 @@ export async function claimOwnedDelete(
     execution_id: correlation.execution_id,
     step_id: correlation.step_id,
     ...(decision.allow ? {} : { code: decision.code }),
-    ...(decision.replayed_from ? { replayed_from: decision.replayed_from } : {}),
+    ...(decision.allow && decision.replay ? { replayed_from: decision.replayed_from } : {}),
   });
   return decision;
 }
@@ -197,6 +211,7 @@ export async function settleOwnedDelete(
   correlation: OwnedResourceCorrelation,
   keys: readonly string[],
   outcome: DeleteOutcome,
+  stored: unknown = null,
 ): Promise<number> {
   const guard = ownedResourceGuard(outcome);
   const settled = await withTenantScope(db, correlation.tenant_id, async (tx) => {
@@ -205,6 +220,7 @@ export async function settleOwnedDelete(
       .set({
         state: guard.to,
         ...(guard.to === "owned" ? { deleted_execution_id: null, deleted_step_id: null } : {}),
+        ...(guard.to === "deleted" ? { deleted_result: stored } : {}),
         updated_at: sql`clock_timestamp()`,
       })
       .where(

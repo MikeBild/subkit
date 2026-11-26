@@ -1,0 +1,1 @@
+ALTER TABLE "owned_resources" ADD COLUMN "deleted_result" jsonb;

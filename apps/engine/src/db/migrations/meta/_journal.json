@@ -127,6 +127,13 @@
       "when": 1795721037080,
       "tag": "0017_owned_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795723245027,
+      "tag": "0018_owned_resources_replay_output",
+      "breakpoints": true
     }
   ]
 }
