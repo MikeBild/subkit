@@ -173,6 +173,10 @@ export function getDb(): NodePgDatabase<typeof schema> {
   return _db;
 }
 
+export function dbOnClient(client: pg.PoolClient): NodePgDatabase<typeof schema> {
+  return drizzle(client, { schema });
+}
+
 export function createDbFromUrl(url: string): {
   pool: pg.Pool;
   db: NodePgDatabase<typeof schema>;

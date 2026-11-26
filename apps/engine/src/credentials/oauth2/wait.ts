@@ -1,7 +1,6 @@
-import { and, eq, isNull } from "drizzle-orm";
-import type { Db } from "../../db/client.ts";
-import { withTenantScope } from "../../db/index.ts";
-import { vaultItems } from "../../db/schema/index.ts";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import type pg from "pg";
+import { type Db, dbOnClient, type Executor, vaultItems, withTenantScope } from "../../db/index.ts";
 import { logger } from "../../logging/index.ts";
 import { getListener } from "../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
@@ -35,21 +34,12 @@ export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
 export const POLL_INTERVAL_MS = 1_500;
 const OAUTH_CREDENTIAL_READ_TIMEOUT_MS = 1_000;
 
-type BoundedPoolClient = {
-  query: (config: {
-    text: string;
-    values: string[];
-    query_timeout: number;
-  }) => Promise<{ rows: Array<{ id: string }> }>;
-  release: (error?: Error | boolean) => void;
-};
-
 type BoundedPool = {
   totalCount: number;
   idleCount: number;
   ending?: boolean;
   ended?: boolean;
-  connect: () => Promise<BoundedPoolClient>;
+  connect: () => Promise<pg.PoolClient>;
 };
 
 const databasesWithCredentialPollInFlight = new WeakSet<object>();
@@ -65,6 +55,30 @@ function poolFor(db: Db): BoundedPool | null {
     return null;
   }
   return candidate as BoundedPool;
+}
+
+function readCredentialRows(
+  db: Executor,
+  tenant_id: string,
+  connector_id: string,
+  environment: "dev" | "prod",
+  readTimeoutMs: number,
+): Promise<Array<{ id: string }>> {
+  return withTenantScope(db, tenant_id, async (tx) => {
+    await tx.execute(sql`SELECT set_config('statement_timeout', ${String(readTimeoutMs)}, true)`);
+    return tx
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector_id),
+          eq(vaultItems.environment, environment),
+          isNull(vaultItems.deleted_at),
+        ),
+      )
+      .limit(1);
+  });
 }
 
 async function credentialExistsWithBoundedPool(
@@ -83,28 +97,13 @@ async function credentialExistsWithBoundedPool(
   let deadline: ReturnType<typeof setTimeout> | null = null;
   const timeoutError = new Error("OAuth credential read timed out");
   try {
-    const query = (async () => {
-      await client.query({ text: "BEGIN", values: [], query_timeout: readTimeoutMs });
-      await client.query({
-        text: "SELECT set_config('subkit.tenant_id', $1, true), set_config('subkit.rls_scope', 'tenant', true)",
-        values: [tenant_id],
-        query_timeout: readTimeoutMs,
-      });
-      // row-scope-allowed: runs inside the transaction above, which sets the tenant row scope for tenant_id transaction-locally
-      const found = await client.query({
-        text: `SELECT id
-                 FROM vault_items
-                WHERE tenant_id = $1
-                  AND connector_id = $2
-                  AND environment = $3
-                  AND deleted_at IS NULL
-                LIMIT 1`,
-        values: [tenant_id, connector_id, environment],
-        query_timeout: readTimeoutMs,
-      });
-      await client.query({ text: "COMMIT", values: [], query_timeout: readTimeoutMs });
-      return found;
-    })();
+    const query = readCredentialRows(
+      dbOnClient(client),
+      tenant_id,
+      connector_id,
+      environment,
+      readTimeoutMs,
+    );
     query.catch((err) =>
       logger.debug({
         module: "oauth",
@@ -119,8 +118,8 @@ async function credentialExistsWithBoundedPool(
       deadline = setTimeout(() => reject(timeoutError), readTimeoutMs);
       deadline.unref?.();
     });
-    const result = await Promise.race([query, timedOut]);
-    return result.rows.length > 0;
+    const rows = await Promise.race([query, timedOut]);
+    return rows.length > 0;
   } catch (err) {
     client.release(err instanceof Error ? err : timeoutError);
     released = true;
@@ -148,20 +147,7 @@ async function credentialExists(
       readTimeoutMs,
     );
   }
-  const rows = await withTenantScope(db, tenant_id, async (tx) =>
-    tx
-      .select({ id: vaultItems.id })
-      .from(vaultItems)
-      .where(
-        and(
-          eq(vaultItems.tenant_id, tenant_id),
-          eq(vaultItems.connector_id, connector_id),
-          eq(vaultItems.environment, environment),
-          isNull(vaultItems.deleted_at),
-        ),
-      )
-      .limit(1),
-  );
+  const rows = await readCredentialRows(db, tenant_id, connector_id, environment, readTimeoutMs);
   return rows.length > 0;
 }
 

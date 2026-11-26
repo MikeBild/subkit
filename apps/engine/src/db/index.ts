@@ -6,6 +6,7 @@ export {
   closeDb,
   createDbFromUrl,
   createMigrationDbFromUrl,
+  dbOnClient,
   getDb,
   getPool,
   readAdvisoryLockSnapshot,
