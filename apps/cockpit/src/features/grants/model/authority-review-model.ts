@@ -27,7 +27,8 @@ export type ReviewRisk = "risky" | "write" | "read";
 export type ReviewPlaceholder =
   | { name: string; kind: "enum"; values: string[] }
   | { name: string; kind: "class"; rule: string }
-  | { name: string; kind: "caller" };
+  | { name: string; kind: "caller" }
+  | { name: string; kind: "created" };
 
 export interface ReviewRow {
   key: string;
@@ -40,6 +41,7 @@ export interface ReviewRow {
   ceiling: number | null;
   previousCeiling: number | null;
   placeholders: ReviewPlaceholder[];
+  recordsCreated: { id_path: string; collection: string } | null;
   unbound: string[];
   open: boolean;
   source: Effect;
@@ -174,6 +176,7 @@ function placeholdersOf(effect: Effect): ReviewPlaceholder[] {
     const name = expression.split(".").at(-1) ?? expression;
     if ("enum" in rule) return { name, kind: "enum", values: rule.enum };
     if ("caller_bound" in rule) return { name, kind: "caller" };
+    if ("created_by_workflow" in rule) return { name, kind: "created" };
     return { name, kind: "class", rule: rule.class };
   });
 }
@@ -248,6 +251,12 @@ export function authorityReviewModel(input: {
       ceiling,
       previousCeiling: previous !== null && previous !== ceiling ? previous : null,
       placeholders,
+      recordsCreated: effect.records_created
+        ? {
+            id_path: effect.records_created.id_path,
+            collection: effect.records_created.collection_path,
+          }
+        : null,
       unbound:
         risk === "read"
           ? []

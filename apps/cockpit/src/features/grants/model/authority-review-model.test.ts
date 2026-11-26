@@ -20,7 +20,13 @@ function effect(
     effect?: Effect["effect"];
     max_calls?: number;
     max_requests?: number;
-    variables?: Record<string, { class: string } | { enum: string[] } | { caller_bound: true }>;
+    variables?: Record<
+      string,
+      | { class: string }
+      | { enum: string[] }
+      | { caller_bound: true }
+      | { created_by_workflow: true }
+    >;
   } = {},
 ): Effect {
   const method = options.method ?? "GET";
@@ -551,4 +557,42 @@ test("a mixed workflow keeps its connector sentence and lists each model call wi
     { step_id: "summarize", callStep: "sub", change: "added" },
   ]);
   expect(model.tiles.services).toBe(2);
+});
+
+test("a removal of ids the workflow created is bounded, not open-ended", () => {
+  const removal = effect("drop", "/jobs/{id}", {
+    method: "DELETE",
+    variables: { "input.id": { created_by_workflow: true } },
+  });
+  const [row] = authorityReviewModel({
+    preview: preview([removal]),
+    connectorNames: names,
+    automation: quiet,
+    activation: true,
+    carryOver: false,
+  }).groups.flatMap((group) => group.rows);
+  expect(row?.placeholders).toEqual([{ name: "id", kind: "created" }]);
+  expect(row?.unbound).toEqual([]);
+  expect(translate("en", "authority.review.placeholder.created", { name: "id" })).toBe(
+    "id: only an id this workflow created itself, once",
+  );
+});
+
+test("a creating step shows which id it records and where", () => {
+  const review = (effects: Effect[]) =>
+    authorityReviewModel({
+      preview: preview(effects),
+      connectorNames: names,
+      automation: quiet,
+      activation: true,
+      carryOver: false,
+    }).groups.flatMap((group) => group.rows);
+  const creating = {
+    ...effect("make", "/jobs", { method: "POST" }),
+    records_created: { id_path: "data.id", collection_path: "/jobs" },
+  } as Effect;
+  const shown = review([creating])[0]?.recordsCreated ?? { id_path: "", collection: "" };
+  expect(shown).toEqual({ id_path: "data.id", collection: "/jobs" });
+  expect(translate("de", "authority.review.recordsCreated", shown)).toContain("unter /jobs");
+  expect(review([effect("make", "/jobs", { method: "POST" })])[0]?.recordsCreated).toBeNull();
 });

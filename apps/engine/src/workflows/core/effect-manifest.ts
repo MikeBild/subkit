@@ -18,6 +18,7 @@ import {
   outboxSourceStep,
   supportsOutboxDelivery,
 } from "../outbox-delivery-boundary.ts";
+import { RecordsCreatedEndpointSchema, recordsCreatedEndpoint } from "../owned-resources.ts";
 import { ReadPathBoundarySchema, readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
 import {
   hasRuntimeValue,
@@ -102,6 +103,7 @@ export const ResolvedEffectBindingSchema = z
     report_delivery: ReportDeliveryBoundarySchema.optional(),
     transactional_delivery: TransactionalDeliveryBoundarySchema.optional(),
     outbox_delivery: OutboxDeliveryBoundarySchema.optional(),
+    records_created: RecordsCreatedEndpointSchema.optional(),
     content_publication: ContentPublicationBoundarySchema.optional(),
     read_path: ReadPathBoundarySchema.optional(),
     storage: StorageBoundarySchema.optional(),
@@ -497,6 +499,11 @@ export function compileWorkflowEffectManifest(raw: unknown): {
           !supportsOutboxDelivery(step, binding.target) ||
           !outboxSourceStep(definition, step) ||
           workflowJsonDigest(binding.outbox_delivery) !== workflowJsonDigest(step.outbox_delivery)))
+    )
+      issue("binding_mismatch");
+    if (
+      workflowJsonDigest(binding.records_created ?? null) !==
+      workflowJsonDigest(recordsCreatedEndpoint(step))
     )
       issue("binding_mismatch");
     const effect = effectOf(step, binding, supportedMcp ? recompiledMcp.effect : null);

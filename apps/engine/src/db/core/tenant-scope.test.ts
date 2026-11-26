@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import migrationSql from "../migrations/0010_tenant_row_security_force.sql" with { type: "text" };
+import ownedResourcesSql from "../migrations/0017_owned_resources.sql" with { type: "text" };
 import {
   decideScopeEntry,
   decideTenantRolePreflight,
@@ -83,12 +84,12 @@ describe("decideScopeEntry", () => {
 });
 
 describe("row scope policy", () => {
-  test("the migration file is exactly what the builder renders", () => {
+  test("the migration files are exactly what the builder renders", () => {
+    const later = ["webhook_held_deliveries", "owned_resources"];
     expect(migrationSql).toBe(
-      renderRowScopeMigration(
-        ROW_SCOPED_TABLES.filter((table) => table !== "webhook_held_deliveries"),
-      ),
+      renderRowScopeMigration(ROW_SCOPED_TABLES.filter((table) => !later.includes(table))),
     );
+    expect(ownedResourcesSql.endsWith(renderRowScopeMigration(["owned_resources"]))).toBe(true);
   });
 
   test("every row-scoped table drops the retired policy, gets one policy and is forced", () => {

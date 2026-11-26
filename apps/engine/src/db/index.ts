@@ -169,6 +169,7 @@ export {
   outboundConnectionStarts,
   outboundConnections,
   outboxCursors,
+  ownedResources,
   packageInstallItems,
   packageInstalls,
   permissions,

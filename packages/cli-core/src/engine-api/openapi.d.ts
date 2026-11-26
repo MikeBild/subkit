@@ -31547,6 +31547,10 @@ export interface components {
                     /** @description Most messages this workflow may send within any 24 hours */
                     max_per_day: number;
                 };
+                records_created?: {
+                    id_path: string;
+                    collection_path: string;
+                };
                 content_publication?: {
                     /** @enum {string} */
                     kind: "content_revision";
@@ -31625,6 +31629,9 @@ export interface components {
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
+                        } | {
+                            /** @enum {boolean} */
+                            created_by_workflow: true;
                         };
                     };
                     query: {
@@ -32367,6 +32374,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -32482,6 +32492,10 @@ export interface components {
                 value_path: string;
             };
             multipart?: components["schemas"]["MultipartPart"][];
+            /** @description Records the one id this request created (a plain dot path into the step output, such as `data.id`, that names a single string or number) in the workflow's ownership ledger, bound to this step's collection path. Only on a POST or PUT with `connector_id` to a fixed `path` without placeholders. A later DELETE of `<that path>/${id}` whose last segment has the rule `{created_by_workflow: true}` may remove only ids recorded here. */
+            records_created?: {
+                id_path: string;
+            };
             xml?: {
                 body: components["schemas"]["WorkflowJsonValue"];
                 declaration?: boolean;
@@ -32532,6 +32546,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -32647,6 +32664,10 @@ export interface components {
                 value_path: string;
             };
             multipart?: components["schemas"]["MultipartPart"][];
+            /** @description Records the one id this request created (a plain dot path into the step output, such as `data.id`, that names a single string or number) in the workflow's ownership ledger, bound to this step's collection path. Only on a POST or PUT with `connector_id` to a fixed `path` without placeholders. A later DELETE of `<that path>/${id}` whose last segment has the rule `{created_by_workflow: true}` may remove only ids recorded here. */
+            records_created?: {
+                id_path: string;
+            };
             xml?: {
                 body: components["schemas"]["WorkflowJsonValue"];
                 declaration?: boolean;
@@ -32866,6 +32887,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -33049,6 +33073,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -33232,6 +33259,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -33410,6 +33440,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -33588,6 +33621,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -33771,6 +33807,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -33954,6 +33993,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -34118,6 +34160,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -34282,6 +34327,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */
@@ -34478,6 +34526,9 @@ export interface components {
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
+                    } | {
+                        /** @enum {boolean} */
+                        created_by_workflow: true;
                     };
                 };
                 /** @description Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`. */

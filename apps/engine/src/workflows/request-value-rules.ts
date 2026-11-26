@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { CreatedByWorkflowRuleSchema, ownedResourceKeyAllowed } from "./owned-resources.ts";
 
 export const expression = z
   .string()
@@ -66,6 +67,8 @@ export const rule = z.union([
   z.object({ caller_bound: z.literal(true) }).strict(),
 ]);
 export type RequestVariableRule = z.infer<typeof rule>;
+export const pathRule = z.union([rule, CreatedByWorkflowRuleSchema]);
+export type RequestPathRule = z.infer<typeof pathRule>;
 export const headerRule = z.union([
   enumRule,
   z.object({ class: z.enum(HEADER_CLASS_NAMES) }).strict(),
@@ -86,13 +89,11 @@ export function wholeValueExpression(value: unknown): string | null {
     : null;
 }
 
-export function valueAllowed(
-  variableRule: RequestVariableRule | undefined,
-  value: string,
-): boolean {
+export function valueAllowed(variableRule: RequestPathRule | undefined, value: string): boolean {
   if (!variableRule) return false;
   if ("enum" in variableRule) return variableRule.enum.includes(value);
   if ("caller_bound" in variableRule) return VALUE_CLASSES.uuid.test(value);
+  if ("created_by_workflow" in variableRule) return ownedResourceKeyAllowed(value);
   if (variableRule.class === "path") return false;
   return VALUE_CLASSES[variableRule.class]?.test(value) === true;
 }
@@ -113,9 +114,10 @@ export function pathValueAllowed(value: string): boolean {
   });
 }
 
-export function ruleLabel(variableRule: RequestVariableRule | undefined): string {
+export function ruleLabel(variableRule: RequestPathRule | undefined): string {
   if (!variableRule) return "no rule";
   if ("enum" in variableRule) return `enum of ${variableRule.enum.length} value(s)`;
   if ("caller_bound" in variableRule) return "the authenticated caller";
+  if ("created_by_workflow" in variableRule) return "an id this workflow created";
   return `class ${variableRule.class}`;
 }

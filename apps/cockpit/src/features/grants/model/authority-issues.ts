@@ -28,6 +28,7 @@ const REFUSAL_KEYS = [
   "pagination_param_conflict",
   "delete_requires_destructive",
   "delete_requires_enum",
+  "created_by_workflow_misplaced",
   "variable_in_base_prefix",
   "enum_value_unroutable",
   "boundary_invalid",

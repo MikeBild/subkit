@@ -18,6 +18,7 @@ export const ERASED_TENANT_TABLES = [
   "workflow_authority_pair_requests",
   "user_setup_preferences",
   "transactional_mail_receipts",
+  "owned_resources",
   "runtime_secret_versions",
   "api_keys",
   "audit_log",

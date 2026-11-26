@@ -34,6 +34,7 @@ import sql0013FilesActiveContentUnique from "./0013_files_active_content_unique.
 import sql0014SkillsGuidanceAudience from "./0014_skills_guidance_audience.sql" with { type: "text" };
 import sql0015LlmUsageAudioSeconds from "./0015_llm_usage_audio_seconds.sql" with { type: "text" };
 import sql0016WebhookHeldDeliveries from "./0016_webhook_held_deliveries.sql" with { type: "text" };
+import sql0017OwnedResources from "./0017_owned_resources.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -75,6 +76,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0014_skills_guidance_audience": sql0014SkillsGuidanceAudience,
   "0015_llm_usage_audio_seconds": sql0015LlmUsageAudioSeconds,
   "0016_webhook_held_deliveries": sql0016WebhookHeldDeliveries,
+  "0017_owned_resources": sql0017OwnedResources,
 };
 
 const journal = journalMeta as unknown as Journal;

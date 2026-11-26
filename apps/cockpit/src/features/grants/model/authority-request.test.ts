@@ -56,6 +56,30 @@ describe("presentRequestBoundary", () => {
     );
   });
 
+  test("a removal of ids the workflow created names that limit in both languages", () => {
+    const shown = presentRequestBoundary(
+      {
+        ...base,
+        method: "DELETE",
+        segments: ["", "v2", "jobs", { var: "scope.make.data.id" }],
+        variables: { "scope.make.data.id": { created_by_workflow: true } },
+        max_body_bytes: 0,
+        max_calls: 1,
+        destructive: true,
+      },
+      plain,
+    );
+    const [entry] = shown.variables;
+    expect(entry).toEqual({
+      key: "authority.boundary.createdByWorkflow",
+      values: { name: "scope.make.data.id" },
+    });
+    expect(shown.classNotice).toBe(false);
+    expect(shown.destructive).toBe(true);
+    expect(translate("en", entry!.key, entry!.values)).toContain("this workflow created");
+    expect(translate("de", entry!.key, entry!.values)).toContain("dieses Workflows");
+  });
+
   test("a static query is part of the target the approver sees", () => {
     const shown = presentRequestBoundary(
       {

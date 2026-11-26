@@ -77,4 +77,6 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
     "Pending pair approval of one workflow version: the proposed grant is bounded to 4 KB by a check constraint and becomes metered in workflow_execution_authorities once approved, and the row must stay writable so a tenant at its limit can still decline, withdraw or let a request expire.",
   transactional_mail_receipts:
     "Delivery outcome receipt without content: must stay writable to record whether an already sent mail was delivered, so a retry never sends it twice.",
+  owned_resources:
+    "Ownership ledger of ids a workflow created at a connector (an id bounded to 1024 characters by a check constraint and a closed state): must stay writable so a tenant at its limit still records what it created and settles a removal, so a removal is never sent twice.",
 };

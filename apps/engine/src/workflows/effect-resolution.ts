@@ -34,6 +34,7 @@ import {
 } from "./effect-manifest.ts";
 import { compileMcpBoundary, type McpBoundary, mcpBoundaryTarget } from "./mcp-boundary.ts";
 import { outboxSourceStep, supportsOutboxDelivery } from "./outbox-delivery-boundary.ts";
+import { recordsCreatedEndpoint } from "./owned-resources.ts";
 import { factConnector, factVersion, type WorkflowReadFacts } from "./read-facts.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import {
@@ -453,6 +454,7 @@ async function resolveBindings(
       target = deviceTarget(device);
     }
     const configuration = authorityConnectorConfiguration(connector);
+    const recordsCreated = recordsCreatedEndpoint(step);
     bindings.push({
       tenant_id: input.tenant_id,
       step_id: step.id,
@@ -464,6 +466,7 @@ async function resolveBindings(
       ...(device ? { device } : {}),
       ...(transactional ? { transactional_delivery: transactional } : {}),
       ...(outbox ? { outbox_delivery: outbox } : {}),
+      ...(recordsCreated ? { records_created: recordsCreated } : {}),
       ...(declaredDelivery
         ? { report_delivery: declaredDelivery }
         : !transactional &&

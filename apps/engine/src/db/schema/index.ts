@@ -38,6 +38,7 @@ export * from "./mcp_oauth.ts";
 export * from "./mcp_oauth_states.ts";
 export * from "./mcp_tasks.ts";
 export * from "./notifications.ts";
+export * from "./owned-resources.ts";
 export * from "./packages.ts";
 export * from "./pair-approvals.ts";
 export * from "./personal-notes.ts";
