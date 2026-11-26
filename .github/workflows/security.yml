@@ -78,8 +78,22 @@ jobs:
         id: scan
         run: bash scripts/semgrep.sh --sarif-output="$RUNNER_TEMP/semgrep.sarif"
 
-      - uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+      # A transient upload error leaves the commit without a code scanning check run,
+      # which Scorecard's SAST check counts as unscanned. Retry the upload once.
+      - id: upload
+        uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
         if: ${{ !cancelled() && steps.scan.outcome != 'skipped' }}
+        continue-on-error: true
+        with:
+          sarif_file: ${{ runner.temp }}/semgrep.sarif
+          category: semgrep
+
+      - name: Wait before retrying the upload
+        if: ${{ !cancelled() && steps.upload.outcome == 'failure' }}
+        run: sleep 30
+
+      - uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        if: ${{ !cancelled() && steps.upload.outcome == 'failure' }}
         with:
           sarif_file: ${{ runner.temp }}/semgrep.sarif
           category: semgrep
