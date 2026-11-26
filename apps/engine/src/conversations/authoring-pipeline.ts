@@ -428,6 +428,7 @@ export async function runAuthoringPipeline(
   let lastGenerationError: string | null = null;
   let lastAbort: { reason: string; needs: GenerationNeed[] } | null = null;
   let regrounded = false;
+  let guidanceSkillSlugs: string[] = [];
   let criticRan = false;
   let criticRejection: CriticRejectionDetail | null = null;
   const criticState: { review: CriticReviewRecord | null } = { review: null };
@@ -535,6 +536,7 @@ export async function runAuthoringPipeline(
           user_turns: [{ role: "user", content: prompt }],
           retrieval_query: goal,
           ...(connectors.length > 0 ? { connector_ids: connectors.map((c) => c.id) } : {}),
+          ...(guidanceSkillSlugs.length > 0 ? { guidance_skill_slugs: guidanceSkillSlugs } : {}),
           ...(domains.length > 0 ? { domains } : {}),
           schema: GeneratedWorkflowSchema,
           signal: deadlineSignal,
@@ -578,9 +580,29 @@ export async function runAuthoringPipeline(
         lastAbort = { reason: err.reason, needs: err.needs };
         lastGenerationError = message;
         passErrors = [{ path: "(llm)", message }];
-        if (err.needs.some((need) => need.kind === "skill_guidance")) {
-          validationErrors = passErrors;
-          break;
+        const requestedSkills = [
+          ...new Set(
+            err.needs.flatMap((need) =>
+              need.kind === "skill_guidance" && need.skill_slug ? [need.skill_slug] : [],
+            ),
+          ),
+        ].filter((slug) => !guidanceSkillSlugs.includes(slug));
+        if (requestedSkills.length > 0 && pass < MAX_GENERATION_PASSES) {
+          guidanceSkillSlugs = [...guidanceSkillSlugs, ...requestedSkills];
+          logger.info({
+            module: "conversations",
+            action: "authoring_pipeline.skill_guidance_requested",
+            msg: "generation asked for skill guidance it was not given; regenerating with those skills included",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            pass,
+            skill_slugs: requestedSkills,
+          });
+          ctx.onLog?.(
+            "info",
+            `generate · loading requested skill guidance: ${requestedSkills.join(", ")}`,
+          );
+          continue;
         }
         const outcome = await resolveGenerationAbort({
           ctx,
@@ -793,7 +815,7 @@ export async function runAuthoringPipeline(
       message: deadlineExceeded
         ? "generation ran out of time before producing a complete definition — the model was cut off, not wrong. Retry, or split the specification into smaller workflows."
         : lastAbort
-          ? `the generation model aborted: ${lastAbort.reason}${directUrlAdvice(lastAbort)}${regrounded ? " (after the engine re-grounded the routes and recorded shapes it named)" : ""}. Supply the listed needs — load the named skills, discover or probe the named operations, or ask the user — then call author_workflow again.`
+          ? `the generation model aborted: ${lastAbort.reason}${directUrlAdvice(lastAbort)}${regrounded ? " (after the engine re-grounded the routes and recorded shapes it named)" : ""}. Supply the listed needs — discover or probe the named operations, or ask the user — then call author_workflow again.`
           : lastGenerationError
             ? `the generation model produced no workflow definition: ${lastGenerationError}`
             : "the generation model produced no schema-parseable workflow definition within the pass cap",

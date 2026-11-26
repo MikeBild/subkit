@@ -115,45 +115,43 @@ describe("authoring generation guidance with the real seed skills (#900)", () =>
     expect(system).not.toContain("# Gmail Report Automation");
   });
 
-  tw("missing skill guidance returns its needs without an unguarded paid retry", async () => {
-    let calls = 0;
-    getMockProvider().generateOverrides.generate = () => {
-      calls += 1;
-      if (calls === 1) {
-        throw new LlmGenerationAborted({
-          reason: "the self-healing guidance is not included",
-          needs: [
-            {
-              kind: "skill_guidance",
-              connector_slug: null,
-              method: null,
-              path: null,
-              question: null,
-              skill_slug: "self-healing",
-            },
-          ],
-        });
-      }
-      return readOneMessage();
-    };
-    const result = await runAuthoringPipeline({
-      ctx: makeCtx(),
-      goal: "Read one Gmail message by id and return its id and snippet.",
-      connector_ids: ["gmail-prod"],
-    });
-    expect(generateCalls()).toHaveLength(1);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected missing guidance");
-    expect(result.needs).toEqual([
-      {
-        kind: "skill_guidance",
-        connector_slug: null,
-        method: null,
-        path: null,
-        question: null,
-        skill_slug: "self-healing",
-      },
-    ]);
-    expect(result.attempts).toBe(1);
-  });
+  tw(
+    "generation loads a skill it asks for and regenerates with its complete guidance",
+    async () => {
+      let calls = 0;
+      getMockProvider().generateOverrides.generate = () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new LlmGenerationAborted({
+            reason: "the self-healing guidance is not included",
+            needs: [
+              {
+                kind: "skill_guidance",
+                connector_slug: null,
+                method: null,
+                path: null,
+                question: null,
+                skill_slug: "self-healing",
+              },
+            ],
+          });
+        }
+        return readOneMessage();
+      };
+      const result = await runAuthoringPipeline({
+        ctx: makeCtx(),
+        goal: "Read one Gmail message by id and return its id and snippet.",
+        connector_ids: ["gmail-prod"],
+      });
+      expect(result.ok).toBe(true);
+      const [first, second] = generateCalls();
+      expect(first?.system).not.toContain("# Self-Healing");
+      expect(first?.system).toContain(
+        "`self-healing` — Self-Healing And Patch Candidates [runtime] (load on demand)",
+      );
+      expect(second?.system).toContain(
+        "`self-healing` — Self-Healing And Patch Candidates [runtime] (included below)",
+      );
+    },
+  );
 });
