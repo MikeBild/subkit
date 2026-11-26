@@ -78,10 +78,11 @@ export async function collectNotices(root: string, inputs: string[]): Promise<No
   for (const input of [...new Set(inputs)].sort()) {
     const path = resolve(root, input);
     const local = relative(root, path);
-    if (isAbsolute(local) || local === ".." || local.startsWith("../")) {
+    const segments = local.split(/[\\/]/);
+    if (isAbsolute(local) || segments[0] === "..") {
       throw new Error("Bundle input escapes the repository");
     }
-    if (!local.split("/").includes("node_modules")) continue;
+    if (!segments.includes("node_modules")) continue;
     let directory = dirname(path);
     let found = false;
     while (directory !== root) {
