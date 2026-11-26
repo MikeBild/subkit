@@ -47,6 +47,7 @@ import { runProactiveDriftScanForTenant } from "../self-healing/scheduled/proact
 import { runSkillCandidateAnalysisSweep } from "../skill-candidates/scheduled/skill-candidate-analyze-runner.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 import { runToolApprovalsCleanup } from "../tools/scheduled/tool-approvals-cleanup-runner.ts";
+import { runHeldDeliverySweep } from "../webhooks/index.ts";
 import { runApprovalExpiryNotices } from "../workflows/scheduled/approval-expiry-notice-runner.ts";
 import { runCatalogDescribeSweep } from "../workflows/scheduled/catalog-describe-runner.ts";
 import { runTenantCadenceSweep } from "./cadence-sweep.ts";
@@ -117,6 +118,19 @@ export class SchedulerReconciler {
     };
     void task.then(finished, finished);
     return task;
+  }
+
+  private guardedProducerPass(
+    producer: string,
+    label: string,
+    operation: () => Promise<unknown>,
+    failure: { action: string; msg: string },
+  ): Promise<void> {
+    return this.runProducerPass(producer, async () => {
+      await retryTransient(operation, { label }).catch((err) =>
+        logger.error({ module: "scheduler", ...failure, ...errorFields(err) }),
+      );
+    });
   }
 
   private async afterFanout(fanout: Promise<void>, operation: () => Promise<void>): Promise<void> {
@@ -297,65 +311,45 @@ export class SchedulerReconciler {
           }),
         ),
       ),
-      this.runProducerPass("drift", () =>
-        retryTransient(() => this.reconcileProactiveDriftScans(), {
-          label: "drift_scan",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "drift_scan_failed",
-            msg: "scheduler proactive drift scan pass failed",
-            ...errorFields(err),
-          });
-        }),
+      this.guardedProducerPass("drift", "drift_scan", () => this.reconcileProactiveDriftScans(), {
+        action: "drift_scan_failed",
+        msg: "scheduler proactive drift scan pass failed",
+      }),
+      this.guardedProducerPass(
+        "reauth",
+        "connector_reauth_scan",
+        () => this.reconcileConnectorReauthScans(),
+        {
+          action: "connector_reauth_scan_failed",
+          msg: "scheduler connector re-auth scan pass failed",
+        },
       ),
-      this.runProducerPass("reauth", () =>
-        retryTransient(() => this.reconcileConnectorReauthScans(), {
-          label: "connector_reauth_scan",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "connector_reauth_scan_failed",
-            msg: "scheduler connector re-auth scan pass failed",
-            ...errorFields(err),
-          });
-        }),
+      this.guardedProducerPass(
+        "endpoint-contract",
+        "endpoint_contract_scan",
+        () => this.reconcileEndpointContractScans(),
+        {
+          action: "endpoint_contract_scan_failed",
+          msg: "scheduler endpoint-contract scan pass failed",
+        },
       ),
-      this.runProducerPass("endpoint-contract", () =>
-        retryTransient(() => this.reconcileEndpointContractScans(), {
-          label: "endpoint_contract_scan",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "endpoint_contract_scan_failed",
-            msg: "scheduler endpoint-contract scan pass failed",
-            ...errorFields(err),
-          });
-        }),
+      this.guardedProducerPass(
+        "skill",
+        "skill_candidate_analyze",
+        () => this.reconcileSkillCandidateAnalysis(),
+        {
+          action: "skill_candidate_analyze_failed",
+          msg: "scheduler skill-candidate analysis pass failed",
+        },
       ),
-      this.runProducerPass("skill", () =>
-        retryTransient(() => this.reconcileSkillCandidateAnalysis(), {
-          label: "skill_candidate_analyze",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "skill_candidate_analyze_failed",
-            msg: "scheduler skill-candidate analysis pass failed",
-            ...errorFields(err),
-          });
-        }),
-      ),
-      this.runProducerPass("notes", () =>
-        retryTransient(() => this.reconcilePersonalNotes(), {
-          label: "personal_notes_learn",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "personal_notes_learn_failed",
-            msg: "scheduler personal notes pass failed",
-            ...errorFields(err),
-          });
-        }),
+      this.guardedProducerPass(
+        "notes",
+        "personal_notes_learn",
+        () => this.reconcilePersonalNotes(),
+        {
+          action: "personal_notes_learn_failed",
+          msg: "scheduler personal notes pass failed",
+        },
       ),
       this.runProducerPass("task", () =>
         retryTransient(() => runTaskSweep(this.opts.db), { label: "task_schedules" }).catch(
@@ -369,17 +363,23 @@ export class SchedulerReconciler {
           },
         ),
       ),
-      this.runProducerPass("catalog", () =>
-        retryTransient(() => this.reconcileCatalogDescribe(), {
-          label: "catalog_describe",
-        }).catch((err) => {
-          logger.error({
-            module: "scheduler",
-            action: "catalog_describe_failed",
-            msg: "scheduler catalog description pass failed",
-            ...errorFields(err),
-          });
-        }),
+      this.guardedProducerPass(
+        "catalog",
+        "catalog_describe",
+        () => this.reconcileCatalogDescribe(),
+        {
+          action: "catalog_describe_failed",
+          msg: "scheduler catalog description pass failed",
+        },
+      ),
+      this.guardedProducerPass(
+        "held-hooks",
+        "held_hook_deliveries",
+        () => runHeldDeliverySweep(this.opts.db, this.opts.boss),
+        {
+          action: "held_delivery_sweep_failed",
+          msg: "scheduler held inbound delivery pass failed",
+        },
       ),
     ];
     try {

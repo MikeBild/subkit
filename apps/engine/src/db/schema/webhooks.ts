@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -126,5 +128,55 @@ export const webhookReplaySeen = pgTable(
   (t) => [
     uniqueIndex("webhook_replay_seen_key").on(t.tenant_id, t.webhook_id, t.standard_webhook_id),
     index("webhook_replay_seen_seen_at_idx").on(t.seen_at),
+  ],
+);
+
+export const webhookHeldDeliveries = pgTable(
+  "webhook_held_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    inbound_id: uuid("inbound_id").references(() => webhooksInbound.id, { onDelete: "set null" }),
+    workflow_id: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    delivery_id: text("delivery_id").notNull(),
+    event_type: text("event_type").notNull(),
+    payload: jsonb("payload").notNull(),
+    body_bytes: integer("body_bytes").notNull(),
+    state: text("state")
+      .$type<"held" | "replaying" | "replayed" | "expired" | "replay_failed">()
+      .default("held")
+      .notNull(),
+    reason_code: text("reason_code").notNull(),
+    outcome_code: text("outcome_code"),
+    execution_id: uuid("execution_id"),
+    claim_token: uuid("claim_token"),
+    claimed_until: timestamp("claimed_until", { withTimezone: true }),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    settled_at: timestamp("settled_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("webhook_held_deliveries_delivery_key").on(
+      t.tenant_id,
+      t.inbound_id,
+      t.delivery_id,
+    ),
+    index("webhook_held_deliveries_hook_state_idx").on(t.tenant_id, t.inbound_id, t.state),
+    index("webhook_held_deliveries_state_expires_idx").on(t.state, t.expires_at),
+    check(
+      "webhook_held_deliveries_state_check",
+      sql`${t.state} IN ('held', 'replaying', 'replayed', 'expired', 'replay_failed')`,
+    ),
+    check(
+      "webhook_held_deliveries_claim_check",
+      sql`(${t.state} = 'replaying') = (${t.claim_token} IS NOT NULL AND ${t.claimed_until} IS NOT NULL)`,
+    ),
+    check("webhook_held_deliveries_body_bytes_check", sql`${t.body_bytes} BETWEEN 0 AND 1048576`),
+    check(
+      "webhook_held_deliveries_delivery_id_check",
+      sql`char_length(${t.delivery_id}) BETWEEN 1 AND 512`,
+    ),
   ],
 );

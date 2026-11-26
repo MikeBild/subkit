@@ -24,6 +24,10 @@ HTTP- und MCP-Runs übernehmen den Aufrufer aus ihrem angemeldeten Principal. Ve
 
 Soll ein Workflow nur für eine bestimmte angemeldete Identität laufen, setze `required_caller_kind` und `product_id`. Leite diese Identität nie aus Eingabefeldern oder `request_source` ab.
 
+### Webhooks vor der ersten Freigabe
+
+Eine Signatur belegt, wer einen Webhook sendet, nicht dass der Workflow laufen darf. Bis eine Person den Workflow freigibt, bewahrt SubKit jede signierte Zustellung auf und antwortet mit `202` und `{"status":"held","reason":"execution_authority_required"}`. Nach der Freigabe läuft jede aufbewahrte Zustellung genau einmal; eine Zustellung, die der Absender mit derselben ID wiederholt, wird nur einmal aufbewahrt und ausgeführt. Aufbewahrte Zustellungen verfallen nach 7 Tagen. Ein Hook bewahrt höchstens 100 Zustellungen und 1 MiB pro Zustellung auf; darüber antwortet SubKit mit `429` oder `413` und bewahrt nichts auf. Unsignierte oder falsch signierte Zustellungen werden wie bisher abgelehnt. `subkit hooks create` und `subkit workflows create` nennen die nötige Freigabe mit ihrem Cockpit-Link.
+
 ### Einen Run nachvollziehen
 
 Über HTTP und MCP zeigt jeder Run Quelle, Status, Workflow-Version, Freigabe, Schrittnachweise und eine sichere Zusammenfassung unter `caller`. Sie nennt gespeicherten Principal, Produkt, Anmeldeart, Kanal und Ursprungslauf, aber keine Zugangsdaten und keine Sitzungskennungen. Fehlt die gespeicherte Identität, steht dort `kind: unknown`; ein Kanal allein identifiziert keinen Aufrufer.

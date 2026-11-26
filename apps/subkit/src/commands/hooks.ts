@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import type { CreateWebhookInboundBody } from "../engine-client/events.ts";
+import { hookApprovalNoticeFor } from "../lib/hook-approval.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
 const listCommand = defineCommand({
@@ -92,7 +93,9 @@ const createCommand = defineCommand({
       if (args["config-file"]) {
         body.native_verifier_config = JSON.parse(readSource(String(args["config-file"])));
       }
-      printJson(await client.createHookInbound(body));
+      const created = await client.createHookInbound(body);
+      printJson(created);
+      process.stderr.write(await hookApprovalNoticeFor(client, created.workflow_id, created.id));
     });
   },
 });

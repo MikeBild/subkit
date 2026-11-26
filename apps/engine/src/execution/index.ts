@@ -44,6 +44,7 @@ export * from "./response-filter.ts";
 export {
   authorizeSensitiveResume,
   isSensitivePayload,
+  protectExecutionPayload,
   recoverExecutionPayload,
 } from "./sensitive-payload.ts";
 export * from "./state.ts";

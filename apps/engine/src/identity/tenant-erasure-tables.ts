@@ -119,6 +119,7 @@ export const ERASED_TENANT_TABLES = [
   "users",
   "vault_items",
   "vendor_recipe_overrides",
+  "webhook_held_deliveries",
   "webhook_replay_seen",
   "webhooks_inbound",
   "webhooks_outbound",

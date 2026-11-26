@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { executions } from "../../db/schema/index.ts";
 import { admitSystemWorkflowExecution } from "../../execution/authority-admission.ts";
 import { recoverExecutionPayload } from "../../execution/sensitive-payload.ts";
 import { JsonValueSchema } from "../../workflows/types.ts";
+import { readOpenHeldPayload } from "./persistence/held-deliveries.ts";
 import { HmacVerifierConfig } from "./verifiers/hmac.ts";
 
 const PayloadSchema = z
@@ -19,7 +20,7 @@ const PayloadSchema = z
   })
   .strict();
 
-interface WebhookBinding {
+export interface WebhookBinding {
   tenant_id: string;
   id: string;
   workflow_id: string;
@@ -49,6 +50,23 @@ export function stableWebhookPayload(
   return { id: input.id, type: input.type, body: input.body, headers };
 }
 
+export function sameWebhookEvent(
+  binding: WebhookBinding,
+  original: unknown,
+  incoming: unknown,
+): boolean {
+  const before = PayloadSchema.safeParse(original);
+  const after = PayloadSchema.safeParse(incoming);
+  return (
+    before.success &&
+    after.success &&
+    isDeepStrictEqual(
+      stableWebhookPayload(before.data, binding),
+      stableWebhookPayload(after.data, binding),
+    )
+  );
+}
+
 export async function webhookReplayMatches(
   db: Db,
   binding: WebhookBinding,
@@ -68,23 +86,24 @@ export async function webhookReplayMatches(
     .limit(1);
   if (!existing) return false;
   try {
-    const original = PayloadSchema.safeParse(
+    return sameWebhookEvent(
+      binding,
       recoverExecutionPayload(existing.input, binding.tenant_id, existing.id),
-    );
-    return (
-      original.success &&
-      isDeepStrictEqual(
-        stableWebhookPayload(original.data, binding),
-        stableWebhookPayload(payload, binding),
-      )
+      payload,
     );
   } catch {
     return false;
   }
 }
 
+function boundaryMismatch() {
+  return Object.assign(new Error("the webhook event ID belongs to a different execution input"), {
+    code: "execution_boundary_mismatch",
+  });
+}
+
 export async function admitWebhookExecution(
-  db: Db,
+  db: Executor,
   binding: WebhookBinding,
   workflow_version_id: string,
   rawPayload: unknown,
@@ -117,15 +136,12 @@ export async function admitWebhookExecution(
           stableWebhookPayload(original.data, binding),
           stableWebhookPayload(payload, binding),
         )
-      ) {
-        throw Object.assign(
-          new Error("the webhook event ID belongs to a different execution input"),
-          {
-            code: "execution_boundary_mismatch",
-          },
-        );
-      }
+      )
+        throw boundaryMismatch();
       input = original.data;
+    } else {
+      const held = await readOpenHeldPayload(tx, binding.tenant_id, binding.id, payload.id);
+      if (held !== undefined && !sameWebhookEvent(binding, held, payload)) throw boundaryMismatch();
     }
     return admitSystemWorkflowExecution(
       {

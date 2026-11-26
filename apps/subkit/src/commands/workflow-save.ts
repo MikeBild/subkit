@@ -2,6 +2,7 @@ import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import pc from "picocolors";
 import type { EngineClient, RunExecutionResponse } from "../engine-client.ts";
+import { hookApprovalNoticeFor } from "../lib/hook-approval.ts";
 import {
   createBodyFor,
   parseBinds,
@@ -182,6 +183,8 @@ export async function saveWorkflow(
       };
       await renderSummary(summary, { jsonMode });
       if (!jsonMode) process.stderr.write(formatAutomationReadiness(created.automation_readiness));
+      if (!jsonMode && target.kind === "create" && intent.trigger?.kind === "webhook" && created.id)
+        process.stderr.write(await hookApprovalNoticeFor(client, created.id));
 
       if (!jsonMode && summary.id !== "(unknown)") {
         process.stderr.write(

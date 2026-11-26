@@ -212,7 +212,7 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
         headers: { "stripe-signature": signStripe(SECRET, ts, body) },
       },
     );
-    expect(outcome).toMatchObject({ status: "denied", reason: "execution_authority_required" });
+    expect(outcome).toMatchObject({ status: "held", reason: "execution_authority_required" });
     expect(slackPosts).toHaveLength(0);
     expect(
       await ctx.db.select().from(executions).where(eq(executions.tenant_id, ctx.tenantId)),

@@ -168,7 +168,9 @@ beforeEach(() => {
   reply = {};
   origFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    calls.push(capture(input, init));
+    const call = capture(input, init);
+    calls.push(call);
+    if (call.path.endsWith("/automation-status")) return json({ schedules: [], inbound_hooks: [] });
     return json(reply);
   }) as typeof globalThis.fetch;
   stdout = "";
@@ -333,7 +335,10 @@ describe("subkit hooks create against the contract", () => {
         secretFile,
       ],
     });
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /v1/webhooks/inbound"]);
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "POST /v1/webhooks/inbound",
+      `GET /v1/workflows/${webhookInbound.workflow_id}/automation-status`,
+    ]);
     expect(calls[0]?.body).toEqual({
       slug: "orders",
       workflow_id: webhookInbound.workflow_id,

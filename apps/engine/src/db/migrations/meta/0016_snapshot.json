@@ -1,6 +1,6 @@
 {
-  "id": "08677e52-e4f3-461d-892f-c207c7135e4d",
-  "prevId": "ff881750-2338-4486-a161-74cbc45ccbbb",
+  "id": "fc3d6072-8508-4771-929b-c596eeb38948",
+  "prevId": "08677e52-e4f3-461d-892f-c207c7135e4d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -22087,6 +22087,252 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.webhook_held_deliveries": {
+      "name": "webhook_held_deliveries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inbound_id": {
+          "name": "inbound_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delivery_id": {
+          "name": "delivery_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body_bytes": {
+          "name": "body_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'held'"
+        },
+        "reason_code": {
+          "name": "reason_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome_code": {
+          "name": "outcome_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_id": {
+          "name": "execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claimed_until": {
+          "name": "claimed_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "webhook_held_deliveries_delivery_key": {
+          "name": "webhook_held_deliveries_delivery_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "inbound_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "delivery_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "webhook_held_deliveries_hook_state_idx": {
+          "name": "webhook_held_deliveries_hook_state_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "inbound_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "webhook_held_deliveries_state_expires_idx": {
+          "name": "webhook_held_deliveries_state_expires_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "webhook_held_deliveries_tenant_id_tenants_id_fk": {
+          "name": "webhook_held_deliveries_tenant_id_tenants_id_fk",
+          "tableFrom": "webhook_held_deliveries",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "webhook_held_deliveries_inbound_id_webhooks_inbound_id_fk": {
+          "name": "webhook_held_deliveries_inbound_id_webhooks_inbound_id_fk",
+          "tableFrom": "webhook_held_deliveries",
+          "tableTo": "webhooks_inbound",
+          "columnsFrom": ["inbound_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "webhook_held_deliveries_workflow_id_workflows_id_fk": {
+          "name": "webhook_held_deliveries_workflow_id_workflows_id_fk",
+          "tableFrom": "webhook_held_deliveries",
+          "tableTo": "workflows",
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "webhook_held_deliveries_state_check": {
+          "name": "webhook_held_deliveries_state_check",
+          "value": "\"webhook_held_deliveries\".\"state\" IN ('held', 'replaying', 'replayed', 'expired', 'replay_failed')"
+        },
+        "webhook_held_deliveries_claim_check": {
+          "name": "webhook_held_deliveries_claim_check",
+          "value": "(\"webhook_held_deliveries\".\"state\" = 'replaying') = (\"webhook_held_deliveries\".\"claim_token\" IS NOT NULL AND \"webhook_held_deliveries\".\"claimed_until\" IS NOT NULL)"
+        },
+        "webhook_held_deliveries_body_bytes_check": {
+          "name": "webhook_held_deliveries_body_bytes_check",
+          "value": "\"webhook_held_deliveries\".\"body_bytes\" BETWEEN 0 AND 1048576"
+        },
+        "webhook_held_deliveries_delivery_id_check": {
+          "name": "webhook_held_deliveries_delivery_id_check",
+          "value": "char_length(\"webhook_held_deliveries\".\"delivery_id\") BETWEEN 1 AND 512"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.webhook_replay_seen": {

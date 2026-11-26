@@ -203,6 +203,9 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
     if (outcome.status === "not_found") {
       return c.json({ error: "not_found" }, 404);
     }
+    if (outcome.status === "held") {
+      return c.json({ status: "held", reason: outcome.reason }, 202);
+    }
     if (outcome.status === "denied") {
       return c.json(
         {
@@ -210,11 +213,15 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
           reason: outcome.reason,
           ...(outcome.hint ? { hint: outcome.hint } : {}),
         },
-        outcome.reason.startsWith("execution_") ||
-          outcome.reason.startsWith("workflow_") ||
-          outcome.reason === "input_schema_violation"
-          ? 409
-          : 401,
+        outcome.reason === "held_delivery_over_capacity"
+          ? 429
+          : outcome.reason === "held_delivery_too_large"
+            ? 413
+            : outcome.reason.startsWith("execution_") ||
+                outcome.reason.startsWith("workflow_") ||
+                outcome.reason === "input_schema_violation"
+              ? 409
+              : 401,
       );
     }
     if (outcome.status === "deduped") {

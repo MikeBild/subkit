@@ -84,7 +84,11 @@ describe("decideScopeEntry", () => {
 
 describe("row scope policy", () => {
   test("the migration file is exactly what the builder renders", () => {
-    expect(migrationSql).toBe(renderRowScopeMigration());
+    expect(migrationSql).toBe(
+      renderRowScopeMigration(
+        ROW_SCOPED_TABLES.filter((table) => table !== "webhook_held_deliveries"),
+      ),
+    );
   });
 
   test("every row-scoped table drops the retired policy, gets one policy and is forced", () => {

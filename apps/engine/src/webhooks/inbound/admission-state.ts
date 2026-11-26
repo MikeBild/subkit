@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { withTenantScope } from "../../db/index.ts";
 import { webhooksInbound } from "../../db/schema/index.ts";
+import { logger } from "../../logging/index.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
 import { emitResourceChange } from "../../pubsub/resource-changes.ts";
 import { inspectInboundHookAutomation } from "../../scheduler/automation-status.ts";
@@ -54,4 +55,30 @@ export async function recordInboundAdmission(
   });
   if (changed) invalidateTenantState(context.tenant_id);
   return changed;
+}
+
+export async function holdInboundAdmission(
+  db: Db,
+  row: { tenant_id: string; id: string; workflow_id: string },
+  now: number | undefined,
+  reason: InboundHoldReason | null,
+  diagnose?: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    const changed = await recordInboundAdmission(
+      db,
+      { tenant_id: row.tenant_id, inbound_id: row.id, observed_at: new Date(now ?? Date.now()) },
+      reason,
+    );
+    if (changed && reason && diagnose) await diagnose();
+  } catch (err) {
+    logger.warn({
+      module: "webhooks",
+      action: "inbound.admission_state_failed",
+      msg: "could not record the hook's admission state; the delivery was answered regardless",
+      tenant_id: row.tenant_id,
+      inbound_id: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

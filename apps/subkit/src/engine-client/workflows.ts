@@ -1,4 +1,4 @@
-import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import type { components, paths } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
 
@@ -17,6 +17,9 @@ export type WorkflowListQuery = ApiQuery<"/v1/workflows", "get">;
 export type CreateWorkflowRequest = ApiBody<"/v1/workflows", "post">;
 export type UpdateWorkflowBody = ApiBody<"/v1/workflows/{id}", "put">;
 export type ValidateWorkflowBody = ApiBody<"/v1/workflows/validate", "post">;
+
+export type WorkflowAutomationStatus =
+  paths["/v1/workflows/{id}/automation-status"]["get"]["responses"][200]["content"]["application/json"];
 
 const VERSION_PAGE_SIZE = 200;
 
@@ -64,6 +67,15 @@ export const workflowsMethods = {
   ): Promise<Schemas["WorkflowListResponse"]> {
     const { data } = await this.api.GET("/v1/workflows", { params: { query } });
     return data as Schemas["WorkflowListResponse"];
+  },
+  async getWorkflowAutomationStatus(
+    this: EngineClient,
+    id: string,
+  ): Promise<WorkflowAutomationStatus> {
+    const { data } = await this.api.GET("/v1/workflows/{id}/automation-status", {
+      params: { path: { id } },
+    });
+    return data as WorkflowAutomationStatus;
   },
   async getWorkflow(this: EngineClient, id: string): Promise<WorkflowDetail> {
     const { data } = await this.api.GET("/v1/workflows/{id}", { params: { path: { id } } });

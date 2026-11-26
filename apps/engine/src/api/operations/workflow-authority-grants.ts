@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { getBoss } from "../../queue/index.ts";
+import { replayHeldDeliveriesSafely } from "../../webhooks/index.ts";
 import {
   ActivateWorkflowDraftSchema,
   activateWorkflowDraft,
@@ -86,6 +88,12 @@ async function liveTestFor(
 
 const authorityNotFound = () => reject.notFound("execution authority");
 
+const replayHeld = (scope: OperationScope, workflow_id: string) =>
+  replayHeldDeliveriesSafely(scope.db, () => scope.boss ?? getBoss(), {
+    tenant_id: scope.tenant_id,
+    workflow_id,
+  });
+
 type Authority = z.infer<typeof authoritySchema>;
 
 const ActivatedSchema = z.object({
@@ -112,6 +120,7 @@ export function workflowDraftActivationOperation(continueLiveTest: LiveTestConti
       if (isRejection(human)) return human;
       try {
         const activated = await activateWorkflowDraft(id, body, human);
+        await replayHeld(scope, id);
         const live_test = await liveTestFor(
           continueLiveTest,
           scope,
@@ -160,6 +169,7 @@ export function grantWorkflowAuthorityOperation(continueLiveTest: LiveTestContin
       if (isRejection(human)) return human;
       try {
         const row = await grantWorkflowAuthority(id, body, human);
+        await replayHeld(scope, id);
         const live_test = await liveTestFor(
           continueLiveTest,
           scope,
@@ -243,6 +253,7 @@ export const makeWorkflowAuthorityUntilRevokedOperation = defineOperation<
     if (isRejection(human)) return human;
     try {
       const row = await makeWorkflowAuthorityUntilRevoked(id, authority_id, body, human);
+      await replayHeld(scope, id);
       return (await observeAuthority(scope.db, scope.tenant_id, id, row.id)) ?? authorityNotFound();
     } catch (error) {
       return authorityRejection(error);

@@ -28,6 +28,9 @@ const deviceUploadStaging =
 const attentionSnooze =
   "Per-person snooze of an attention entry without content (a key, an instant, bounded by the primary key): must stay writable so a person at the tenant limit can still silence or restore a reminder.";
 
+const heldDeliveryStaging =
+  "Signed inbound deliveries held while their workflow waits for a first approval, bounded per hook by a row cap, per row by a byte check constraint and in time by expiry; a replay admits each one as an execution, where its input is metered.";
+
 export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   attention_snoozes: attentionSnooze,
   caller_budget_units: ledger,
@@ -57,6 +60,7 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   chat_events_seen: dedup,
   files_dedup_seen: dedup,
   webhook_replay_seen: dedup,
+  webhook_held_deliveries: heldDeliveryStaging,
   device_runner_nonces: dedup,
   product_identity_tombstones: erasure,
   tenant_erasure_states: erasure,

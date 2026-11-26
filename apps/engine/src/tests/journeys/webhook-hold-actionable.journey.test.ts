@@ -79,7 +79,7 @@ beforeAll(async () => {
   const webhookId = "refused-delivery";
   // allow-wall-clock: the HTTP ingress verifies the live signature window.
   const ts = Math.floor(Date.now() / 1000);
-  const refused = await fetch(`${ctx.baseUrl}/v1/hooks/${HOOK}`, {
+  const held = await fetch(`${ctx.baseUrl}/v1/hooks/${HOOK}`, {
     method: "POST",
     body,
     headers: {
@@ -89,23 +89,33 @@ beforeAll(async () => {
       "webhook-signature": sign(webhookId, ts, body),
     },
   });
-  expect(refused.status).toBe(409);
+  expect(held.status).toBe(202);
+  expect(await held.json()).toEqual({
+    status: "held",
+    reason: "execution_authority_required",
+  });
 }, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
 
-describe("a refused webhook is actionable", () => {
+describe("a held webhook is actionable", () => {
   test("AC1: the attention item names the waiting webhook", async () => {
     const res = await journeyFetch(ctx, "/v1/attention");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      items: Array<{ id: string; reason: string; trigger?: unknown }>;
+      items: Array<{ id: string; reason: string; trigger?: unknown; actions: unknown[] }>;
     };
     const item = body.items.find((entry) => entry.id === `workflow:${workflowId}`);
-    expect(item?.reason).toMatch(/^execution_authority_/);
+    expect(item?.reason).toBe("execution_authority_required");
     expect(item?.trigger).toEqual({ kind: "inbound_hook", name: HOOK });
+    expect(item?.actions).toContainEqual({
+      verb: "open",
+      href: `/cockpit/workflows/${workflowId}#workflow-automation`,
+      primary: true,
+      permission: "workflow:run",
+    });
   });
 
   test("AC2: preparing without an input asks for one and starts nothing", async () => {

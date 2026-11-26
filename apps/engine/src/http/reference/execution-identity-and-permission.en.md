@@ -24,6 +24,10 @@ HTTP and MCP runs take the caller from their authenticated principal. Trusted ca
 
 If a workflow should run only for a particular authenticated identity, set `required_caller_kind` and `product_id`. Never infer that identity from input fields or `request_source`.
 
+### Webhooks before the first approval
+
+A signature proves who sent a webhook, not that the workflow may run. Until a person approves the workflow, SubKit keeps each signed delivery and answers `202` with `{"status":"held","reason":"execution_authority_required"}`. After the approval, every kept delivery runs exactly once; a delivery the sender repeats with the same ID is kept and run only once. Kept deliveries expire after 7 days. A hook keeps at most 100 deliveries and 1 MiB per delivery; beyond that SubKit answers `429` or `413` and keeps nothing. Unsigned or wrongly signed deliveries are refused as before. `subkit hooks create` and `subkit workflows create` name the needed approval with its Cockpit link.
+
 ### Trace a run
 
 Through HTTP and MCP every run shows source, status, workflow version, execution authority, step evidence and a safe summary under `caller`. It names the stored principal, product, authentication method, channel and origin run, but no credentials and no session identifiers. If the stored identity is missing, it shows `kind: unknown`; a channel alone does not identify a caller.

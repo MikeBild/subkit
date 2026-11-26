@@ -32,3 +32,4 @@ export {
   putChunk,
   scheduleUploadExpiry,
 } from "./uploads.ts";
+export { enqueueExecutionRun } from "./waiting.ts";
