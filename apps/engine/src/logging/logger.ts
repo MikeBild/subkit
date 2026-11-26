@@ -1,5 +1,6 @@
 import { LOG_LEVEL_WEIGHT, type LogLevelName } from "@cli-core/log-levels.ts";
 import { VERSION } from "@cli-core/version.ts";
+import { withinAncestors } from "@shared/redaction.ts";
 import pc from "picocolors";
 import { readEnv } from "../env.ts";
 import { logRing } from "../observability/log-ring.ts";
@@ -118,31 +119,24 @@ function isSqlstate(value: unknown): value is string {
 
 function sanitizeDatabaseValue(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   if (depth > 32) return "[depth limit]";
-  if (value !== null && typeof value === "object") {
-    if (seen.has(value)) return "[circular]";
-    seen.add(value);
+  if (typeof value === "string")
+    return /failed query:|\bparams:\s*/i.test(value) ? "database query failed" : value;
+  if (value === null || typeof value !== "object") return value;
+  return withinAncestors(value, seen, () => {
     const code = (value as { code?: unknown }).code;
     if (isSqlstate(code))
       return {
         error: "database query failed",
         ...(allowedSqlstate(code) ? { sqlstate: code } : {}),
       };
-  }
-  if (typeof value === "string") {
-    if (/failed query:|\bparams:\s*/i.test(value)) return "database query failed";
-    return value;
-  }
-  if (Array.isArray(value))
-    return value.map((entry) => sanitizeDatabaseValue(entry, seen, depth + 1));
-  if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      if (SENSITIVE_DATABASE_FIELD.test(key)) continue;
-      out[key] = sanitizeDatabaseValue(entry, seen, depth + 1);
-    }
-    return out;
-  }
-  return value;
+    if (Array.isArray(value))
+      return value.map((entry) => sanitizeDatabaseValue(entry, seen, depth + 1));
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => !SENSITIVE_DATABASE_FIELD.test(key))
+        .map(([key, entry]) => [key, sanitizeDatabaseValue(entry, seen, depth + 1)]),
+    );
+  });
 }
 
 function databaseErrorCode(value: unknown): string | undefined {

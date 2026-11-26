@@ -286,6 +286,20 @@ export interface ScrubOptions {
   readonly promptKeys?: boolean;
 }
 
+export function withinAncestors<T>(
+  node: object,
+  ancestors: WeakSet<object>,
+  visit: () => T,
+): T | "[circular]" {
+  if (ancestors.has(node)) return "[circular]";
+  ancestors.add(node);
+  try {
+    return visit();
+  } finally {
+    ancestors.delete(node);
+  }
+}
+
 function scrubSecretValue(
   input: unknown,
   depth: number,
@@ -297,10 +311,15 @@ function scrubSecretValue(
   if (typeof input !== "object") return input;
   if (depth >= SCRUB_SECRETS_MAX_DEPTH) return "[depth-exceeded]";
 
-  const obj = input as object;
-  if (seen.has(obj)) return "[circular]";
-  seen.add(obj);
+  return withinAncestors(input, seen, () => scrubSecretNode(input, depth, seen, promptKeys));
+}
 
+function scrubSecretNode(
+  input: object,
+  depth: number,
+  seen: WeakSet<object>,
+  promptKeys: boolean,
+): unknown {
   if (Array.isArray(input)) {
     return input.map((item) => scrubSecretValue(item, depth + 1, seen, promptKeys));
   }
@@ -332,19 +351,16 @@ function scrubStringsDeepValue(input: unknown, depth: number, seen: WeakSet<obje
   if (typeof input !== "object") return input;
   if (depth >= SCRUB_SECRETS_MAX_DEPTH) return "[depth-exceeded]";
 
-  const obj = input as object;
-  if (seen.has(obj)) return "[circular]";
-  seen.add(obj);
-
-  if (Array.isArray(input)) {
-    return input.map((item) => scrubStringsDeepValue(item, depth + 1, seen));
-  }
-
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    out[key] = scrubStringsDeepValue(value, depth + 1, seen);
-  }
-  return out;
+  return withinAncestors(input, seen, () =>
+    Array.isArray(input)
+      ? input.map((item) => scrubStringsDeepValue(item, depth + 1, seen))
+      : Object.fromEntries(
+          Object.entries(input).map(([key, value]) => [
+            key,
+            scrubStringsDeepValue(value, depth + 1, seen),
+          ]),
+        ),
+  );
 }
 
 export function scrubStringsDeep(value: unknown): unknown {
