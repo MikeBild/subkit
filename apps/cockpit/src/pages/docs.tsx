@@ -61,6 +61,7 @@ import {
   resolveLink,
   safeDecode,
   sectionText,
+  spyMode,
 } from "@/features/documentation";
 import type { Locale, TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -643,11 +644,20 @@ function useActiveHeading(
   anchor: RefObject<HTMLDivElement | null>,
 ): string | undefined {
   const [spied, setSpied] = useState<{ key: string; anchor: string | undefined } | null>(null);
-  const key = `${hash}|${toc.map((heading) => heading.anchor).join(",")}`;
+  const visit = useRouterState({
+    select: (state) => state.location.state.__TSR_key ?? state.location.href,
+  });
+  const key = `${visit}|${hash}|${toc.map((heading) => heading.anchor).join(",")}`;
   useEffect(() => {
     const region = scrollRegion(anchor.current);
     if (!region || toc.length === 0) return;
+    let mode = spyMode("following", { type: "navigate", hash });
+    const engage = () => {
+      mode = spyMode(mode, { type: "input" });
+    };
+    const inputs = ["wheel", "touchmove", "pointerdown"] as const;
     const update = () => {
+      if (mode === "held") return;
       const top = region.getBoundingClientRect().top;
       const positions = toc.flatMap((heading) => {
         const element = region.ownerDocument.getElementById(heading.anchor);
@@ -663,8 +673,14 @@ function useActiveHeading(
         anchor: activeHeading(positions, SPY_OFFSET, atBottom, hash, region.clientHeight),
       });
     };
+    for (const input of inputs) region.addEventListener(input, engage, { passive: true });
+    region.ownerDocument.addEventListener("keydown", engage);
     region.addEventListener("scroll", update, { passive: true });
-    return () => region.removeEventListener("scroll", update);
+    return () => {
+      for (const input of inputs) region.removeEventListener(input, engage);
+      region.ownerDocument.removeEventListener("keydown", engage);
+      region.removeEventListener("scroll", update);
+    };
   }, [anchor, toc, hash, key]);
   if (spied?.key === key && spied.anchor) return spied.anchor;
   return toc.some((heading) => heading.anchor === hash) ? hash : toc[0]?.anchor;

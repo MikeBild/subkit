@@ -412,3 +412,11 @@ export function activeHeading(
   }
   return current;
 }
+
+export type SpyMode = "held" | "following";
+
+export type SpyEvent = { type: "navigate"; hash: string } | { type: "input" };
+
+export function spyMode(_mode: SpyMode, event: SpyEvent): SpyMode {
+  return event.type === "navigate" && event.hash ? "held" : "following";
+}
