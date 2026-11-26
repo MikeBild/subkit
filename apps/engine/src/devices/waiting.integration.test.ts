@@ -23,12 +23,15 @@ import {
 } from "../http/tests/device-runner-fixtures.ts";
 import type { HttpTestServer } from "../http/tests/setup.ts";
 import { buildAttention, invalidateAttention } from "../operator/attention.ts";
+import { createBoss, disposeBoss } from "../queue/boss.ts";
+import { EXECUTION_RUN_DEVICE_QUEUE } from "../queue/queues.ts";
 import { revokeDevice } from "./registry.ts";
 import {
   admitDeviceRun,
   deviceRunPlan,
   enqueueExecutionRun,
   onDeviceLifecycle,
+  readmitWaitingRun,
   startDeviceRun,
 } from "./waiting.ts";
 
@@ -265,5 +268,60 @@ describe("a device that is offline", () => {
     expect((await executionStatus(run.execution_id))?.failure?.error_code).toBe(
       "device_step_interrupted",
     );
+  });
+});
+
+describe("one pending device job per run", () => {
+  const pendingJobs = async (queue: Awaited<ReturnType<typeof createBoss>>, id: string) =>
+    queue.findJobs(EXECUTION_RUN_DEVICE_QUEUE, { data: { execution_id: id }, queued: true });
+
+  test("enqueuing the same run again, also at once, sends a single device job", async () => {
+    const queue = await createBoss({ connectionString: server.testDb.url });
+    try {
+      const runner = await enroll("Twice (Mike)");
+      await call(runner, "POST", "/v1/device-runner/heartbeat", heartbeat(0));
+      const run = await deviceRun(runner);
+      expect(await enqueueExecutionRun(server.db, queue, run.job)).toBe("queued");
+      expect(await enqueueExecutionRun(server.db, queue, run.job)).toBe("queued");
+      expect(await pendingJobs(queue, run.execution_id)).toHaveLength(1);
+      const racing = await deviceRun(runner);
+      expect(
+        await Promise.all([
+          enqueueExecutionRun(server.db, queue, racing.job),
+          enqueueExecutionRun(server.db, queue, racing.job),
+          enqueueExecutionRun(server.db, queue, racing.job),
+        ]),
+      ).toEqual(["queued", "queued", "queued"]);
+      expect(await pendingJobs(queue, racing.execution_id)).toHaveLength(1);
+    } finally {
+      await disposeBoss(queue);
+    }
+  });
+
+  test("a run that waited after its job was taken gets a fresh job on resume", async () => {
+    const queue = await createBoss({ connectionString: server.testDb.url });
+    try {
+      const runner = await enroll("Again (Mike)");
+      await call(runner, "POST", "/v1/device-runner/heartbeat", heartbeat(0));
+      const run = await deviceRun(runner);
+      await enqueueExecutionRun(server.db, queue, run.job);
+      const taken = (await queue.fetch(EXECUTION_RUN_DEVICE_QUEUE, { batchSize: 100 })).find(
+        (job) => (job.data as { execution_id?: string }).execution_id === run.execution_id,
+      );
+      if (!taken) throw new Error("missing device job");
+      await offline(runner);
+      expect(await startDeviceRun(server.db, queue, run.job)).toBe(false);
+      await queue.complete(EXECUTION_RUN_DEVICE_QUEUE, taken.id);
+      expect(await pendingJobs(queue, run.execution_id)).toHaveLength(0);
+      await call(runner, "POST", "/v1/device-runner/heartbeat", heartbeat(0));
+      expect(await readmitWaitingRun(server.db, queue, server.tenantId, run.execution_id)).toBe(
+        "queued",
+      );
+      const fresh = await pendingJobs(queue, run.execution_id);
+      expect(fresh).toHaveLength(1);
+      expect(fresh[0]?.id).not.toBe(taken.id);
+    } finally {
+      await disposeBoss(queue);
+    }
   });
 });

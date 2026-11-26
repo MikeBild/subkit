@@ -210,26 +210,33 @@ async function enterWait(
   return entered;
 }
 
-async function leaveWait(db: Db, plan: DeviceRunPlan, mode: AdmissionMode): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ status: executions.status })
-      .from(executions)
-      .where(and(eq(executions.tenant_id, plan.tenant_id), eq(executions.id, plan.execution_id)))
-      .for("update")
-      .limit(1);
-    if (!row) return false;
-    await clearDeviceWait(tx, plan.tenant_id, plan.execution_id);
-    if (row.status === "queued") return mode !== "resume";
-    if (row.status !== "waiting_for_device") return false;
-    await transitionExecution(tx, {
-      tenant_id: plan.tenant_id,
-      execution_id: plan.execution_id,
-      from: ["waiting_for_device"],
-      to: "queued",
-    });
-    return true;
+async function leaveWait(tx: Executor, plan: DeviceRunPlan, mode: AdmissionMode): Promise<boolean> {
+  const [row] = await tx
+    .select({ status: executions.status })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, plan.tenant_id), eq(executions.id, plan.execution_id)))
+    .for("update")
+    .limit(1);
+  if (!row) return false;
+  await clearDeviceWait(tx, plan.tenant_id, plan.execution_id);
+  if (row.status === "queued") return mode !== "resume";
+  if (row.status !== "waiting_for_device") return false;
+  await transitionExecution(tx, {
+    tenant_id: plan.tenant_id,
+    execution_id: plan.execution_id,
+    from: ["waiting_for_device"],
+    to: "queued",
   });
+  return true;
+}
+
+async function hasPendingDeviceJob(boss: PgBoss, execution_id: string): Promise<boolean> {
+  const pending = await boss.findJobs(EXECUTION_RUN_DEVICE_QUEUE, {
+    data: { execution_id },
+    queued: true,
+    limit: 1,
+  });
+  return pending.length > 0;
 }
 
 async function failUnavailable(
@@ -274,19 +281,30 @@ export async function admitDeviceRun(
     await failUnavailable(db, plan, verdict.code, standing.label);
     return "failed";
   }
-  if (verdict.kind === "dispatch") {
-    if (!(await leaveWait(db, plan, mode))) return "settled";
-    if (mode === "start") return "queued";
-    await enqueueHostedWork(
-      db,
-      boss,
-      "execution",
-      EXECUTION_RUN_DEVICE_QUEUE,
-      job,
-      deviceRunSendOptions(plan),
-    );
-    return "queued";
-  }
+  if (verdict.kind === "dispatch")
+    return db.transaction(async (tx): Promise<DeviceAdmission> => {
+      if (!(await leaveWait(tx, plan, mode))) return "settled";
+      if (mode === "start") return "queued";
+      if (await hasPendingDeviceJob(boss, plan.execution_id)) {
+        logger.info({
+          module: "devices",
+          action: "device_run.dispatch_deduplicated",
+          msg: "a device run already has a pending job, so no second job is sent",
+          tenant_id: plan.tenant_id,
+          execution_id: plan.execution_id,
+        });
+        return "queued";
+      }
+      await enqueueHostedWork(
+        db,
+        boss,
+        "execution",
+        EXECUTION_RUN_DEVICE_QUEUE,
+        job,
+        deviceRunSendOptions(plan),
+      );
+      return "queued";
+    });
   if (!(await enterWait(db, boss, plan, since, verdict))) return "settled";
   const after = await deviceStanding(db, plan);
   if (after.online || after.revoked) return admitDeviceRun(db, boss, plan, job, "resume", now);
