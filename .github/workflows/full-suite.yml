@@ -51,7 +51,7 @@ jobs:
         working-directory: apps/desktop
         run: for attempt in 1 2 3; do bun install --frozen-lockfile && exit 0; echo "install attempt $attempt failed, retrying"; sleep 20; done; exit 1
       - name: Install expect and the PostgreSQL 18 client (retry transient apt failures)
-        run: for attempt in 1 2 3; do sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && sudo apt-get install -y expect postgresql-client-18 && exit 0; sleep 20; done; exit 1
+        run: for attempt in 1 2 3; do sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && sudo apt-get install -y expect postgresql-client-18 && echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH" && exit 0; sleep 20; done; exit 1
       - run: bun run build assets
       - run: bun run build subkit --skip-deps
       - name: Run this shard of every test file, isolated
