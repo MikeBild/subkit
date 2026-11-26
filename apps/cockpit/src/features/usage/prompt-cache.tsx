@@ -33,6 +33,10 @@ const FLOW_LABEL: Readonly<Record<string, { label: TranslationKey; hint: Transla
     label: "usage.cache.flow.personal_notes",
     hint: "usage.cache.hint.personal_notes",
   },
+  transcription: {
+    label: "usage.cache.flow.transcription",
+    hint: "usage.cache.hint.transcription",
+  },
 };
 
 export type PromptCacheRead = Read<PromptCacheFlow[] | null>;

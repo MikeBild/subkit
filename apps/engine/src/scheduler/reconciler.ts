@@ -31,6 +31,7 @@ import {
   runDocsRefreshSweep,
   runKnowledgeRefreshSweep,
 } from "../knowledge/scheduled/refresh-producer-runner.ts";
+import { sweepTranscriptionReservations } from "../llm/index.ts";
 import { withContext } from "../logging/context.ts";
 import { errorFields, logger } from "../logging/index.ts";
 import { runCockpitPushAttention } from "../notifications/scheduled/cockpit-push-attention-runner.ts";
@@ -71,6 +72,7 @@ const NOTIFICATION_INBOX_RETENTION_CADENCE_MS = 60 * 60 * 1000;
 const TOOL_APPROVALS_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
 const ELICITATION_EXPIRY_CADENCE_MS = 5 * 60 * 1000;
+const TRANSCRIPTION_RESERVATION_CADENCE_MS = 5 * 60 * 1000;
 
 const RISK_SIGNAL_EDGE_CADENCE_MS = 60 * 1000;
 
@@ -145,6 +147,7 @@ export class SchedulerReconciler {
   private lastToolApprovalsCleanupAt: Date | null = null;
 
   private lastElicitationExpiryAt: Date | null = null;
+  private lastTranscriptionReservationsAt: Date | null = null;
 
   private lastRiskSignalEdgesAt: Date | null = null;
 
@@ -481,6 +484,16 @@ export class SchedulerReconciler {
           ...errorFields(err),
         });
       });
+      await retryTransient(() => this.reconcileTranscriptionReservations(), {
+        label: "transcription_reservations",
+      }).catch((err) => {
+        logger.error({
+          module: "scheduler",
+          action: "transcription_reservations_failed",
+          msg: "scheduler transcription reservation sweep failed",
+          ...errorFields(err),
+        });
+      });
       await retryTransient(() => this.reconcileRiskSignalEdges(), {
         label: "risk_signal_edges",
       }).catch((err) => {
@@ -740,6 +753,13 @@ export class SchedulerReconciler {
     }
     this.lastToolApprovalsCleanupAt = now;
     await runToolApprovalsCleanup(now, this.opts.db);
+  }
+
+  async reconcileTranscriptionReservations(now: Date = new Date()): Promise<void> {
+    const last = this.lastTranscriptionReservationsAt;
+    if (last && now.getTime() - last.getTime() < TRANSCRIPTION_RESERVATION_CADENCE_MS) return;
+    this.lastTranscriptionReservationsAt = now;
+    await sweepTranscriptionReservations(this.opts.db);
   }
 
   async reconcileElicitationExpiry(now: Date = new Date()): Promise<void> {

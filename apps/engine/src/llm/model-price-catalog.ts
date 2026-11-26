@@ -47,6 +47,16 @@ const openai = (
   source: OPENAI_PRICING,
 });
 
+const openaiAudio = (model: string, perMinute: number): CatalogModelPrice => ({
+  model,
+  input_per_mtok: 0,
+  output_per_mtok: 0,
+  cache_read_per_mtok: 0,
+  cache_write_per_mtok: 0,
+  audio_per_minute: perMinute,
+  source: OPENAI_PRICING,
+});
+
 const gemini = (
   model: string,
   input: number,
@@ -95,6 +105,9 @@ export const MODEL_PRICE_CATALOG: readonly CatalogModelPrice[] = Object.freeze([
   openai("gpt-4.1", 2, 8, 0.5),
   openai("gpt-4.1-mini", 0.4, 1.6, 0.1),
   openai("gpt-4-turbo", 10, 30, 10),
+  openaiAudio("gpt-4o-mini-transcribe", 0.003),
+  openaiAudio("gpt-4o-transcribe", 0.006),
+  openaiAudio("whisper-1", 0.006),
   {
     ...gemini("gemini-2.5-pro", 1.25, 10, 0.125),
     long_context: {
@@ -132,6 +145,7 @@ export function effectiveModelPrices(tokens: {
       output_per_mtok: price.output_per_mtok,
       cache_read_per_mtok: price.cache_read_per_mtok ?? 0,
       cache_write_per_mtok: price.cache_write_per_mtok ?? 0,
+      ...(price.audio_per_minute === undefined ? {} : { audio_per_minute: price.audio_per_minute }),
       price_source: "override",
     });
   }

@@ -30,12 +30,14 @@ export function usePrepareSpeech(): () => Promise<void> {
 }
 
 export function transcribeRecording(
+  requestId: string,
   contentBase64: string,
   language: string | undefined,
   signal: AbortSignal,
 ): Promise<SpeechTranscription> {
   return apiCall("post", "/v1/speech/transcriptions", {
     body: {
+      client_request_id: requestId,
       content_type: "audio/wav",
       content_base64: contentBase64,
       ...(language ? { language } : {}),

@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { z } from "@hono/zod-openapi";
+import { actorFields } from "../../llm/index.ts";
 import {
   audioRefusal,
   getSpeechService,
@@ -57,6 +59,13 @@ const TranscribeBody = z
       .regex(/^[a-z]{2}$/)
       .optional()
       .describe("Spoken language as an ISO 639-1 code, e.g. de or en; improves accuracy."),
+    client_request_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        "One id per recording. A retry with the same id returns the first transcript instead of transcribing and billing it again.",
+      ),
   })
   .openapi("SpeechTranscribeRequest");
 
@@ -132,9 +141,12 @@ const transcribeOperation = defineOperation<TranscribeInput, Transcription>({
     try {
       return await getSpeechService().transcribe({
         tenantId: scope.tenant_id,
+        clientRequestId: body.client_request_id ?? randomUUID(),
+        db: scope.db,
         audio,
         contentType: body.content_type,
         language: body.language,
+        actor: actorFields(scope.principal),
       });
     } catch (error) {
       if (error instanceof SpeechError) return speechRejection(error);
@@ -149,7 +161,7 @@ const transcribeOperation = defineOperation<TranscribeInput, Transcription>({
     response: TranscriptionSchema,
     errors: {
       400: "audio_empty",
-      409: "speech_unavailable",
+      409: "speech_unavailable, transcription_in_progress or transcription_unsettled",
       413: "audio_too_large",
       422: "no_speech",
       502: "transcription_failed",

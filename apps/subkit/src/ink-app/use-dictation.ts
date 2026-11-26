@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { detectRecorder, type Recording, startRecording } from "@cli-core/voice/recorder.ts";
 import { recorderInstallHint, spokenLanguageFromEnv } from "@cli-core/voice/recorder-detect.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -42,6 +43,7 @@ export function useDictation({ engineClient, insertText, showInfo, showError }: 
         "POST",
         "/v1/speech/transcriptions",
         {
+          client_request_id: randomUUID(),
           content_type: "audio/wav",
           content_base64: toBase64(wav),
           ...(language ? { language } : {}),

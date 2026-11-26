@@ -129,6 +129,7 @@ Every workspace has exactly one limit on AI cost: the monthly AI budget in US do
 The budget lives in one place: **Settings** › **Budget**. It shows what this month's model calls cost, for example "$12.40 of $50". You need `stats:read` to see it; administrators change it there, everyone else with `stats:read` sees it read-only.
 
 - Only priced calls count. A local model, or a model without a price, never counts towards the AI budget.
+- Voice dictation counts when it uses the key of the engine operator. Before the transcription service is called, SubKit sets aside the length of the recording, or five minutes when the length is unknown. Afterwards it books the real length, or gives the amount back when the service fails. Dictation with your workspace's own key or with the local speech model never counts. If SubKit cannot close the amount within 10 minutes, it stays booked and is marked for review.
 - At 80% you get one item under **Needs you** and one notification per month.
 - At 100% chat, tasks and model steps in workflows pause. A task run waits and continues on its own. A workflow run waits before its model step, frees its worker and continues on its own once the budget allows it again: after **Raise budget**, after **Continue without a limit this month**, or when the next month starts. Steps it already ran don't run again. Workflows without a model step keep running.
 - One chat answer or one task run that costs more than $5 shows one notice. Nothing stops.
@@ -143,7 +144,7 @@ You need `identity:write` for both, so the Admin role. This also applies to host
 
 If the workspace prices models in another currency than USD (`tokens.currency`), there is no dollar figure and the AI budget does not apply.
 
-For developers: `GET /v1/workspace/spend-limit` (`stats:read`) reads the month, `PUT /v1/workspace/spend-limit` with `{"limit_usd": 200}` sets the limit (0 means no limit) and `POST /v1/workspace/spend-limit/continue` continues this month. A refused model call answers with the code `llm_spend_limit_reached` (HTTP 429); a provider account without quota answers with `llm_provider_quota_exhausted`. A waiting workflow run keeps the status `queued` and shows `waiting_reason: "budget"`; a model step that cannot wait fails with `llm_spend_limit_reached`.
+For developers: `GET /v1/workspace/spend-limit` (`stats:read`) reads the month, `PUT /v1/workspace/spend-limit` with `{"limit_usd": 200}` sets the limit (0 means no limit) and `POST /v1/workspace/spend-limit/continue` continues this month. A refused model call answers with the code `llm_spend_limit_reached` (HTTP 429). `POST /v1/speech/transcriptions` takes one `client_request_id` per recording: the same id again returns the first text and is booked once, and while the first attempt is still running it answers `transcription_in_progress` (HTTP 409); a provider account without quota answers with `llm_provider_quota_exhausted`. A waiting workflow run keeps the status `queued` and shows `waiting_reason: "budget"`; a model step that cannot wait fails with `llm_spend_limit_reached`.
 
 ### Set a price
 

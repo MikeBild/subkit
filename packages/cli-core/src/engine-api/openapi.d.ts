@@ -19053,7 +19053,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description speech_unavailable */
+                /** @description speech_unavailable, transcription_in_progress or transcription_unsettled */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -39095,6 +39095,11 @@ export interface components {
             content_base64: string;
             /** @description Spoken language as an ISO 639-1 code, e.g. de or en; improves accuracy. */
             language?: string;
+            /**
+             * Format: uuid
+             * @description One id per recording. A retry with the same id returns the first transcript instead of transcribing and billing it again.
+             */
+            client_request_id?: string;
         };
         KnowledgeSourceVersionListResponse: {
             items: components["schemas"]["KnowledgeSourceVersion"][];

@@ -2,7 +2,12 @@ import { baseContentType } from "../core/limits.ts";
 import { decodePcmWav, resampleLinear } from "../core/wav.ts";
 import type { ModelStore } from "../local/model-store.ts";
 import type { WhisperWorkerClient } from "../local/whisper-client.ts";
-import { SpeechError, type TranscribeRequest, type Transcriber } from "../port.ts";
+import {
+  SpeechError,
+  type TranscribeRequest,
+  type Transcriber,
+  type TranscriberOutput,
+} from "../port.ts";
 
 const WHISPER_SAMPLE_RATE = 16_000;
 
@@ -12,7 +17,7 @@ export function createLocalTranscriber(
 ): Transcriber {
   return {
     id: "local",
-    async transcribe(request: TranscribeRequest): Promise<string> {
+    async transcribe(request: TranscribeRequest): Promise<TranscriberOutput> {
       if (baseContentType(request.contentType) !== "audio/wav")
         throw new SpeechError(
           "local_needs_wav",
@@ -39,7 +44,7 @@ export function createLocalTranscriber(
           `local transcription failed: ${response.reason}`,
           "local",
         );
-      return response.text;
+      return { text: response.text };
     },
   };
 }

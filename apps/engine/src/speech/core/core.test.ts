@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { audioRefusal, baseContentType, SPEECH_MAX_BYTES } from "./limits.ts";
 import { LOCAL_SPEECH_FILES, modelFileForUrl, modelFileUrl } from "./model-files.ts";
 import { finalTranscript } from "./transcript.ts";
-import { decodePcmWav, resampleLinear } from "./wav.ts";
+import { decodePcmWav, resampleLinear, wavSeconds } from "./wav.ts";
 
 function pcmWav(samples: readonly number[], sampleRate: number, channels = 1): Uint8Array {
   const data = samples.length * 2;
@@ -109,5 +109,16 @@ describe("model files", () => {
     expect(
       modelFileForUrl("https://huggingface.co/onnx-community/whisper-base/resolve/main/x.bin"),
     ).toBeUndefined();
+  });
+});
+
+describe("wavSeconds", () => {
+  test("measures a recording from its frames and sample rate", () => {
+    expect(wavSeconds(pcmWav(new Array(8000).fill(0), 16000))).toBe(0.5);
+    expect(wavSeconds(pcmWav(new Array(16000).fill(0), 8000, 2))).toBe(1);
+  });
+
+  test("knows no length for anything but PCM WAV", () => {
+    expect(wavSeconds(new TextEncoder().encode("OggS-not-a-wav"))).toBeUndefined();
   });
 });

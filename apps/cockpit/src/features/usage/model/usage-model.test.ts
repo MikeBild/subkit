@@ -395,6 +395,15 @@ describe("what the money was spent on", () => {
     expect(rows.reduce((sum, row) => sum + (row.share ?? 0), 0)).toBeCloseTo(1, 5);
   });
 
+  test("voice dictation is its own origin, priced although it uses no tokens", () => {
+    expect(flowOrigin("transcription")).toBe("dictation");
+    const rows = originRows({
+      groups: [flow("converse", 900, 2), flow("transcription", 0, 0.5, 40)],
+    });
+    expect(rows.map((row) => row.key)).toEqual(["chat", "dictation"]);
+    expect(rows[1]).toMatchObject({ flows: ["transcription"], calls: 40, tokens: 0, cost: 0.5 });
+  });
+
   test("an unknown purpose, or none, is 'other' — named, never dropped", () => {
     expect(flowOrigin("some_future_flow")).toBe("other");
     expect(flowOrigin("")).toBe("other");

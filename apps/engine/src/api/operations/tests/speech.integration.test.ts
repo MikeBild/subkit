@@ -1,11 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { llmUsage } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
 import { setSpeechServiceForTests } from "../../../speech/index.ts";
 import { SpeechError, type Transcriber } from "../../../speech/port.ts";
+import { transcriptionLedger } from "../../../speech/providers/ledger.ts";
 import { createSpeechService } from "../../../speech/service.ts";
 
 let ctx: HttpTestServer;
-const seen: { contentType: string; language: string | undefined; bytes: number }[] = [];
+const seen: {
+  contentType: string;
+  language: string | undefined;
+  bytes: number;
+  clientRequestId: string;
+}[] = [];
 
 const fake = (id: Transcriber["id"], text: string | Error): Transcriber => ({
   id,
@@ -14,9 +22,10 @@ const fake = (id: Transcriber["id"], text: string | Error): Transcriber => ({
       contentType: request.contentType,
       language: request.language,
       bytes: request.audio.byteLength,
+      clientRequestId: request.clientRequestId,
     });
     if (text instanceof Error) throw text;
-    return text;
+    return { text };
   },
 });
 
@@ -24,7 +33,9 @@ function useFakeSpeech(text: string | Error, preference: "auto" | "off" = "auto"
   setSpeechServiceForTests(
     createSpeechService({
       settings: () => ({ preference, model: undefined, primaryProvider: "openai" }),
-      configured: (id) => id === "openai",
+      keyOwner: async (id) => (id === "openai" ? "operator" : null),
+      spendAllows: async () => true,
+      ledger: transcriptionLedger,
       transcribers: {
         openai: fake("openai", text),
         azure: fake("azure", ""),
@@ -87,7 +98,7 @@ describe("speech routes", () => {
       status: 200,
       body: { text: "dictated text", transcriber: "openai", duration_ms: 0 },
     });
-    expect(seen).toEqual([{ contentType: "audio/wav", language: "de", bytes: 10 }]);
+    expect(seen).toMatchObject([{ contentType: "audio/wav", language: "de", bytes: 10 }]);
   });
 
   test("refuses unsupported audio before any transcriber runs", async () => {
@@ -114,6 +125,53 @@ describe("speech routes", () => {
     const result = await post("/v1/speech/transcriptions", recording);
     expect(result.status).toBe(409);
     expect(result.body).toMatchObject({ code: "speech_off" });
+  });
+
+  test("a retry of one recording calls the provider once and books one row", async () => {
+    useFakeSpeech("  booked once ");
+    seen.length = 0;
+    const client_request_id = "00000000-0000-4000-8000-000000000914";
+    const first = await post("/v1/speech/transcriptions", { ...recording, client_request_id });
+    const retry = await post("/v1/speech/transcriptions", { ...recording, client_request_id });
+    expect(first).toEqual({
+      status: 200,
+      body: { text: "booked once", transcriber: "openai", duration_ms: 0 },
+    });
+    expect(retry).toEqual(first);
+    expect(seen.map((call) => call.clientRequestId)).toEqual([client_request_id]);
+    const rows = await ctx.db
+      .select()
+      .from(llmUsage)
+      .where(eq(llmUsage.client_request_id, client_request_id));
+    expect(rows).toMatchObject([
+      {
+        tenant_id: ctx.tenantId,
+        flow: "transcription",
+        reservation: "settled",
+        audio_seconds: 300,
+      },
+    ]);
+  });
+
+  test("a failed provider call releases its reservation before the local fallback", async () => {
+    useFakeSpeech(new Error("HTTP 500"));
+    const client_request_id = "00000000-0000-4000-8000-000000000915";
+    const result = await post("/v1/speech/transcriptions", { ...recording, client_request_id });
+    expect(result.status).toBe(409);
+    const rows = await ctx.db
+      .select()
+      .from(llmUsage)
+      .where(eq(llmUsage.client_request_id, client_request_id));
+    expect(rows).toMatchObject([{ reservation: "released", audio_seconds: 0, result: "error" }]);
+  });
+
+  test("refuses a request id that is not a uuid", async () => {
+    useFakeSpeech("never");
+    const result = await post("/v1/speech/transcriptions", {
+      ...recording,
+      client_request_id: "recording-1",
+    });
+    expect(result.status).toBe(400);
   });
 
   test("requires credentials", async () => {

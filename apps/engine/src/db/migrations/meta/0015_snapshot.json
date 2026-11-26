@@ -1,6 +1,6 @@
 {
-  "id": "ff881750-2338-4486-a161-74cbc45ccbbb",
-  "prevId": "2e090b97-4520-4a64-8c09-34273233e463",
+  "id": "08677e52-e4f3-461d-892f-c207c7135e4d",
+  "prevId": "ff881750-2338-4486-a161-74cbc45ccbbb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -13776,6 +13776,13 @@
           "notNull": true,
           "default": 0
         },
+        "audio_seconds": {
+          "name": "audio_seconds",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "result": {
           "name": "result",
           "type": "text",
@@ -13823,6 +13830,30 @@
         "conversation_id": {
           "name": "conversation_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "client_request_id": {
+          "name": "client_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reservation": {
+          "name": "reservation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transcript": {
+          "name": "transcript",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -13965,6 +13996,50 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "llm_usage_tenant_flow_request_uq": {
+          "name": "llm_usage_tenant_flow_request_uq",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "flow",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "client_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"llm_usage\".\"client_request_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "llm_usage_reserved_lease_idx": {
+          "name": "llm_usage_reserved_lease_idx",
+          "columns": [
+            {
+              "expression": "lease_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"llm_usage\".\"reservation\" = 'reserved'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -13990,7 +14065,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "llm_usage_reservation_check": {
+          "name": "llm_usage_reservation_check",
+          "value": "\"llm_usage\".\"reservation\" IS NULL OR (\"llm_usage\".\"reservation\" IN ('reserved', 'settled', 'released', 'reconciliation_required') AND \"llm_usage\".\"client_request_id\" IS NOT NULL AND (\"llm_usage\".\"reservation\" = 'reserved') = (\"llm_usage\".\"lease_until\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.user_llm_settings": {

@@ -65,6 +65,12 @@ export function decodePcmWav(bytes: Uint8Array): WavDecodeResult {
   return { ok: false, reason: "truncated" };
 }
 
+export function wavSeconds(bytes: Uint8Array): number | undefined {
+  const decoded = decodePcmWav(bytes);
+  if (!decoded.ok || decoded.audio.sampleRate <= 0) return undefined;
+  return decoded.audio.samples.length / decoded.audio.sampleRate;
+}
+
 export function resampleLinear(audio: PcmAudio, targetRate: number): Float32Array {
   if (audio.sampleRate === targetRate) return audio.samples;
   const ratio = audio.sampleRate / targetRate;

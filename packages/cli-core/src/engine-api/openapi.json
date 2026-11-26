@@ -38510,6 +38510,11 @@
             "type": "string",
             "pattern": "^[a-z]{2}$",
             "description": "Spoken language as an ISO 639-1 code, e.g. de or en; improves accuracy."
+          },
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "One id per recording. A retry with the same id returns the first transcript instead of transcribing and billing it again."
           }
         },
         "required": [
@@ -76364,7 +76369,7 @@
             }
           },
           "409": {
-            "description": "speech_unavailable",
+            "description": "speech_unavailable, transcription_in_progress or transcription_unsettled",
             "content": {
               "application/json": {
                 "schema": {

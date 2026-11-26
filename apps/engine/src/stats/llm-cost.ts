@@ -83,7 +83,8 @@ async function readKeyedPricedTokens(
         coalesce(sum(llm_usage.prompt_tokens), 0)::float8 as prompt,
         coalesce(sum(llm_usage.completion_tokens), 0)::float8 as completion,
         coalesce(sum(llm_usage.cache_read_tokens), 0)::float8 as cache_read,
-        coalesce(sum(llm_usage.cache_creation_tokens), 0)::float8 as cache_creation
+        coalesce(sum(llm_usage.cache_creation_tokens), 0)::float8 as cache_creation,
+        coalesce(sum(llm_usage.audio_seconds), 0)::float8 as audio_seconds
       from ${from}
       where ${where}
       group by ${sql.join(groupCols, sql`, `)}
@@ -105,6 +106,7 @@ async function readKeyedPricedTokens(
       completion_tokens: Number(row.completion ?? 0),
       cache_read_tokens: Number(row.cache_read ?? 0),
       cache_creation_tokens: Number(row.cache_creation ?? 0),
+      audio_seconds: Number(row.audio_seconds ?? 0),
       prompt_tokens_exceed: k > 0 ? (thresholds[k - 1] ?? -1) : -1,
     };
   });

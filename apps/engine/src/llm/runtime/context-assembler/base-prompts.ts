@@ -5,7 +5,7 @@ import type { AuthoringPromptHint, LlmFlow } from "../../types.ts";
 export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 
 const BASE_SYSTEM_PROMPTS: Record<
-  Exclude<LlmFlow, "converse" | "suggest_next" | "workflow_step" | "tool_repair">,
+  Exclude<LlmFlow, "converse" | "suggest_next" | "workflow_step" | "tool_repair" | "transcription">,
   string
 > = {
   generate: [
@@ -124,6 +124,9 @@ export async function basePromptFor(
   }
   if (flow === "tool_repair") {
     throw new Error("basePromptFor: tool_repair composes its own messages");
+  }
+  if (flow === "transcription") {
+    throw new Error("basePromptFor: transcription sends audio, not a prompt");
   }
   if (flow === "judge" && authorSystem?.trim()) return { content: authorSystem.trim() };
   return { content: BASE_SYSTEM_PROMPTS[flow] };

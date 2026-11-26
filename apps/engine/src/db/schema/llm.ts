@@ -1,12 +1,16 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
   boolean,
+  check,
+  doublePrecision,
   index,
   integer,
   jsonb,
   pgTable,
   text,
+  timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -40,6 +44,7 @@ export const llmUsage = pgTable(
     cache_creation_tokens: integer("cache_creation_tokens").notNull().default(0),
     cache_reported: boolean("cache_reported"),
     latency_ms: integer("latency_ms").notNull().default(0),
+    audio_seconds: doublePrecision("audio_seconds").notNull().default(0),
     result: text("result").notNull(),
     error: text("error"),
     user_id: uuid("user_id"),
@@ -50,6 +55,12 @@ export const llmUsage = pgTable(
       onDelete: "set null",
     }),
     conversation_id: uuid("conversation_id"),
+    client_request_id: text("client_request_id"),
+    reservation: text("reservation").$type<
+      "reserved" | "settled" | "released" | "reconciliation_required"
+    >(),
+    lease_until: timestamp("lease_until", { withTimezone: true }),
+    transcript: text("transcript"),
   },
   (t) => [
     index("llm_usage_tenant_created_idx").on(t.tenant_id, t.created_at),
@@ -58,6 +69,16 @@ export const llmUsage = pgTable(
     index("llm_usage_conversation_idx").on(t.tenant_id, t.conversation_id),
     index("llm_usage_tenant_user_month_idx").on(t.tenant_id, t.user_id, t.month_bucket),
     index("llm_usage_tenant_user_created_idx").on(t.tenant_id, t.user_id, t.created_at),
+    uniqueIndex("llm_usage_tenant_flow_request_uq")
+      .on(t.tenant_id, t.flow, t.client_request_id)
+      .where(sql`${t.client_request_id} IS NOT NULL`),
+    index("llm_usage_reserved_lease_idx")
+      .on(t.lease_until)
+      .where(sql`${t.reservation} = 'reserved'`),
+    check(
+      "llm_usage_reservation_check",
+      sql`${t.reservation} IS NULL OR (${t.reservation} IN ('reserved', 'settled', 'released', 'reconciliation_required') AND ${t.client_request_id} IS NOT NULL AND (${t.reservation} = 'reserved') = (${t.lease_until} IS NOT NULL))`,
+    ),
   ],
 );
 

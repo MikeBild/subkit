@@ -2,13 +2,16 @@ import { createAzure } from "@ai-sdk/azure";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { type TranscriptionModel, transcribe } from "ai";
-import { getConfig } from "../../config/index.ts";
+import type { Executor } from "../../db/index.ts";
+import { checkAndDecrement } from "../accounting/budget.ts";
+import { LlmError } from "../errors.ts";
 import { modelKeyOwner, readLlmSetting } from "./model-init.ts";
+import { assertOperatorKeyAllowed } from "./operator-key-guard.ts";
 import { fetchWithResponseTimeout } from "./response-timeout.ts";
 
 export type TranscriptionProviderId = "openai" | "azure" | "gemini";
 
-const DEFAULT_TRANSCRIPTION_MODEL: Record<TranscriptionProviderId, string> = {
+export const DEFAULT_TRANSCRIPTION_MODEL: Record<TranscriptionProviderId, string> = {
   openai: "gpt-4o-mini-transcribe",
   azure: "gpt-4o-mini-transcribe",
   gemini: "gemini-3.5-transcribe",
@@ -23,13 +26,13 @@ export interface TranscribeAudioRequest {
   readonly signal?: AbortSignal | undefined;
 }
 
-const hostedAuth = (): boolean => {
-  try {
-    return getConfig().auth.hosted.enabled;
-  } catch {
-    return false;
-  }
-};
+export interface TranscribedAudio {
+  readonly text: string;
+  readonly model: string;
+  readonly audio_seconds: number | undefined;
+}
+
+export type TranscriptionKeyOwner = "workspace" | "operator";
 
 function hasCredentials(provider: TranscriptionProviderId, tenantId: string): boolean {
   if (provider === "openai")
@@ -48,13 +51,33 @@ function hasCredentials(provider: TranscriptionProviderId, tenantId: string): bo
   return Boolean(readLlmSetting("GEMINI_API_KEY", tenantId));
 }
 
-export function transcriptionConfigured(
+export async function transcriptionKeyOwner(
   provider: TranscriptionProviderId,
   tenantId: string,
-): boolean {
-  if (!hasCredentials(provider, tenantId)) return false;
-  return modelKeyOwner(provider, tenantId) === "workspace" || !hostedAuth();
+  exec?: Executor,
+): Promise<TranscriptionKeyOwner | null> {
+  if (!hasCredentials(provider, tenantId)) return null;
+  if (modelKeyOwner(provider, tenantId) === "workspace") return "workspace";
+  try {
+    await assertOperatorKeyAllowed(tenantId, exec);
+    return "operator";
+  } catch (error) {
+    if (error instanceof LlmError) return null;
+    throw error;
+  }
 }
+
+export async function transcriptionSpendAllows(
+  tenantId: string,
+  exec?: Executor,
+): Promise<boolean> {
+  return (await checkAndDecrement(tenantId, 0, exec)).ok;
+}
+
+export const transcriptionModelName = (
+  provider: TranscriptionProviderId,
+  model: string | undefined,
+): string => `${provider}/${model || DEFAULT_TRANSCRIPTION_MODEL[provider]}`;
 
 function keyedOptions(
   setting: string,
@@ -92,13 +115,10 @@ function transcriptionModel(
   ).transcription(modelId);
 }
 
-export async function transcribeAudio(request: TranscribeAudioRequest): Promise<string> {
+export async function transcribeAudio(request: TranscribeAudioRequest): Promise<TranscribedAudio> {
+  const modelId = request.model || DEFAULT_TRANSCRIPTION_MODEL[request.provider];
   const result = await transcribe({
-    model: transcriptionModel(
-      request.provider,
-      request.tenantId,
-      request.model || DEFAULT_TRANSCRIPTION_MODEL[request.provider],
-    ),
+    model: transcriptionModel(request.provider, request.tenantId, modelId),
     audio: request.audio,
     maxRetries: 1,
     ...(request.language && request.provider !== "gemini"
@@ -106,5 +126,5 @@ export async function transcribeAudio(request: TranscribeAudioRequest): Promise<
       : {}),
     ...(request.signal ? { abortSignal: request.signal } : {}),
   });
-  return result.text;
+  return { text: result.text, model: modelId, audio_seconds: result.durationInSeconds };
 }

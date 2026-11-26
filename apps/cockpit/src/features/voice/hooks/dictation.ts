@@ -15,6 +15,7 @@ const TICK_MS = 100;
 
 interface Capture {
   readonly session: number;
+  readonly requestId: string;
   readonly stream: MediaStream;
   readonly recorder: MediaRecorder;
   readonly context: AudioContext;
@@ -72,20 +73,25 @@ export function useDictation({ language, deviceId, onTranscript }: DictationOpti
   transcriptRef.current = onTranscript;
 
   const finish = useCallback(
-    async (session: number, chunks: readonly Blob[], mimeType: string) => {
+    async (capture: Capture, mimeType: string) => {
       const controller = new AbortController();
       abort.current = controller;
       try {
-        const wav = await toWav(new Blob([...chunks], { type: mimeType }));
-        const result = await transcribeRecording(toBase64(wav), language, controller.signal);
+        const wav = await toWav(new Blob([...capture.chunks], { type: mimeType }));
+        const result = await transcribeRecording(
+          capture.requestId,
+          toBase64(wav),
+          language,
+          controller.signal,
+        );
         if (controller.signal.aborted) return;
         transcriptRef.current(result.text);
-        dispatch({ type: "transcribed", session });
+        dispatch({ type: "transcribed", session: capture.session });
       } catch (error) {
         if (controller.signal.aborted) return;
         const code: DictationError =
           error instanceof ApiError ? transcriptionError(error.code ?? undefined) : "failed";
-        dispatch({ type: "failed", session, error: code });
+        dispatch({ type: "failed", session: capture.session, error: code });
       }
     },
     [language],
@@ -100,7 +106,7 @@ export function useDictation({ language, deviceId, onTranscript }: DictationOpti
     const mimeType = current.recorder.mimeType || "audio/webm";
     current.recorder.onstop = () => {
       release(current);
-      void finish(current.session, current.chunks, mimeType);
+      void finish(current, mimeType);
     };
     current.recorder.stop();
   }, [finish]);
@@ -108,7 +114,8 @@ export function useDictation({ language, deviceId, onTranscript }: DictationOpti
   const start = useCallback(async () => {
     if (isBusy(state) || !dictationSupported()) return;
     const session = state.session + 1;
-    dispatch({ type: "start" });
+    const requestId = crypto.randomUUID();
+    dispatch({ type: "start", requestId });
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -138,7 +145,7 @@ export function useDictation({ language, deviceId, onTranscript }: DictationOpti
       analyser.getFloatTimeDomainData(samples);
       dispatch({ type: "tick", session, now: Date.now(), level: rmsLevel(samples) });
     }, TICK_MS);
-    capture.current = { session, stream, recorder, context, analyser, chunks, timer };
+    capture.current = { session, requestId, stream, recorder, context, analyser, chunks, timer };
     recorder.start(250);
     dispatch({ type: "granted", session, now: Date.now() });
   }, [deviceId, state]);

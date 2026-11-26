@@ -1,14 +1,15 @@
-import { readLlmSetting, transcriptionConfigured } from "../llm/index.ts";
+import { readLlmSetting, transcriptionKeyOwner, transcriptionSpendAllows } from "../llm/index.ts";
 import { createModelStore } from "./local/model-store.ts";
 import { createWhisperWorkerClient, defaultWhisperWorker } from "./local/whisper-client.ts";
 import { createCloudTranscriber } from "./providers/cloud.ts";
+import { transcriptionLedger } from "./providers/ledger.ts";
 import { createLocalTranscriber } from "./providers/local.ts";
 import { createSpeechService, parsePreference, type SpeechService } from "./service.ts";
 
 export { audioRefusal, SPEECH_CONTENT_TYPES, SPEECH_MAX_BYTES } from "./core/limits.ts";
 export type { LocalModelState } from "./core/model-files.ts";
 export type { TranscriberId } from "./core/order.ts";
-export { SpeechError, type SpeechErrorCode } from "./port.ts";
+export { type SpeechActor, SpeechError, type SpeechErrorCode } from "./port.ts";
 export type { SpeechService, SpeechStatus, Transcription } from "./service.ts";
 
 function createDefaultSpeechService(): SpeechService {
@@ -20,7 +21,9 @@ function createDefaultSpeechService(): SpeechService {
       model: readLlmSetting("TRANSCRIPTION_MODEL", tenantId),
       primaryProvider: readLlmSetting("LLM_PROVIDER", tenantId) ?? "",
     }),
-    configured: transcriptionConfigured,
+    keyOwner: (id, tenantId) => transcriptionKeyOwner(id, tenantId),
+    spendAllows: (tenantId) => transcriptionSpendAllows(tenantId),
+    ledger: transcriptionLedger,
     transcribers: {
       openai: createCloudTranscriber("openai"),
       azure: createCloudTranscriber("azure"),

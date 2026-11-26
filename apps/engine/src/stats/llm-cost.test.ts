@@ -142,6 +142,34 @@ describe.skipIf(skip)("cost per group", () => {
     expect(converse + healing).toBeCloseTo(whole.amount, 6);
   });
 
+  test("dictation shows up in the flow breakdown, priced per audio minute", async () => {
+    await seed("claude-haiku-4-5", [100_000]);
+    await testDb.db.insert(llmUsage).values({
+      tenant_id: tenantId,
+      flow: "transcription",
+      model: "openai/gpt-4o-mini-transcribe",
+      audio_seconds: 120,
+      latency_ms: 900,
+      result: "success",
+      created_at: TS,
+      month_bucket: 202401,
+    });
+    const window = {
+      tenantId,
+      bucket: "day" as const,
+      from: new Date("2024-01-01T00:00:00.000Z"),
+      to: new Date("2024-01-02T00:00:00.000Z"),
+      tz: "UTC",
+    };
+    const byFlow = (await readLlmCostByKey(testDb.db, window, ["flow"])).groups;
+    expect([...byFlow.keys()].sort()).toEqual(["flow=converse", "flow=transcription"]);
+    const dictation = byFlow.get("flow=transcription");
+    expect(dictation?.amount).toBeCloseTo(0.006, 6);
+    expect(dictation?.unpriced_calls).toBe(0);
+    const whole = await readLlmWindowCost(testDb.db, window);
+    expect(whole.amount).toBeCloseTo((byFlow.get("flow=converse")?.amount ?? 0) + 0.006, 6);
+  });
+
   test("a workflow grouping joins the run and files calls without one under an empty key", async () => {
     await seed("claude-haiku-4-5", [100_000]);
     const byWorkflow = (
