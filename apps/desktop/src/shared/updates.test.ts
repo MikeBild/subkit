@@ -268,6 +268,15 @@ describe("update feed check at build time", () => {
       ),
     ).toBe("the update feed must be an https address");
   });
+
+  test("reads a feed from a config checked out with windows line endings", () => {
+    expect(
+      updateFeedProblem("appId: x\r\npublish:\r\n  provider: github\r\n  owner: acme\r\n"),
+    ).toBeNull();
+    expect(updateFeedProblem("appId: x\r\npublish: null\r\n")).toBe(
+      "electron-builder.yml names no update feed under publish",
+    );
+  });
 });
 
 describe("updates decision at build time", () => {
@@ -316,6 +325,8 @@ describe("updates decision at build time", () => {
     expect(buildSigned("darwin", { CSC_LINK: " " })).toBe(false);
     expect(buildSigned("win32", { WIN_CSC_LINK: "base64" })).toBe(true);
     expect(buildSigned("win32", { SUBKIT_DESKTOP_WIN_SIGNING: "cloud" })).toBe(true);
+    expect(buildSigned("win32", { SUBKIT_DESKTOP_WIN_SIGNING: "checksums" })).toBe(true);
+    expect(buildSigned("darwin", { SUBKIT_DESKTOP_WIN_SIGNING: "checksums" })).toBe(false);
     expect(buildSigned("win32", {})).toBe(false);
     expect(buildSigned("linux", { CSC_LINK: "base64" })).toBe(false);
     expect(buildSigned("freebsd", { CSC_LINK: "base64" })).toBe(false);

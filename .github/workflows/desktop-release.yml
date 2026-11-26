@@ -565,6 +565,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           SUBKIT_DESKTOP_UPDATES: "1"
+          SUBKIT_DESKTOP_WIN_SIGNING: checksums
         run: |
           set -euo pipefail
           bun run package --prebuilt --win --publish never -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs" "-c.win.verifyUpdateCodeSignature=false"

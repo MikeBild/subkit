@@ -184,7 +184,8 @@ export function updateMenuLabel(state: UpdateState): UpdateText {
   return { key: "tray.checkUpdates", vars: {} };
 }
 
-export function updateFeedProblem(builderConfig: string): string | null {
+export function updateFeedProblem(rawConfig: string): string | null {
+  const builderConfig = rawConfig.replace(/\r\n/g, "\n");
   const publish = /^publish:[ \t]*(.*)$/m.exec(builderConfig);
   if (!publish) return "electron-builder.yml has no publish entry";
   if (
@@ -207,7 +208,10 @@ export function buildSigned(platform: string, env: Record<string, string | undef
   if (platform === "darwin") return filled(env.CSC_LINK);
   if (platform === "win32")
     return (
-      filled(env.WIN_CSC_LINK) || filled(env.CSC_LINK) || env.SUBKIT_DESKTOP_WIN_SIGNING === "cloud"
+      filled(env.WIN_CSC_LINK) ||
+      filled(env.CSC_LINK) ||
+      env.SUBKIT_DESKTOP_WIN_SIGNING === "cloud" ||
+      env.SUBKIT_DESKTOP_WIN_SIGNING === "checksums"
     );
   return false;
 }
