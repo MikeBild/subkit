@@ -33,6 +33,7 @@ type AddressedStep = {
   connector_id?: string | undefined;
   path?: string | undefined;
   url?: string | undefined;
+  pagination?: unknown;
 };
 
 const UNSAFE_PATH = /[?#%\\]|\$\{/;
@@ -190,7 +191,8 @@ export function ownedDeleteCollection(
     created.length !== 1 ||
     !step?.connector_id ||
     step.path === undefined ||
-    step.url !== undefined
+    step.url !== undefined ||
+    step.pagination !== undefined
   )
     return null;
   const parts = step.path.split("/").filter((part) => part !== "");

@@ -211,6 +211,25 @@ describe("governed DELETE of ids the workflow created", () => {
     expect((await ledger(elsewhere)).map((row) => row.state)).toEqual(["owned"]);
   });
 
+  test("a paged removal sends nothing and keeps the id", async () => {
+    const paged = await workflow("owned-paged", [
+      make(),
+      {
+        ...drop("drop", "scope.make.data.id"),
+        pagination: {
+          strategy: "cursor",
+          cursor_request_param: "start_cursor",
+          cursor_response_path: "$.next_cursor",
+          max_pages: 3,
+        },
+      },
+    ]);
+    const result = await run(paged);
+    expect(result.failure("drop")).toBe("created_by_workflow_misplaced");
+    expect(deletes(`job-${created}`)).toHaveLength(0);
+    expect((await ledger(paged)).map((row) => row.state)).toEqual(["owned"]);
+  });
+
   test("a PUT on an existing id cannot claim it", async () => {
     await expect(
       workflow("owned-claim", [

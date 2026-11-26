@@ -115,6 +115,32 @@ describe("claiming a removal", () => {
     );
   });
 
+  test("a paged removal is refused before anything is claimed or sent", async () => {
+    const step = RequestStepSchema.parse({
+      id: "drop",
+      kind: "request",
+      method: "DELETE",
+      connector_id: CONNECTOR,
+      path: "/jobs/${scope.make.data.id}",
+      pagination: {
+        strategy: "cursor",
+        cursor_request_param: "start_cursor",
+        cursor_response_path: "$.next_cursor",
+        max_pages: 3,
+      },
+      boundary: {
+        variables: { "scope.make.data.id": { created_by_workflow: true } },
+        max_body_bytes: 0,
+        max_calls: 1,
+        destructive: true,
+      },
+    });
+    const claimed = await claimDeclaredOwnedDelete(dispatch(step), null, "https://a.test/jobs/x");
+    expect(claimed && "result" in claimed ? claimed.result.error?.code : null).toBe(
+      "created_by_workflow_misplaced",
+    );
+  });
+
   test("an outcome that cannot be settled keeps the id reserved without throwing", async () => {
     const claim = {
       correlation: {

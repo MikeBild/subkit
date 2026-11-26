@@ -220,6 +220,19 @@ describe("rule placement", () => {
     ["a query in the path", "DELETE", at(`/jobs?x=1/\${${id}}`), null],
     ["part of a segment", "DELETE", at(`/jobs/job-\${${id}}`), null],
     ["the runtime destination", "DELETE", undefined, null],
+    [
+      "a paged removal",
+      "DELETE",
+      at(`/jobs/\${${id}}`, {
+        pagination: {
+          strategy: "cursor",
+          cursor_request_param: "start_cursor",
+          cursor_response_path: "$.next_cursor",
+          max_pages: 3,
+        },
+      }),
+      null,
+    ],
   ])("%s", (_name, method, step, collection) => {
     const allowed = method === "DELETE" ? ownedDeleteCollection({ variables }, step) : null;
     expect(allowed).toBe(collection);

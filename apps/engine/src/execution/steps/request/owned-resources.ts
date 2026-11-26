@@ -60,6 +60,12 @@ export async function claimDeclaredOwnedDelete(
 ): Promise<{ result: StepResult } | { claim: OwnedDeleteClaim } | null> {
   const { p } = d;
   if (!p.step.boundary || createdByWorkflowVariables(p.step.boundary).length === 0) return null;
+  if (p.step.pagination)
+    return denied(
+      d,
+      "created_by_workflow_misplaced",
+      "a removal of ids this workflow created is exactly one claimed request and never pages",
+    );
   const collection = ownedDeleteCollection(p.step.boundary, p.step);
   if (!declared || !p.step.connector_id || collection === null)
     return denied(

@@ -76,6 +76,17 @@ test.each([
   ],
   ["a segment that is not the last", { path: "/jobs/${scope.make.data.id}/runs" }],
   [
+    "a paged removal",
+    {
+      pagination: {
+        strategy: "cursor",
+        cursor_request_param: "start_cursor",
+        cursor_response_path: "$.next_cursor",
+        max_pages: 3,
+      },
+    },
+  ],
+  [
     "a collection that varies",
     {
       path: "/${input.team}/jobs/${scope.make.data.id}",
