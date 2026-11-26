@@ -16,6 +16,7 @@ export const TOP_LEVEL_FILES = [
   ".commitlintrc.json",
   ".dockerignore",
   ".env.example",
+  ".gitattributes",
   ".gitignore",
   ".gitleaks.toml",
   ".semgrep-excluded-rules",
