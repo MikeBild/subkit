@@ -17,7 +17,7 @@ import {
   type RowSecurityDb,
   sealedItem,
 } from "./row-security-setup.ts";
-import { TEST_DB_HOOK_TIMEOUT } from "./setup.ts";
+import { owningPidFromTestDbName, TEST_DB_HOOK_TIMEOUT } from "./setup.ts";
 
 const pgDump = Bun.which("pg_dump");
 const pgRestore = Bun.which("pg_restore");
@@ -58,7 +58,7 @@ describe.skipIf(!pgDump || !pgRestore)("backup and restore under forced row secu
         .values([sealedItem(tenantA, "a-token"), sealedItem(tenantB, "b-token")]),
     );
     workdir = mkdtempSync(join(tmpdir(), "row-security-dump-"));
-    restoredDb = `${rls.ctx.dbName}_restored`;
+    restoredDb = rls.ctx.dbName.replace(/^test_/, "test_restored_");
     restoredRole = loginRoleName("rls_restore", rls.ctx.dbName);
     await createPlainLogin(rls.ctx.pool, restoredRole);
     await rls.ctx.pool.query(`CREATE DATABASE "${restoredDb}" OWNER "${restoredRole}"`);
@@ -78,6 +78,7 @@ describe.skipIf(!pgDump || !pgRestore)("backup and restore under forced row secu
   }, TEST_DB_HOOK_TIMEOUT);
 
   test("the owner dumps with row security enabled and restores into a database without the tenant role", async () => {
+    expect(owningPidFromTestDbName(restoredDb)).toBe(process.pid);
     const dump = join(workdir, "subkit.dump");
     await run(pgDump as string, [
       "--enable-row-security",
