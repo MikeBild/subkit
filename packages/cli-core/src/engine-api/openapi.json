@@ -9061,6 +9061,26 @@
                   ],
                   "additionalProperties": false
                 },
+                "records_created": {
+                  "type": "object",
+                  "properties": {
+                    "id_path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "collection_path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2048
+                    }
+                  },
+                  "required": [
+                    "id_path",
+                    "collection_path"
+                  ],
+                  "additionalProperties": false
+                },
                 "content_publication": {
                   "anyOf": [
                     {
@@ -9466,6 +9486,22 @@
                               "caller_bound"
                             ],
                             "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "created_by_workflow": {
+                                "type": "boolean",
+                                "enum": [
+                                  true
+                                ]
+                              }
+                            },
+                            "required": [
+                              "created_by_workflow"
+                            ],
+                            "additionalProperties": false,
+                            "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                           }
                         ]
                       }
@@ -12504,6 +12540,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -12943,6 +12995,22 @@
             },
             "minItems": 1
           },
+          "records_created": {
+            "type": "object",
+            "properties": {
+              "id_path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$"
+              }
+            },
+            "required": [
+              "id_path"
+            ],
+            "additionalProperties": false,
+            "description": "Records the one id this request created (a plain dot path into the step output, such as `data.id`, that names a single string or number) in the workflow's ownership ledger, bound to this step's collection path. Only on a POST or PUT with `connector_id` to a fixed `path` without placeholders. A later DELETE of `<that path>/${id}` whose last segment has the rule `{created_by_workflow: true}` may remove only ids recorded here."
+          },
           "xml": {
             "type": "object",
             "properties": {
@@ -13133,6 +13201,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -13571,6 +13655,22 @@
               "$ref": "#/components/schemas/MultipartPart"
             },
             "minItems": 1
+          },
+          "records_created": {
+            "type": "object",
+            "properties": {
+              "id_path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$"
+              }
+            },
+            "required": [
+              "id_path"
+            ],
+            "additionalProperties": false,
+            "description": "Records the one id this request created (a plain dot path into the step output, such as `data.id`, that names a single string or number) in the workflow's ownership ledger, bound to this step's collection path. Only on a POST or PUT with `connector_id` to a fixed `path` without placeholders. A later DELETE of `<that path>/${id}` whose last segment has the rule `{created_by_workflow: true}` may remove only ids recorded here."
           },
           "xml": {
             "type": "object",
@@ -14416,6 +14516,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -15115,6 +15231,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -15817,6 +15949,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -16503,6 +16651,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -17194,6 +17358,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -17883,6 +18063,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -18577,6 +18773,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -19197,6 +19409,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -19828,6 +20056,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }
@@ -20586,6 +20830,22 @@
                         "caller_bound"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "created_by_workflow": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "created_by_workflow"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Only on the last segment of a DELETE `path` with `connector_id` and `destructive: true`, after only fixed segments: the value must be an id an earlier step of this workflow recorded with `records_created` at exactly that collection path, on the same connector and environment, and not yet removed."
                     }
                   ]
                 }

@@ -16,6 +16,7 @@ export const ROW_SCOPED_TABLES = [
   "cockpit_push_subscriptions",
   "workflow_run_state",
   "auth_provider_configs",
+  "owned_resources",
 ] as const;
 
 export type RowScopedTable = (typeof ROW_SCOPED_TABLES)[number];

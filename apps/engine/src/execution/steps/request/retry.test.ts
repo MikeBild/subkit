@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { rateLimitDelayMs } from "./rate-limit.ts";
-import { backoffMs, RETRY_BASE_MS, RETRY_CAP_MS } from "./retry.ts";
+import { backoffMs, RETRY_BASE_MS, RETRY_CAP_MS, requestMaxAttempts } from "./retry.ts";
 
 const NOW = 1_000_000;
 
@@ -66,5 +66,25 @@ describe("rate limit secondary backoff schedule", () => {
       deadline_ms: NOW + 60_000,
     });
     expect(verdict).toEqual({ kind: "wait", delay_ms: 800, reason: "backoff" });
+  });
+});
+
+describe("request attempts", () => {
+  const owned = {
+    variables: { "scope.make.data.id": { created_by_workflow: true as const } },
+    max_body_bytes: 0,
+    max_calls: 1,
+    destructive: true as const,
+  };
+  const listed = { ...owned, variables: { "input.id": { enum: ["a"] } } };
+  test.each([
+    ["the default", {}, 5],
+    ["explicit retries", { max_retries: 2 }, 3],
+    ["no retries", { max_retries: 0 }, 1],
+    ["a listed removal with retries", { max_retries: 2, boundary: listed }, 3],
+    ["an owned removal with default retries", { boundary: owned }, 1],
+    ["an owned removal with retries", { max_retries: 5, boundary: owned }, 1],
+  ])("%s allows %s attempt(s)", (_name, step, attempts) => {
+    expect(requestMaxAttempts(step)).toBe(attempts);
   });
 });

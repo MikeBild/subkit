@@ -39,6 +39,9 @@ export const authorityEn = {
   "authority.review.viaCall": "via step {step}",
   "authority.review.placeholder.enum": "{name}: only {values}",
   "authority.review.placeholder.caller": "{name}: always the signed-in person",
+  "authority.review.placeholder.created": "{name}: only an id this workflow created itself, once",
+  "authority.review.recordsCreated":
+    "Records the id it creates (from {id_path}) under {collection}; later removals may only use ids recorded here.",
   "authority.review.unbound": "Any {names}: the approval does not limit which one.",
   "authority.review.paging": "Pages through {params}.",
   "authority.review.runtimeValues":
@@ -221,6 +224,8 @@ export const authorityEn = {
     "{name} may be any long identifier made of letters, digits, “_” and “-” (up to 1,024 characters), such as an attachment ID.",
   "authority.boundary.class.uuid": "{name} may be any UUID.",
   "authority.boundary.callerBound": "{name} is always the signed-in caller's own identity.",
+  "authority.boundary.createdByWorkflow":
+    "{name} may only be an id an earlier step of this workflow created and recorded; each is removed at most once.",
   "authority.boundary.class.integer":
     "{name} may be any whole number without a sign (up to 19 digits).",
   "authority.boundary.class.date": "{name} may be any date written YYYY-MM-DD.",
@@ -385,6 +390,8 @@ export const authorityEn = {
     "This step removes data. A limit only covers that if it says so explicitly.",
   "authority.refusal.delete_requires_enum":
     "A removal must name exactly what it may remove, not a pattern.",
+  "authority.refusal.created_by_workflow_misplaced":
+    "Only a removal through a connector may limit a path segment to ids this workflow created.",
   "authority.refusal.variable_in_base_prefix":
     "A placeholder sits in the fixed part of the address, so the target itself could move.",
   "authority.refusal.enum_value_unroutable":
@@ -484,6 +491,10 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.review.viaCall": "über Schritt {step}",
   "authority.review.placeholder.enum": "{name}: nur {values}",
   "authority.review.placeholder.caller": "{name}: immer die angemeldete Person",
+  "authority.review.placeholder.created":
+    "{name}: nur eine ID, die dieser Workflow selbst angelegt hat, einmal",
+  "authority.review.recordsCreated":
+    "Vermerkt die angelegte ID (aus {id_path}) unter {collection}; spätere Entfernungen dürfen nur hier vermerkte IDs verwenden.",
   "authority.review.unbound": "Beliebige {names}: welche, begrenzt die Freigabe nicht.",
   "authority.review.paging": "Blättert über {params}.",
   "authority.review.runtimeValues":
@@ -670,6 +681,8 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.boundary.class.uuid": "{name} darf jede UUID sein.",
   "authority.boundary.callerBound":
     "{name} ist immer die eigene Identität der angemeldeten Person.",
+  "authority.boundary.createdByWorkflow":
+    "{name} darf nur eine ID sein, die ein früherer Schritt dieses Workflows angelegt und vermerkt hat; jede wird höchstens einmal entfernt.",
   "authority.boundary.class.integer":
     "{name} darf jede ganze Zahl ohne Vorzeichen sein (bis 19 Stellen).",
   "authority.boundary.class.date": "{name} darf jedes Datum in der Form JJJJ-MM-TT sein.",
@@ -837,6 +850,8 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "Dieser Schritt entfernt Daten. Eine Grenze deckt das nur ab, wenn sie es ausdrücklich sagt.",
   "authority.refusal.delete_requires_enum":
     "Eine Entfernung muss genau benennen, was sie entfernen darf — kein Muster.",
+  "authority.refusal.created_by_workflow_misplaced":
+    "Nur eine Entfernung über einen Connector darf ein Pfadsegment auf IDs begrenzen, die dieser Workflow angelegt hat.",
   "authority.refusal.variable_in_base_prefix":
     "Ein Platzhalter steht im festen Teil der Adresse. Damit könnte sich das Ziel selbst verschieben.",
   "authority.refusal.enum_value_unroutable":

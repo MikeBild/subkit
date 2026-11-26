@@ -5,7 +5,10 @@ export interface RequestBoundaryView {
   origin?: string;
   segments?: Array<string | { var: string }>;
   destination?: { var: string; hosts: string[] };
-  variables: Record<string, { enum: string[] } | { class: string } | { caller_bound: true }>;
+  variables: Record<
+    string,
+    { enum: string[] } | { class: string } | { caller_bound: true } | { created_by_workflow: true }
+  >;
   query: { fixed: Record<string, string>; variable: Array<{ key: string; var: string }> };
   connector_query?: { fixed: Record<string, string>; credential: string[] };
   max_body_bytes: number;
@@ -85,6 +88,8 @@ export function presentRequestBoundary(
       }
       if ("caller_bound" in entry)
         return { key: "authority.boundary.callerBound" as const, values: { name } };
+      if ("created_by_workflow" in entry)
+        return { key: "authority.boundary.createdByWorkflow" as const, values: { name } };
       const key = CLASS_KEYS[entry.class];
       if (key) return { key, values: { name } };
       unknownRule = true;

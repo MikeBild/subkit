@@ -42,6 +42,7 @@ import {
 } from "./drivers/context.ts";
 import { DRIVERS } from "./drivers/registry.ts";
 import { RequestError } from "./errors.ts";
+import { recordStepCreatedResources } from "./owned-resources.ts";
 import { resolveRequestQuery } from "./query-params.ts";
 import { rateLimitDeadline } from "./rate-limit.ts";
 import { isDocumentedReadOperation } from "./read-operations.ts";
@@ -85,6 +86,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         message: "Gmail did not confirm a message ID; inspect the receipt before any resend",
       },
     };
+  result = await recordStepCreatedResources(p, result);
   if ((p.step.transactional_delivery || p.step.outbox_delivery) && !p.ctx.hold_writes)
     await settleTransactionalMail(
       p.ctx.db,

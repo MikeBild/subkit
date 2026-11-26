@@ -145,6 +145,8 @@ test("a refused request boundary gets its own reason, not 'add a boundary' again
   expect(guidance("query_placeholder_unsupported")).toContain("one whole placeholder");
   expect(guidance("query_placeholder_unsupported")).not.toContain("Patch ONLY this step");
   expect(guidance("delete_requires_enum")).toContain("may only vary over listed values");
+  expect(guidance("delete_requires_enum")).toContain("{created_by_workflow: true}");
+  expect(guidance("created_by_workflow_misplaced")).toContain("records_created: {id_path}");
   const unroutable = guidance("enum_value_unroutable");
   expect(unroutable).toContain("%2F");
   expect(unroutable).toContain("not as a separator");

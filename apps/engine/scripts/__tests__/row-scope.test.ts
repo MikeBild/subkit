@@ -17,7 +17,7 @@ describe("row scope rule", () => {
     expect(ROW_SCOPED_EXPORTS.get("vaultItems")).toBe("vault_items");
     expect(ROW_SCOPED_EXPORTS.get("cockpitPushSubscriptions")).toBe("cockpit_push_subscriptions");
     expect(ROW_SCOPED_EXPORTS.get("webhookHeldDeliveries")).toBe("webhook_held_deliveries");
-    expect(ROW_SCOPED_EXPORTS.size).toBe(10);
+    expect(ROW_SCOPED_EXPORTS.size).toBe(11);
   });
 
   test("flags a deliberately unscoped query on a row-scoped table", () => {

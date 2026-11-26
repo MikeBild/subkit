@@ -1,6 +1,6 @@
 {
-  "id": "fc3d6072-8508-4771-929b-c596eeb38948",
-  "prevId": "08677e52-e4f3-461d-892f-c207c7135e4d",
+  "id": "6d5946e7-4a2d-4992-98ac-e081e1f51302",
+  "prevId": "fc3d6072-8508-4771-929b-c596eeb38948",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -16154,6 +16154,151 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.owned_resources": {
+      "name": "owned_resources",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment": {
+          "name": "environment",
+          "type": "execution_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collection_path": {
+          "name": "collection_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_key": {
+          "name": "resource_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workflow_version_id": {
+          "name": "workflow_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_execution_id": {
+          "name": "created_execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_step_id": {
+          "name": "created_step_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deleted_execution_id": {
+          "name": "deleted_execution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_step_id": {
+          "name": "deleted_step_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'owned'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "owned_resources_tenant_id_tenants_id_fk": {
+          "name": "owned_resources_tenant_id_tenants_id_fk",
+          "tableFrom": "owned_resources",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "owned_resources_workflow_id_workflows_id_fk": {
+          "name": "owned_resources_workflow_id_workflows_id_fk",
+          "tableFrom": "owned_resources",
+          "tableTo": "workflows",
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "owned_resources_pk": {
+          "name": "owned_resources_pk",
+          "columns": [
+            "tenant_id",
+            "workflow_id",
+            "environment",
+            "connector_id",
+            "collection_path",
+            "resource_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "owned_resources_state_check": {
+          "name": "owned_resources_state_check",
+          "value": "\"owned_resources\".\"state\" IN ('owned', 'deleting', 'deleted', 'delete_unknown')"
+        },
+        "owned_resources_collection_path_check": {
+          "name": "owned_resources_collection_path_check",
+          "value": "char_length(\"owned_resources\".\"collection_path\") BETWEEN 1 AND 2048"
+        },
+        "owned_resources_resource_key_check": {
+          "name": "owned_resources_resource_key_check",
+          "value": "char_length(\"owned_resources\".\"resource_key\") BETWEEN 1 AND 1024"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.package_install_items": {

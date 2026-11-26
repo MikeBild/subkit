@@ -98,11 +98,19 @@ Manches bleibt außerhalb jeder Grenze, weil die Grenze sonst nichts mehr aussag
 
 - Blättern ohne höchste Zahl von Seiten,
 - eine Anfrage, deren Adresse zur Laufzeit frei gewählt wird,
-- ein Löschen ohne Liste dessen, was gelöscht werden darf,
+- ein Löschen ohne Liste dessen, was gelöscht werden darf, außer es entfernt nur, was der Workflow selbst angelegt hat (siehe unten),
 - eine Mail, deren Empfänger aus Daten stammen,
 - Daten, die aus einem früheren Run weitergegeben werden.
 
 Wähle bei solchen Schritten **Im Chat beheben**: SubKit baut genau diese Schritte um, prüft sie ohne Live-Wirkungen und speichert einen Entwurf. Danach gibst du die neue Version frei.
+
+**Entfernen, was der Workflow angelegt hat.** Ein Workflow, der etwas anlegt und später wieder entfernt, kann diese IDs nicht im Voraus auflisten. SubKit führt stattdessen ein Verzeichnis dessen, was jeder Workflow angelegt hat:
+
+- Der anlegende Schritt nennt, wo die eine neue ID in seiner Antwort steht, zum Beispiel `records_created: {"id_path": "id"}`. Er braucht einen Connector und `POST` oder `PUT` an einen festen Pfad ohne Platzhalter, etwa `/jobs`. Ein Schritt, der eine bestehende Ressource anspricht, kann nichts vermerken (`records_created_misplaced`), und eine Antwort mit einer Liste von IDs, etwa ein Suchergebnis, vermerkt nichts. SubKit vermerkt jede ID einmal, je Workflow, Connector, Umgebung und diesem Pfad, auch wenn sich der Run wiederholt. Der Freigabe-Dialog zeigt, welche ID der Schritt wo vermerkt.
+- Der entfernende Schritt spricht `<dieser Pfad>/${…}` an, markiert diesen letzten Wert mit `{"created_by_workflow": true}` und trägt `destructive: true`, `max_retries: 0`, kein `retry_on_status` und keine `pagination`, damit die Entfernung genau einmal gesendet wird. Der Dialog sagt, dass dieser Wert nur eine ID sein darf, die der Workflow selbst angelegt hat. Eine unter `/jobs` angelegte ID lässt sich nur unter `/jobs` entfernen.
+- Bevor die Entfernung gesendet wird, prüft SubKit das Verzeichnis. Eine ID, die der Workflow nicht angelegt hat oder in einer anderen Umgebung angelegt hat, wird mit `delete_target_not_created_by_workflow` abgelehnt, und nichts wird gesendet.
+- Eine ID wird höchstens einmal entfernt. Wiederholt sich die Entfernung, durch einen erneuten Versuch oder einen späteren Run, sendet SubKit nichts, und der Schritt gelingt mit dem gespeicherten Ergebnis, markiert mit `replayed: true` und mit dem Run und Schritt, die die ID entfernt haben. Bleibt der Ausgang einer Entfernung unklar, etwa nach einer Zeitüberschreitung oder einem Serverfehler, lehnt SubKit jede weitere Entfernung dieser ID mit `delete_target_outcome_unknown` ab. Prüfe dann das Zielsystem.
+- Ein Probe-Run hält beide Schritte zurück und vermerkt nichts.
 
 ### Den Workflow starten
 

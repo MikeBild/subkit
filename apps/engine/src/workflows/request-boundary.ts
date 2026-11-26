@@ -11,6 +11,7 @@ import type { MaterializedRequest } from "../execution/prepared-request.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { onlyVaultHandles } from "./core/vault-uses.ts";
 import type { McpBoundaryRefusal } from "./mcp-boundary.ts";
+import { createdByWorkflowMisplaced } from "./owned-resources.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import {
   boundedRequestHeaders,
@@ -29,9 +30,9 @@ import {
   CLASS_SAMPLE,
   expression,
   isCallerExpression,
+  pathRule,
   pathValueAllowed,
-  type RequestVariableRule,
-  rule,
+  type RequestPathRule,
   ruleLabel,
   VALUE_CLASSES,
   type ValueClass,
@@ -56,14 +57,14 @@ export {
   variablesError,
 } from "./request-value-rules.ts";
 
-export function callerRulesConsistent(variables: Record<string, RequestVariableRule>): boolean {
+export function callerRulesConsistent(variables: Record<string, RequestPathRule>): boolean {
   return Object.entries(variables).every(
     ([name, entry]) => isCallerExpression(name) === "caller_bound" in entry,
   );
 }
 
-function fixedForDelete(entry: RequestVariableRule): boolean {
-  return "enum" in entry || "caller_bound" in entry;
+function fixedForDelete(entry: RequestPathRule): boolean {
+  return "enum" in entry || "caller_bound" in entry || "created_by_workflow" in entry;
 }
 
 const allowedHostList = z
@@ -77,7 +78,7 @@ const allowedHostsPlaceholder = z.string().regex(/^\$\{input\.[A-Za-z_][A-Za-z0-
 
 export const RequestBoundaryScopeSchema = z
   .object({
-    variables: z.record(expression, rule, { error: variablesError }),
+    variables: z.record(expression, pathRule, { error: variablesError }),
     headers: RequestHeaderBoundsSchema.optional(),
     allowed_hosts: z
       .union([allowedHostList, allowedHostsPlaceholder])
@@ -174,7 +175,7 @@ export const RequestBoundarySchema = z
       .min(2)
       .max(50)
       .optional(),
-    variables: z.record(expression, rule, { error: variablesError }),
+    variables: z.record(expression, pathRule, { error: variablesError }),
     query: z
       .object({
         fixed: z.record(z.string(), z.string()),
@@ -250,6 +251,7 @@ export type RequestBoundaryRefusal =
   | "delete_requires_destructive"
   | "delete_requires_enum"
   | "caller_bound_mismatch"
+  | "created_by_workflow_misplaced"
   | "target_unresolved"
   | "variable_in_base_prefix"
   | "enum_value_unroutable"
@@ -378,6 +380,8 @@ function compileDestinationBoundary(
   if (method === "DELETE")
     return refuse(scope.data.destructive ? "delete_requires_enum" : "delete_requires_destructive");
   if (!callerRulesConsistent(scope.data.variables)) return refuse("caller_bound_mismatch");
+  if (createdByWorkflowMisplaced(scope.data, method, undefined))
+    return refuse("created_by_workflow_misplaced");
   const candidate = RequestBoundarySchema.safeParse({
     base_url: null,
     method,
@@ -466,6 +470,8 @@ export function compileRequestBoundary(
   if (!callerRulesConsistent(scope.data.variables)) return refuse("caller_bound_mismatch");
   if (method === "DELETE" && !Object.values(scope.data.variables).every(fixedForDelete))
     return refuse("delete_requires_enum");
+  if (createdByWorkflowMisplaced(scope.data, method, step))
+    return refuse("created_by_workflow_misplaced");
 
   {
     const lastSegment = split.segments[split.segments.length - 1];
@@ -566,6 +572,7 @@ export function compileRequestBoundary(
     const entry = scope.data.variables[name];
     if (!entry) return [""];
     if ("enum" in entry) return entry.enum;
+    if ("created_by_workflow" in entry) return [CLASS_SAMPLE.identifier];
     return "caller_bound" in entry ? [CLASS_SAMPLE.uuid] : [CLASS_SAMPLE[entry.class]];
   };
   for (const name of declared) {
@@ -609,13 +616,13 @@ export function requestBoundaryTarget(boundary: RequestBoundary): string {
 }
 
 export function variableValueAllowed(
-  variableRule: RequestVariableRule | undefined,
+  variableRule: RequestPathRule | undefined,
   value: string,
 ): boolean {
   return valueAllowed(variableRule, value);
 }
 
-function isPathRule(variableRule: RequestVariableRule | undefined): boolean {
+function isPathRule(variableRule: RequestPathRule | undefined): boolean {
   return variableRule !== undefined && "class" in variableRule && variableRule.class === "path";
 }
 

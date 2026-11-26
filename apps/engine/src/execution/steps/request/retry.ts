@@ -5,8 +5,13 @@ export const RETRY_BASE_MS = 200;
 export const RETRY_CAP_MS = 30_000;
 export const REQUEST_MAX_RETRIES_DEFAULT = 4;
 
-export function requestMaxAttempts(step: Pick<RequestStep, "max_retries">): number {
-  return (step.max_retries ?? REQUEST_MAX_RETRIES_DEFAULT) + 1;
+export function requestMaxAttempts(
+  step: Pick<RequestStep, "max_retries"> & Partial<Pick<RequestStep, "boundary">>,
+): number {
+  const removesOwnedResource = Object.values(step.boundary?.variables ?? {}).some(
+    (rule) => "created_by_workflow" in rule,
+  );
+  return removesOwnedResource ? 1 : (step.max_retries ?? REQUEST_MAX_RETRIES_DEFAULT) + 1;
 }
 
 export function backoffMs(

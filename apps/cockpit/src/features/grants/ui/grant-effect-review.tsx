@@ -77,6 +77,7 @@ function RowDetails({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompare
         {t("authority.review.details")}
       </summary>
       <div className="flex flex-col gap-1 pb-2 pl-5 text-xs">
+        {row.recordsCreated && <p>{t("authority.review.recordsCreated", row.recordsCreated)}</p>}
         {request && effect.boundary ? (
           <>
             <p className="break-all font-mono">{`${effect.boundary.method} ${request.target}`}</p>
@@ -91,7 +92,9 @@ function RowDetails({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompare
                         })
                       : entry.kind === "caller"
                         ? t("authority.review.placeholder.caller", { name: entry.name })
-                        : classSentence(entry.name, entry.rule)}
+                        : entry.kind === "created"
+                          ? t("authority.review.placeholder.created", { name: entry.name })
+                          : classSentence(entry.name, entry.rule)}
                   </li>
                 ))}
               </ul>

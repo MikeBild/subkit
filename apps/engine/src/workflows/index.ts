@@ -76,6 +76,7 @@ export {
   findLiveWorkflowByRef,
   findWorkflowLabel,
 } from "./lookup.ts";
+export * from "./owned-resources.ts";
 export { prepareReportAuthority } from "./prepare-report-authority.ts";
 export { prepareWorkflowSave } from "./prepare-save.ts";
 export * from "./prior-workflows.ts";
@@ -90,6 +91,7 @@ export {
   ReportDeliveryRefusalSchema,
 } from "./report-delivery-boundary.ts";
 export { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
+export type { RequestBoundary } from "./request-boundary.ts";
 export * from "./review-receipt.ts";
 export { normalizeWorkflowRunInput } from "./run-input.ts";
 export * from "./service.ts";

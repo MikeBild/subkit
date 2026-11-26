@@ -6,6 +6,7 @@ import { WORKFLOW_MAX_STEPS } from "./core/definition.ts";
 import type { JsonValue } from "./domain-types.ts";
 import { McpBoundaryScopeSchema } from "./mcp-boundary.ts";
 import { OutboxDeliveryBoundarySchema } from "./outbox-delivery-boundary.ts";
+import { checkRecordsCreated, RecordsCreatedSchema } from "./owned-resources.ts";
 import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 import { RequestBoundaryScopeSchema } from "./request-boundary.ts";
 import { StorageScopeSchema } from "./storage-boundary.ts";
@@ -586,6 +587,7 @@ export const HttpRequestStepSchema = z
     ...baseStep,
     method: z.enum(HTTP_METHODS).optional().default("GET"),
     ...requestStepBase,
+    records_created: RecordsCreatedSchema.optional(),
     xml: XmlBodySchema.optional(),
     form: FormBodySchema.optional(),
     graphql: foreignBlock("graphql"),
@@ -598,6 +600,7 @@ export const HttpRequestStepSchema = z
     checkAddressed(s, ctx);
     checkReadOverride(s, ctx);
     checkFormBody(s, ctx);
+    checkRecordsCreated(s, ctx);
     rejectRowCount(s, ctx, "expected_row_count is postgres-only; HTTP steps use expected_statuses");
   })
   .openapi("HttpRequestStep");

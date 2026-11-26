@@ -44,6 +44,11 @@ import { buildStepErrorDetail } from "../../error-detail.ts";
 import { requestFailureEvidence } from "../circuit-evidence.ts";
 import { RequestError } from "../errors.ts";
 import type { DoOnePageParams } from "../http-attempt.ts";
+import {
+  claimDeclaredOwnedDelete,
+  type OwnedDeleteClaim,
+  settleClaimedOwnedDelete,
+} from "../owned-resources.ts";
 import { isDocumentedReadOperation } from "../read-operations.ts";
 import { isIdempotent, resolveRetryPolicy } from "../retry.ts";
 import { checkRequired } from "../shape.ts";
@@ -79,7 +84,9 @@ function sameOrigin(url: URL, baseUrl: string | null): boolean {
   }
 }
 
-type Prepared = { result: StepResult } | { exchange: HttpExchange };
+type Prepared =
+  | { result: StepResult }
+  | { exchange: HttpExchange; owned_delete?: OwnedDeleteClaim };
 
 interface HttpTarget {
   base_url: URL;
@@ -537,6 +544,8 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
       }),
     };
   }
+  const ownedDelete = await claimDeclaredOwnedDelete(d, declared, heldRequestUrl);
+  if (ownedDelete && "result" in ownedDelete) return ownedDelete;
 
   const exchange: HttpExchange = {
     d,
@@ -565,7 +574,7 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
     before_dispatch: async () => undefined,
   };
   exchange.before_dispatch = httpBeforeDispatch(exchange);
-  return { exchange };
+  return ownedDelete ? { exchange, owned_delete: ownedDelete.claim } : { exchange };
 }
 
 function requestDigest(
@@ -674,11 +683,12 @@ async function runHttp(d: RequestDispatch, paged: boolean): Promise<StepResult> 
   const prepared = await prepareHttp(d);
   if ("result" in prepared) return prepared.result;
   const x = prepared.exchange;
-  try {
-    return paged ? await runHttpPages(x) : await runHttpSinglePage(x);
-  } catch (err) {
-    return httpFailure(x, err);
-  }
+  const result = await (paged ? runHttpPages(x) : runHttpSinglePage(x)).catch((err: unknown) =>
+    httpFailure(x, err),
+  );
+  if (prepared.owned_delete)
+    await settleClaimedOwnedDelete(prepared.owned_delete, d.p.ctx.db, result);
+  return result;
 }
 
 export const httpRequestDriver: RequestStepDriver & { readonly kind: "http" } = {

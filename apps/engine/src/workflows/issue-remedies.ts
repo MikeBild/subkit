@@ -114,8 +114,16 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "This step already has `boundary`, but a DELETE may only vary over listed values or the " +
     "authenticated caller: replace each `{class: …}` with `{enum: [every value that may be " +
     "removed]}`, or address the caller's own record with `${caller.subject}` or " +
-    "`${caller.principalId}` and the rule `{caller_bound: true}`. A removal of anything that " +
-    "merely looks like an id is not something a human can approve.",
+    "`${caller.principalId}` and the rule `{caller_bound: true}`, or remove an id an earlier step " +
+    "of this workflow created: record it with `records_created: {id_path}` on that step and give " +
+    "the DELETE placeholder `{created_by_workflow: true}`. A removal of anything that merely looks " +
+    "like an id is not something a human can approve.",
+  created_by_workflow_misplaced:
+    "`{created_by_workflow: true}` belongs only on the LAST segment of a DELETE `path` whose other " +
+    "segments are fixed, on a step with `connector_id`, `destructive: true`, `max_retries: 0` and no `retry_on_status` or `pagination`, once per " +
+    "step. The id must come from a POST or PUT of this workflow to exactly that fixed collection " +
+    "path on the same connector that records it with `records_created: {id_path}`; use " +
+    "`{enum: [...]}` for any other value.",
   caller_bound_mismatch:
     "This step already has `boundary`, but its caller rules disagree: `caller.subject` and " +
     "`caller.principalId` take exactly `{caller_bound: true}`, and no other variable may use it.",
