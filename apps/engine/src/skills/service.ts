@@ -17,6 +17,7 @@ import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
 import { ConflictError } from "../http/errors.ts";
 import { log } from "../logging/index.ts";
 import { isUuid } from "../utils/index.ts";
+import { skillExamplesFromBlob } from "./examples-blob.ts";
 import {
   type CreateSkillInput,
   type Skill,
@@ -46,18 +47,8 @@ function resolveSkillActor(
   return { actor_type: "system", actor_id: null };
 }
 
-function blobToFields(blob: unknown): Required<SkillExamplesBlob> {
-  const b = (blob ?? {}) as SkillExamplesBlob;
-  return {
-    examples: Array.isArray(b.examples) ? b.examples : [],
-    best_practices: Array.isArray(b.best_practices) ? b.best_practices : [],
-    pitfalls: Array.isArray(b.pitfalls) ? b.pitfalls : [],
-    doc_refs: Array.isArray(b.doc_refs) ? b.doc_refs : [],
-  };
-}
-
 function rowToSkill(row: SkillRow): Skill {
-  const fields = blobToFields(row.examples);
+  const fields = skillExamplesFromBlob(row.examples);
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -336,7 +327,7 @@ export async function updateSkill(
         current_version: prior.version,
       });
     }
-    const priorBlob = blobToFields(prior.examples);
+    const priorBlob = skillExamplesFromBlob(prior.examples);
     const nextBlob: SkillExamplesBlob = {
       examples: patch.examples ?? priorBlob.examples,
       best_practices: patch.best_practices ?? priorBlob.best_practices,

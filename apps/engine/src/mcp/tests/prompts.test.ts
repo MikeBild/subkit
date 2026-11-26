@@ -1,11 +1,21 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PromptListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { globalEmitter } from "../../pubsub/emitter.ts";
+import { createSkill } from "../../skills/service.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 const TEST_NOW_MS = getTestNow();
+
+const skillBlob = (examples: string[]) => ({
+  examples,
+  best_practices: [],
+  pitfalls: [],
+  doc_refs: [],
+});
+
+const textOf = (message: { content: unknown }) => (message.content as { text: string }).text;
 
 beforeAll(async () => {
   suite = await startMcpTestSuite("prompts");
@@ -20,7 +30,7 @@ describe("mcp prompts", () => {
     const { id } = await suite.seedSkill({
       title: "Bake bread",
       body: "Mix flour, water, salt; bake at 230C for 30 min.",
-      examples: ["sourdough", "focaccia"],
+      examples: skillBlob(["sourdough", "focaccia"]),
     });
     const client = await suite.connect();
     const list = await client.listPrompts();
@@ -38,11 +48,45 @@ describe("mcp prompts", () => {
     expect(firstContent.text).toContain("Mix flour");
   });
 
+  test("get returns the examples of a skill created through the skill service in order", async () => {
+    const skill = await createSkill(
+      {
+        tenant_id: suite.http.tenantId,
+        input: {
+          scope: "global",
+          title: "Service created prompt",
+          body: "Answer for Montréal.",
+          examples: ["Crème brûlée in Montréal ✓", "東京の天気は晴れ"],
+        },
+      },
+      suite.http.db,
+    );
+    const client = await suite.connect();
+    const got = await client.getPrompt({ name: `skill_${skill.id}` });
+    expect(got.messages.map((message) => message.role)).toEqual(["user", "assistant", "assistant"]);
+    expect(got.messages.map(textOf)).toEqual([
+      "Answer for Montréal.",
+      "Crème brûlée in Montréal ✓",
+      "東京の天気は晴れ",
+    ]);
+  });
+
+  test("get still reads examples stored as a legacy raw array", async () => {
+    const { id } = await suite.seedSkill({
+      title: "Legacy examples",
+      body: "Legacy body",
+      examples: ["legacy one", "legacy two"],
+    });
+    const client = await suite.connect();
+    const got = await client.getPrompt({ name: `skill_${id}` });
+    expect(got.messages.map(textOf)).toEqual(["Legacy body", "legacy one", "legacy two"]);
+  });
+
   test("list exposes arguments and get applies them", async () => {
     const { id } = await suite.seedSkill({
       title: "Bake {{style}} bread",
       body: "Bake {{count}} {{style}} loaves.",
-      examples: ["Serve {{style}} warm."],
+      examples: skillBlob(["Serve {{style}} warm."]),
       arguments: [
         { name: "style", description: "Bread style", required: true },
         { name: "count", description: "Loaf count" },
@@ -88,7 +132,7 @@ describe("mcp prompts", () => {
       await suite.seedSkill({
         title: `Paged prompt ${i}`,
         body: `Body ${i}`,
-        examples: [],
+        examples: skillBlob([]),
       });
     }
     const client = await suite.connect();
@@ -130,7 +174,7 @@ describe("mcp prompts", () => {
     const { id } = await suite.seedSkill({
       title: "Fresh prompt",
       body: "Fresh body",
-      examples: [],
+      examples: skillBlob([]),
     });
 
     let dispatchAttempt = 0;
