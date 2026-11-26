@@ -1,7 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useSession } from "@/app/session";
 import {
@@ -30,6 +28,8 @@ import {
   useGroups,
   usePeople,
 } from "./data";
+import { useCreateWorkflowGrant, useRevokeGrant } from "./hooks/use-access-mutations";
+import { useConnectorRecords, useWorkflowRecords } from "./hooks/use-admin-records";
 import {
   type GrantResourceType,
   grantStatus,
@@ -46,16 +46,8 @@ function useGrantNames(enabled = true) {
   const can = (permission: string) => enabled && session.permissions.includes(permission);
   const people = usePeople(can("identity:read"));
   const groups = useGroups(enabled);
-  const workflows = useQuery({
-    queryKey: ["admin", "workflows"],
-    enabled: can("workflow:read"),
-    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 200 } }),
-  });
-  const connectors = useQuery({
-    queryKey: ["admin", "connectors"],
-    enabled: can("connector:read"),
-    queryFn: () => apiCall("get", "/v1/connectors", { query: { limit: 200 } }),
-  });
+  const workflows = useWorkflowRecords(can("workflow:read"));
+  const connectors = useConnectorRecords(can("connector:read"));
   const records = (type: GrantResourceType): readonly RecordItem[] =>
     (type === "workflow" ? workflows.data?.items : connectors.data?.items) ?? [];
   const recordName = (item: RecordItem) => item.display_name || item.name || item.slug || null;
@@ -96,17 +88,14 @@ function grantTitle(names: ReturnType<typeof useGrantNames>, grant: GrantItem): 
 function GrantSheet({ grant, onClose }: { grant: GrantItem | null; onClose(): void }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
-  const client = useQueryClient();
   const names = useGrantNames();
   const [confirming, setConfirming] = useState(false);
-  const revoke = useMutation({
-    mutationFn: (id: string) => apiCall("delete", "/v1/rbac/grants/{id}", { path: { id } }),
-    onSuccess: async () => {
+  const revoke = useRevokeGrant({
+    onSuccess: () => {
       setConfirming(false);
       onClose();
-      await client.invalidateQueries({ queryKey: ["admin", "grants"] });
-      toast.success(t("access.grantRevoked"));
     },
+    onRefreshed: () => toast.success(t("access.grantRevoked")),
     onError: (error) =>
       reportFailure(
         t("access.revokeFailed", {
@@ -298,26 +287,18 @@ export function GrantAccessDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { t } = useI18n();
-  const client = useQueryClient();
   const names = useGrantNames(open);
   const [subject, setSubject] = useState("");
   const [workflowId, setWorkflowId] = useState("");
   const [permission, setPermission] = useState<string>(GRANT_RIGHTS[0]);
   const grantSubject = grantSubjectOf(subject);
-  const create = useMutation({
-    mutationFn: () => {
-      if (!grantSubject) throw new Error("grant subject missing");
-      return apiCall("post", "/v1/rbac/grants", {
-        body: { ...grantSubject, resource_type: "workflow", resource_id: workflowId, permission },
-      });
-    },
-    onSuccess: async () => {
+  const create = useCreateWorkflowGrant({
+    onSuccess: () => {
       onOpenChange(false);
       setSubject("");
       setWorkflowId("");
-      await client.invalidateQueries({ queryKey: ["admin", "grants"] });
-      toast.success(t("access.grantCreated"));
     },
+    onRefreshed: () => toast.success(t("access.grantCreated")),
     onError: (error) => refusalToast(error, t),
   });
   return (
@@ -330,7 +311,7 @@ export function GrantAccessDialog({
         pending: create.isPending,
         disabled: !grantSubject || !workflowId,
       }}
-      onSubmit={() => create.mutate()}
+      onSubmit={() => create.mutate({ subject: grantSubject, workflowId, permission })}
       testId="grant-create-dialog"
     >
       <ChoiceField

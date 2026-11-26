@@ -1,7 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import {
   ActionMenu,
@@ -14,6 +12,7 @@ import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { type GroupItem, refusalToast, useGroups, usePeople, useRoles } from "./data";
+import { useAddGroupMember, useAssignGroupRole } from "./hooks/use-access-mutations";
 import { assignableRoles, roleName } from "./model/admin-model";
 import { personEmailText } from "./model/apps-model";
 import { AdminTable, ChoiceField, SectionList } from "./parts";
@@ -21,7 +20,6 @@ import { AdminTable, ChoiceField, SectionList } from "./parts";
 function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): void }) {
   const { t } = useI18n();
   const session = useSession();
-  const client = useQueryClient();
   const canWrite = session.permissions.includes("rbac:write");
   const people = usePeople(
     group !== null && canWrite && session.permissions.includes("identity:read"),
@@ -35,28 +33,14 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
     setUserId("");
     setRoleId("");
   };
-  const addMember = useMutation({
-    mutationFn: () =>
-      apiCall("post", "/v1/rbac/groups/{id}/members/{user_id}", {
-        path: { id: group?.id ?? "", user_id: userId },
-      }),
-    onSuccess: async () => {
-      closeDialog();
-      await client.invalidateQueries({ queryKey: ["admin"] });
-      toast.success(t("access.memberAdded"));
-    },
+  const addMember = useAddGroupMember(group?.id, {
+    onSuccess: closeDialog,
+    onRefreshed: () => toast.success(t("access.memberAdded")),
     onError: (error) => refusalToast(error, t),
   });
-  const assignRole = useMutation({
-    mutationFn: () =>
-      apiCall("post", "/v1/rbac/groups/{id}/roles/{role_id}", {
-        path: { id: group?.id ?? "", role_id: roleId },
-      }),
-    onSuccess: async () => {
-      closeDialog();
-      await client.invalidateQueries({ queryKey: ["admin"] });
-      toast.success(t("access.groupRoleAssigned"));
-    },
+  const assignRole = useAssignGroupRole(group?.id, {
+    onSuccess: closeDialog,
+    onRefreshed: () => toast.success(t("access.groupRoleAssigned")),
     onError: (error) => refusalToast(error, t),
   });
   return (
@@ -107,7 +91,7 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
         onOpenChange={(open) => !open && closeDialog()}
         title={t("access.addMember")}
         submit={{ label: t("access.addMember"), pending: addMember.isPending, disabled: !userId }}
-        onSubmit={() => addMember.mutate()}
+        onSubmit={() => addMember.mutate(userId)}
         testId="group-member-dialog"
       >
         <ChoiceField
@@ -133,7 +117,7 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
           pending: assignRole.isPending,
           disabled: !roleId,
         }}
-        onSubmit={() => assignRole.mutate()}
+        onSubmit={() => assignRole.mutate(roleId)}
         testId="group-role-dialog"
       >
         <ChoiceField

@@ -1,7 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import {
   Button,
@@ -20,6 +18,7 @@ import {
   useAppSettingsSave,
   useSettingsSnapshot,
 } from "./apps-data";
+import { useWorkflowRecords } from "./hooks/use-admin-records";
 import {
   type AppView,
   definitionGuardBucket,
@@ -46,11 +45,7 @@ export function AppSettingsDialog({
   const { t } = useI18n();
   const session = useSession();
   const settings = useSettingsSnapshot(open);
-  const workflows = useQuery({
-    queryKey: ["admin", "workflows"],
-    enabled: open && session.permissions.includes("workflow:read"),
-    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 200 } }),
-  });
+  const workflows = useWorkflowRecords(open && session.permissions.includes("workflow:read"));
   const save = useAppSettingsSave();
   const entry = productsFrom(settingValue(settings.data, PRODUCTS_PATH))[app.id] ?? null;
   const [draft, setDraft] = useState<ProductDraft>(() => productDraft(entry, app));

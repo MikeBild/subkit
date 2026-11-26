@@ -1,12 +1,13 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
-import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { isAppUserEmail } from "@/features/admin/model/app-user";
 import { reportFailure } from "@/lib/action-failure";
 import type { Translate, TranslationKey } from "@/lib/i18n";
 import { useInfiniteList } from "@/lib/use-infinite-list";
+import { adminKeys } from "./api/keys";
+import { grantsQuery, groupsQuery, peopleQuery, roleDetailQuery, rolesQuery } from "./api/queries";
 import { personRefusal } from "./model/admin-model";
 import { personEmailText } from "./model/apps-model";
 
@@ -29,23 +30,15 @@ export interface RecordItem {
   current_version?: number | null;
 }
 
-const fetchPeople = () => apiCall("get", "/v1/identity/users", { query: { limit: 200 } });
-
-const fetchRoles = () => apiCall("get", "/v1/rbac/roles", {});
-
-const fetchGroups = () => apiCall("get", "/v1/rbac/groups", {});
-
-const fetchGrants = () => apiCall("get", "/v1/rbac/grants", {});
-
 export function usePeople(enabled = true) {
   const live = useLiveQueryOptions();
-  return useQuery({ queryKey: ["admin", "people"], queryFn: fetchPeople, enabled, ...live });
+  return useQuery({ ...peopleQuery(), enabled, ...live });
 }
 
 export function usePeopleList(enabled = true, app: string | null = null) {
   const list = useInfiniteList<UserItem>("/v1/identity/users", app ? { product_id: app } : {}, {
     enabled,
-    queryKey: ["admin", "people", "list", app ?? "all"],
+    queryKey: adminKeys.peopleList(app),
   });
   const { query } = list;
   return {
@@ -62,25 +55,21 @@ export function usePeopleList(enabled = true, app: string | null = null) {
 
 export function useRoles(enabled = true) {
   const live = useLiveQueryOptions();
-  return useQuery({ queryKey: ["admin", "roles"], queryFn: fetchRoles, enabled, ...live });
+  return useQuery({ ...rolesQuery(), enabled, ...live });
 }
 
 export function useGroups(enabled = true) {
   const live = useLiveQueryOptions();
-  return useQuery({ queryKey: ["admin", "groups"], queryFn: fetchGroups, enabled, ...live });
+  return useQuery({ ...groupsQuery(), enabled, ...live });
 }
 
 export function useGrants(enabled = true) {
   const live = useLiveQueryOptions();
-  return useQuery({ queryKey: ["admin", "grants"], queryFn: fetchGrants, enabled, ...live });
+  return useQuery({ ...grantsQuery(), enabled, ...live });
 }
 
 export function useRoleDetail(role: RoleItem | null) {
-  return useQuery({
-    queryKey: ["admin", "role", role?.id],
-    queryFn: () => apiCall("get", "/v1/rbac/roles/{id}", { path: { id: role?.id ?? "" } }),
-    enabled: Boolean(role),
-  });
+  return useQuery(roleDetailQuery(role?.id));
 }
 
 export function withCurrentRole(names: readonly string[], current: string | null): string[] {

@@ -1,7 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import {
   Checkbox,
@@ -26,32 +24,19 @@ import {
   useRoleDetail,
   useRoles,
 } from "./data";
+import { useCreateAccessGroup, useRolePermissionToggle } from "./hooks/use-access-mutations";
+import { usePermissionCatalog } from "./hooks/use-admin-records";
 import { permissionLabel, roleName } from "./model/admin-model";
 import { AdminTable, PermissionList, SectionList } from "./parts";
 
 function RoleSheet({ role, onClose }: { role: RoleItem | null; onClose(): void }) {
   const { t } = useI18n();
   const session = useSession();
-  const client = useQueryClient();
   const roles = useRoles();
   const detail = useRoleDetail(role);
   const editable = Boolean(role && !role.is_builtin && session.permissions.includes("rbac:write"));
-  const permissions = useQuery({
-    queryKey: ["admin", "permissions"],
-    queryFn: () => apiCall("get", "/v1/rbac/permissions", {}),
-    enabled: editable,
-  });
-  const change = useMutation({
-    mutationFn: ({ permission, enabled }: { permission: string; enabled: boolean }) =>
-      enabled
-        ? apiCall("post", "/v1/rbac/roles/{id}/permissions", {
-            path: { id: role?.id ?? "" },
-            body: { permission },
-          })
-        : apiCall("delete", "/v1/rbac/roles/{id}/permissions/{permission}", {
-            path: { id: role?.id ?? "", permission },
-          }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["admin", "role", role?.id] }),
+  const permissions = usePermissionCatalog(editable);
+  const change = useRolePermissionToggle(role?.id, {
     onError: (error) => refusalToast(error, t),
   });
   const held = detail.data?.permissions ?? [];
@@ -187,28 +172,16 @@ export function CreateRecordDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { t } = useI18n();
-  const client = useQueryClient();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const create = useMutation({
-    mutationFn: async () => {
-      const body = {
-        name: name.trim(),
-        ...(description.trim() ? { description: description.trim() } : {}),
-      };
-      if (kind === "role") return await apiCall("post", "/v1/rbac/roles", { body });
-      return await apiCall("post", "/v1/rbac/groups", { body });
-    },
-    onSuccess: async () => {
-      const created = kind;
+  const create = useCreateAccessGroup({
+    onSuccess: () => {
       onOpenChange(false);
       setName("");
       setDescription("");
-      await client.invalidateQueries({
-        queryKey: ["admin", created === "role" ? "roles" : "groups"],
-      });
-      toast.success(t(created === "role" ? "access.roleCreated" : "access.groupCreated"));
     },
+    onRefreshed: (created) =>
+      toast.success(t(created === "role" ? "access.roleCreated" : "access.groupCreated")),
     onError: (error) => refusalToast(error, t),
   });
   return (
@@ -217,7 +190,9 @@ export function CreateRecordDialog({
       onOpenChange={onOpenChange}
       title={t(kind === "role" ? "access.createRole" : "access.createGroup")}
       submit={{ label: t("common.create"), pending: create.isPending, disabled: !name.trim() }}
-      onSubmit={() => create.mutate()}
+      onSubmit={() =>
+        create.mutate({ kind: kind === "role" ? "role" : "group", name, description })
+      }
       testId="access-create-dialog"
     >
       <Field>

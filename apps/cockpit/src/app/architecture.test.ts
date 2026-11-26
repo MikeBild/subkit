@@ -179,7 +179,7 @@ const DEBT_CEILING = 8;
 const INTERNAL_DEBT_CEILING = 59;
 
 const INLINE_QUERY = /\buse(?:Query|Mutation)\s*\(/g;
-const INLINE_QUERY_CEILING = 301;
+const INLINE_QUERY_CEILING = 291;
 
 describe("architecture: dependencies point downward", () => {
   test("packages/ui imports nothing from an app, an API or a domain module", () => {
