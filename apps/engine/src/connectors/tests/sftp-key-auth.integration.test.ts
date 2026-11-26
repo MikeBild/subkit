@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { utils } from "ssh2";
 import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { seedConnector, seedTenant } from "../../test-helpers/seed.ts";
-import { startTestSftpServer, type TestSftpServer } from "../../test-helpers/sftp-server.ts";
+import {
+  parseableSsh2KeyPair,
+  startTestSftpServer,
+  type TestSftpServer,
+} from "../../test-helpers/sftp-server.ts";
 import { VAULT_PERMISSION, type VaultViewer } from "../../vault/core/vault-item.ts";
 import { createVaultItem } from "../../vault/service.ts";
 import { toConnectorView } from "../core/view.ts";
@@ -18,13 +21,13 @@ import {
 import type { ConnectorView } from "../types.ts";
 
 const PASSPHRASE = "synthetic-key-passphrase";
-const deployKey = utils.generateKeyPairSync("ed25519");
-const lockedKey = utils.generateKeyPairSync("ed25519", {
+const deployKey = parseableSsh2KeyPair();
+const lockedKey = parseableSsh2KeyPair({
   passphrase: PASSPHRASE,
   cipher: "aes256-ctr",
   rounds: 4,
 });
-const strangerKey = utils.generateKeyPairSync("ed25519");
+const strangerKey = parseableSsh2KeyPair();
 const pkcs8Pair = generateKeyPairSync("ed25519", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
   publicKeyEncoding: { type: "spki", format: "pem" },
