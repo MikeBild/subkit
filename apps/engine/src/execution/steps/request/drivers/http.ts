@@ -687,7 +687,11 @@ async function runHttp(d: RequestDispatch, paged: boolean): Promise<StepResult> 
     httpFailure(x, err),
   );
   if (prepared.owned_delete)
-    await settleClaimedOwnedDelete(prepared.owned_delete, d.p.ctx.db, result);
+    await settleClaimedOwnedDelete(
+      prepared.owned_delete,
+      d.p.ctx.db,
+      redactKnownValues(result, d.own_credentials),
+    );
   return result;
 }
 
