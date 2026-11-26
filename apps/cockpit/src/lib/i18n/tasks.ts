@@ -96,6 +96,9 @@ export const tasksEn = {
   "tasks.action.continue": "Resume",
   "tasks.action.usage": "View usage",
   "tasks.action.aiAccess": "Set up AI access",
+  "tasks.action.newConversation": "Continue in a new conversation",
+  "tasks.newConversation.done": "The run continues in a new conversation.",
+  "tasks.newConversation.failed": "The run could not move to a new conversation.",
   "tasks.strip.paused": "This task is paused.",
   "tasks.strip.pausedOwner":
     "This task was paused automatically because its owner is not available.",
@@ -109,7 +112,7 @@ export const tasksEn = {
     "The run is waiting for AI access and continues on its own once it is set up.",
   "tasks.strip.waiting.turn_stopped": "The run is on hold and waits for you.",
   "tasks.strip.waiting.conversation_abandoned":
-    "The conversation was abandoned, so the run could not ask its question. Stop the run and start the task again.",
+    "The conversation was abandoned, so the run could not ask its question. Continue it in a new conversation or stop the run.",
   "tasks.strip.waiting.quoted": "Waiting for you: “{question}”",
   "tasks.strip.result_ready": "The result is ready for you.",
   "tasks.strip.failed": "The last run failed.",
@@ -419,6 +422,9 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.action.continue": "Fortsetzen",
   "tasks.action.usage": "Nutzung ansehen",
   "tasks.action.aiAccess": "KI-Zugang einrichten",
+  "tasks.action.newConversation": "In neuer Unterhaltung fortsetzen",
+  "tasks.newConversation.done": "Der Run läuft in einer neuen Unterhaltung weiter.",
+  "tasks.newConversation.failed": "Der Run konnte nicht in eine neue Unterhaltung wechseln.",
   "tasks.strip.paused": "Die Aufgabe ist pausiert.",
   "tasks.strip.pausedOwner":
     "Die Aufgabe wurde automatisch pausiert, weil die Person, der sie gehört, nicht verfügbar ist.",
@@ -433,7 +439,7 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
     "Der Run wartet auf den KI-Zugang und läuft von selbst weiter, sobald er eingerichtet ist.",
   "tasks.strip.waiting.turn_stopped": "Der Run ist angehalten und wartet auf dich.",
   "tasks.strip.waiting.conversation_abandoned":
-    "Die Unterhaltung wurde abgebrochen, deshalb konnte der Run seine Frage nicht stellen. Brich den Run ab und starte die Aufgabe neu.",
+    "Die Unterhaltung wurde abgebrochen, deshalb konnte der Run seine Frage nicht stellen. Setze ihn in einer neuen Unterhaltung fort oder brich ihn ab.",
   "tasks.strip.waiting.quoted": "Wartet auf dich: „{question}“",
   "tasks.strip.result_ready": "Das Ergebnis liegt für dich bereit.",
   "tasks.strip.failed": "Der letzte Run ist fehlgeschlagen.",

@@ -5,7 +5,13 @@ type Run = components["schemas"]["TaskRun"];
 
 export type WaitingReason = NonNullable<Run["waiting_reason"]>;
 export type WaitingParty = "you" | "budget" | "ai_access";
-export type WaitingAction = "answer" | "continue" | "usage" | "ai_access" | "stop";
+export type WaitingAction =
+  | "answer"
+  | "continue"
+  | "usage"
+  | "ai_access"
+  | "stop"
+  | "new_conversation";
 
 export interface WaitingView {
   party: WaitingParty;
@@ -26,7 +32,7 @@ const WAITING: Record<WaitingReason, WaitingView> = {
   conversation_abandoned: {
     party: "you",
     line: "tasks.strip.waiting.conversation_abandoned",
-    action: "stop",
+    action: "new_conversation",
   },
   budget: { party: "budget", line: "tasks.strip.waiting.budget", action: "usage" },
   ai_access: { party: "ai_access", line: "tasks.strip.waiting.ai_access", action: "ai_access" },
@@ -61,6 +67,21 @@ type Glance = { state: string; waiting_reason?: string | null };
 export function waitingParty(run: Glance | null | undefined): WaitingParty | null {
   if (run?.state === "result_ready") return "you";
   return run?.state === "waiting" ? waitingView(run.waiting_reason).party : null;
+}
+
+export function mayContinueInNewConversation(input: {
+  run: Glance | null | undefined;
+  ownerId: string | null | undefined;
+  viewerId: string | null | undefined;
+  permissions: readonly string[];
+}): boolean {
+  return (
+    input.run?.state === "waiting" &&
+    input.run.waiting_reason === "conversation_abandoned" &&
+    Boolean(input.viewerId) &&
+    input.viewerId === input.ownerId &&
+    input.permissions.includes("task:run")
+  );
 }
 
 export function waitsForPerson(run: Glance | null | undefined): boolean {

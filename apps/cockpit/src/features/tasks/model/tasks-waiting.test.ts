@@ -27,6 +27,7 @@ import {
 import { stepGraphState, stepLines, stepMarkKey, stepResults } from "./tasks-steps";
 import {
   limitEndedLine,
+  mayContinueInNewConversation,
   RUN_LIMIT_CODES,
   WAITING_REASONS,
   waitingForKey,
@@ -97,7 +98,7 @@ describe("what a waiting run waits for", () => {
       ["question_expired", "dich", "Antworten"],
       ["no_progress", "dich", "Fortsetzen"],
       ["turn_stopped", "dich", "Fortsetzen"],
-      ["conversation_abandoned", "dich", "Run abbrechen"],
+      ["conversation_abandoned", "dich", "In neuer Unterhaltung fortsetzen"],
       ["budget", "KI-Kontingent", "Nutzung ansehen"],
       ["ai_access", "KI-Zugang", "KI-Zugang einrichten"],
     ]);
@@ -404,5 +405,39 @@ describe("history on the task page", () => {
       expect(key).toBe(`tasks.history.run.${action}` as TranslationKey);
       expect(de(key)).not.toContain("einer Aufgabe");
     }
+  });
+});
+
+describe("who may continue a run in a new conversation", () => {
+  const OWNER = "018f4b4a-6d33-7b3a-9c2d-000000000009";
+  const ADMIN = "018f4b4a-6d33-7b3a-9c2d-0000000000ad";
+  const held = { state: "waiting", waiting_reason: "conversation_abandoned" };
+  const may = (
+    viewerId: string | null,
+    permissions: string[] = ["task:run"],
+    glance: { state: string; waiting_reason: string | null } = held,
+  ) => mayContinueInNewConversation({ run: glance, ownerId: OWNER, viewerId, permissions });
+
+  test("the owner with the right to run tasks may, an admin or a signed-out viewer may not", () => {
+    expect(may(OWNER)).toBe(true);
+    expect(may(ADMIN, ["task:run", "task_run:abort"])).toBe(false);
+    expect(may(null)).toBe(false);
+    expect(may(OWNER, ["task:read"])).toBe(false);
+  });
+
+  test("only a run held by its abandoned conversation offers it", () => {
+    expect(may(OWNER, ["task:run"], { state: "waiting", waiting_reason: "turn_stopped" })).toBe(
+      false,
+    );
+    expect(may(OWNER, ["task:run"], { state: "running", waiting_reason: null })).toBe(false);
+  });
+
+  test("the hint names both ways out in both languages", () => {
+    const line = waitingView("conversation_abandoned").line;
+    expect(de(line)).not.toBe(en(line));
+    expect(en(line)).toBe(
+      "The conversation was abandoned, so the run could not ask its question. Continue it in a new conversation or stop the run.",
+    );
+    expect(en(actionKey("new_conversation"))).toBe("Continue in a new conversation");
   });
 });

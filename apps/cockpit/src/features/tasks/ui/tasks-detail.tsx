@@ -5,7 +5,7 @@ import { ProgressRing } from "@ui/molecules/charts";
 import { ErrorNotice } from "@ui/molecules/error-notice";
 import { StepGraph } from "@ui/organisms/step-graph";
 import { CircleHelp, ListChecks, type LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
 import {
@@ -15,6 +15,7 @@ import {
   settingsHref,
   usageHref,
 } from "@/app/links";
+import { useOptionalSession } from "@/app/session-context";
 import {
   ActionButton,
   ActionMenu,
@@ -68,6 +69,7 @@ import {
   useTaskRuns,
   useTaskUsage,
 } from "../api/tasks-queries";
+import { useNewRunConversation } from "../hooks/new-run-conversation";
 import { roundBudget } from "../model/progress-model";
 import { historyTitle } from "../model/tasks-history";
 import {
@@ -100,7 +102,7 @@ import {
   stepMarkKey,
   stepResults,
 } from "../model/tasks-steps";
-import { waitingForKey } from "../model/tasks-waiting";
+import { mayContinueInNewConversation, waitingForKey } from "../model/tasks-waiting";
 import { StopRunDialog } from "../stop-dialog";
 import { TaskFormDialog } from "./tasks-form";
 import { TaskReviewSection } from "./tasks-review";
@@ -450,8 +452,10 @@ function stripAction(
     resume(): void;
     resuming: boolean;
     stop(): void;
+    newConversation: (() => void) | null;
+    movingConversation: boolean;
   },
-): ActionSpec | undefined {
+): ActionSpec | ReactNode | undefined {
   if (!status.action) return undefined;
   const label = t(actionKey(status.action));
   const testId = `task-strip-${status.action}`;
@@ -487,9 +491,40 @@ function stripAction(
     return permissions.includes("task_run:abort")
       ? { label, variant: "primary", onClick: act.stop, testId }
       : undefined;
+  if (status.action === "new_conversation") return abandonedRunActions(permissions, t, act);
   return permissions.includes("task:resume")
     ? { label, variant: "primary", onClick: act.resume, pending: act.resuming, testId }
     : undefined;
+}
+
+function abandonedRunActions(
+  permissions: readonly string[],
+  t: Translate,
+  act: { stop(): void; newConversation: (() => void) | null; movingConversation: boolean },
+): ReactNode | undefined {
+  const stop = permissions.includes("task_run:abort") ? (
+    <ActionButton
+      variant={act.newConversation ? "outline" : "primary"}
+      onClick={act.stop}
+      testId="task-strip-stop"
+    >
+      {t(actionKey("stop"))}
+    </ActionButton>
+  ) : null;
+  if (!act.newConversation) return stop ?? undefined;
+  return (
+    <>
+      {stop}
+      <ActionButton
+        variant="primary"
+        onClick={act.newConversation}
+        pending={act.movingConversation}
+        testId="task-strip-new_conversation"
+      >
+        {t(actionKey("new_conversation"))}
+      </ActionButton>
+    </>
+  );
 }
 
 export function TaskDetail({
@@ -500,6 +535,7 @@ export function TaskDetail({
   permissions: readonly string[];
 }) {
   const { t, locale, dateTime } = useI18n();
+  const viewerId = useOptionalSession()?.principal.id ?? null;
   const client = useQueryClient();
   const navigate = useNavigate();
   const [now] = useState(() => Date.now());
@@ -570,6 +606,13 @@ export function TaskDetail({
       await refresh();
     },
     onError: failed,
+  });
+  const moveConversation = useNewRunConversation(task.id);
+  const mayMove = mayContinueInNewConversation({
+    run: latest,
+    ownerId: task.owner_id,
+    viewerId,
+    permissions,
   });
   const remove = useMutation({
     mutationFn: () => deleteTask(task.id),
@@ -796,6 +839,8 @@ export function TaskDetail({
           resume: () => resume.mutate(),
           resuming: resume.isPending,
           stop: () => confirmation.ask("stop"),
+          newConversation: mayMove && latest ? () => moveConversation.mutate(latest.id) : null,
+          movingConversation: moveConversation.isPending,
         }),
       }}
       notice={

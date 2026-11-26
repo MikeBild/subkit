@@ -63,6 +63,18 @@ describe("the run line above a run conversation", () => {
     expect(html).not.toContain("chat-task-run-abort");
   });
 
+  test("a run held by its abandoned conversation offers its owner a new conversation next to Stop", () => {
+    const html = render({ onNewConversation: () => {} });
+    expect(count(html, "<button")).toBe(2);
+    expect(html).toContain('data-testid="chat-task-run-abort"');
+    expect(html).toContain('data-testid="chat-task-run-new-conversation"');
+    expect(html).toContain(">In neuer Unterhaltung fortsetzen<");
+    expect(render({ onNewConversation: () => {} }, "en")).toContain(
+      ">Continue in a new conversation<",
+    );
+    expect(render({ onNewConversation: null })).not.toContain("chat-task-run-new-conversation");
+  });
+
   test("without the right to read tasks the name is a word, not a link", () => {
     const html = render({ href: null });
     expect(html).not.toContain("<a ");

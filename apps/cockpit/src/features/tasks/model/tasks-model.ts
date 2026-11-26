@@ -219,6 +219,7 @@ const ACTION_KEYS: Record<TaskAction, TranslationKey> = {
   allow: "tasks.action.allow",
   resume: "tasks.action.resume",
   stop: "tasks.menu.stop",
+  new_conversation: "tasks.action.newConversation",
 };
 
 export function actionKey(action: TaskAction): TranslationKey {

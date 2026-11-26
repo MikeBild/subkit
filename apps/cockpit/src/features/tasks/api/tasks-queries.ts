@@ -163,6 +163,10 @@ export function abortTaskRun(id: string) {
   return apiCall("post", "/v1/task-runs/{id}/abort", { path: { id } });
 }
 
+export function continueTaskRunInNewConversation(id: string) {
+  return apiCall("post", "/v1/task-runs/{id}/new-conversation", { path: { id } });
+}
+
 export function completeTaskRun(id: string) {
   return apiCall("post", "/v1/task-runs/{id}/complete", { path: { id } });
 }

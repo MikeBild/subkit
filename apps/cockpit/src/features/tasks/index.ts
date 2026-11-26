@@ -1,6 +1,7 @@
 export {
   abortTaskRun,
   completeTaskRun,
+  continueTaskRunInNewConversation,
   createTask,
   deleteTask,
   pauseTask,
@@ -19,6 +20,7 @@ export {
   useTasks,
   useTaskUsage,
 } from "./api/tasks-queries";
+export { useNewRunConversation } from "./hooks/new-run-conversation";
 export { fromSetup, useTaskEnvironmentDefault } from "./hooks/tasks-default-environment";
 export { type RoundBudget, roundBudget } from "./model/progress-model";
 export { historyTitle } from "./model/tasks-history";
@@ -91,6 +93,7 @@ export {
 } from "./model/tasks-steps";
 export {
   limitEndedLine,
+  mayContinueInNewConversation,
   type WaitingAction,
   waitingForKey,
   waitingParty,

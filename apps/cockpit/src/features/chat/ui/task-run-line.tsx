@@ -4,8 +4,13 @@ import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { absolute, taskHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
+import { useOptionalSession } from "@/app/session-context";
 import { Button, Skeleton, StatusBadge } from "@/components/cockpit/patterns";
-import { StopRunDialog } from "@/features/tasks";
+import {
+  mayContinueInNewConversation,
+  StopRunDialog,
+  useNewRunConversation,
+} from "@/features/tasks";
 import { taskKeys } from "@/features/tasks/model";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
@@ -29,6 +34,8 @@ export function TaskRunLineView({
   unavailable,
   onRetry,
   onAbort,
+  onNewConversation = null,
+  movingConversation = false,
 }: {
   name: string;
   href: string | null;
@@ -38,6 +45,8 @@ export function TaskRunLineView({
   unavailable: boolean;
   onRetry: () => void;
   onAbort: (() => void) | null;
+  onNewConversation?: (() => void) | null;
+  movingConversation?: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -93,11 +102,25 @@ export function TaskRunLineView({
         <Button variant="outline" size="sm" onClick={onRetry} data-testid="chat-task-run-retry">
           {t("session.retry")}
         </Button>
-      ) : onAbort ? (
-        <Button variant="outline" size="sm" onClick={onAbort} data-testid="chat-task-run-abort">
-          {t("chat.taskRun.abort")}
-        </Button>
-      ) : null}
+      ) : (
+        <>
+          {onAbort ? (
+            <Button variant="outline" size="sm" onClick={onAbort} data-testid="chat-task-run-abort">
+              {t("chat.taskRun.abort")}
+            </Button>
+          ) : null}
+          {onNewConversation ? (
+            <Button
+              size="sm"
+              onClick={onNewConversation}
+              pending={movingConversation}
+              data-testid="chat-task-run-new-conversation"
+            >
+              {t("tasks.action.newConversation")}
+            </Button>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -130,8 +153,10 @@ export function TaskRunLine({
   const live = useLiveQueryOptions();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  const viewerId = useOptionalSession()?.principal.id ?? null;
   const runId = marker.taskRunId ?? "";
   const taskId = marker.taskId ?? "";
+  const moveConversation = useNewRunConversation(taskId);
   const run = useRunOfConversation(runId, permissions);
   const task = useQuery({
     queryKey: taskKeys.detail(taskId),
@@ -191,6 +216,17 @@ export function TaskRunLine({
         unavailable={!data && !(run.isPending && run.fetchStatus !== "idle")}
         onRetry={() => void run.refetch()}
         onAbort={data && runCanAbort(data.state, permissions) ? () => setConfirming(true) : null}
+        onNewConversation={
+          mayContinueInNewConversation({
+            run: data,
+            ownerId: task.data?.owner_id,
+            viewerId,
+            permissions,
+          })
+            ? () => moveConversation.mutate(runId)
+            : null
+        }
+        movingConversation={moveConversation.isPending}
       />
       <StopRunDialog
         name={task.data?.name?.trim() || null}
