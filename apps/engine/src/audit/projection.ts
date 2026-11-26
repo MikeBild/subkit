@@ -284,7 +284,13 @@ function buildTaskDetailChecks(): Record<string, Record<string, DetailCheck>> {
       waiting_reason: oneOf(TASK_DETAIL_VOCABULARY.waiting_reasons),
       turns_used: taskCount,
     },
-    "task_run.resumed": { previous_state: runState, resume_reason: code, turns_used: taskCount },
+    "task_run.resumed": {
+      previous_state: runState,
+      resume_reason: code,
+      turns_used: taskCount,
+      previous_conversation_id: detailId,
+      conversation_id: detailId,
+    },
     "task_run.result_ready": { turns_used: taskCount },
     "task_run.completed": {
       previous_state: runState,

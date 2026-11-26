@@ -36,6 +36,7 @@ export interface TaskRunAudit {
   result?: "success" | "error";
   environment?: "dev" | "prod";
   reason_code?: "result_rejected";
+  conversation_change?: { previous_conversation_id: string; conversation_id: string };
 }
 
 export interface WriteRunOptions {
@@ -129,6 +130,7 @@ export async function auditTaskRun(
           task_run_id: run.id,
           ...auditDetails(entry.action, prior, run, options.at, entry.environment),
           ...(entry.reason_code ? { reason_code: entry.reason_code } : {}),
+          ...(entry.conversation_change ?? {}),
           ...(options.source ? { request_source: options.source } : {}),
         },
       },

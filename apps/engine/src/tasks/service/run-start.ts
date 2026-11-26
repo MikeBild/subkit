@@ -30,6 +30,7 @@ import {
   actorOf,
   grantFacts,
   lockTask,
+  type RunConversationOpening,
   rowToTaskRun,
   SYSTEM_ACTOR,
   SYSTEM_SCOPE,
@@ -66,7 +67,7 @@ function traceId(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
 
-type Admitted = { task: TaskRow; run: TaskRunRow; owner: TaskOwnerFacts };
+export type Admitted = { task: TaskRow; run: TaskRunRow; owner: TaskOwnerFacts };
 type Refused = { refused: TaskAdmissionReason | "not_due"; changed: boolean };
 
 function owedStart(task: TaskRow, trigger: TaskRunTrigger, now: Date): Date | null {
@@ -217,10 +218,11 @@ async function activeSkills(db: Db, task: TaskRow): Promise<string[]> {
   return active;
 }
 
-async function prepareRunConversation(
+export async function prepareRunConversation(
   db: Db,
   deps: TaskServiceDeps,
   admitted: Admitted,
+  carried_plan?: RunConversationOpening["carried_plan"],
 ): Promise<string> {
   const { task, run, owner } = admitted;
   return await deps.openRunConversation(db, {
@@ -237,6 +239,7 @@ async function prepareRunConversation(
       web_search: task.bindings.web_search,
     },
     plan_template: task.plan,
+    ...(carried_plan ? { carried_plan } : {}),
     goal: task.goal,
     started_at: run.created_at.toISOString(),
     skills: await activeSkills(db, task),

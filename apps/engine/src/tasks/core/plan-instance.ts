@@ -78,6 +78,17 @@ export function instantiateTaskPlan(
   };
 }
 
+export function carriedTaskPlan(plan: PlaybookPlan): PlaybookPlan {
+  return {
+    ...plan,
+    steps: plan.steps.map((step) => ({
+      ...step,
+      evidence_ids: [],
+      next_action: step.next_action ? { ...step.next_action, elicitation_id: null } : null,
+    })),
+  };
+}
+
 export interface TaskPlaybookFacts {
   status: string;
   revision: number;

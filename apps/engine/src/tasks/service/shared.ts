@@ -5,7 +5,9 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   clearTaskRunCheck,
   createConversation,
+  type PlaybookPlan,
   PlaybookPlanSchema,
+  readConversationPlaybookPlan,
   setConversationLoadedSkills,
   type TaskRunMarker,
   updatePlaybook,
@@ -35,7 +37,7 @@ import { emitTaskRunEvent } from "../../webhooks/events/catalog.ts";
 import type { TaskGrantAuthorityRevocationReason } from "../../workflows/execution-authorities.ts";
 import { normalizeFailureCode } from "../core/failure-codes.ts";
 import type { TaskGrantFacts } from "../core/grant.ts";
-import { instantiateTaskPlan } from "../core/plan-instance.ts";
+import { carriedTaskPlan, instantiateTaskPlan } from "../core/plan-instance.ts";
 import { taskRunLoadedSkills } from "../core/run-start.ts";
 import { reserveTaskGrantRun, type TaskGrantReservation } from "../grants/reservation.ts";
 import {
@@ -93,6 +95,7 @@ export interface RunConversationOpening {
   title: string;
   task_run: TaskRunMarker;
   plan_template: unknown;
+  carried_plan?: PlaybookPlan;
   goal: string;
   started_at: string;
   skills: readonly string[];
@@ -338,10 +341,12 @@ async function withdrawRunQuestions(
 }
 
 async function openRunConversation(db: Db, opening: RunConversationOpening): Promise<string> {
-  const plan = instantiateTaskPlan(PlaybookPlanSchema.parse(opening.plan_template), {
-    goal: opening.goal,
-    started_at: opening.started_at,
-  });
+  const plan =
+    opening.carried_plan ??
+    instantiateTaskPlan(PlaybookPlanSchema.parse(opening.plan_template), {
+      goal: opening.goal,
+      started_at: opening.started_at,
+    });
   const { conversation } = await createConversation(
     {
       tenant_id: opening.tenant_id,
@@ -363,6 +368,14 @@ async function openRunConversation(db: Db, opening: RunConversationOpening): Pro
     { expected_revision: 0, plan },
   );
   return conversation.id;
+}
+
+export async function readCarriedRunPlan(
+  db: Executor,
+  scope: { tenant_id: string; conversation_id: string },
+): Promise<PlaybookPlan | undefined> {
+  const plan = await readConversationPlaybookPlan(db, scope);
+  return plan ? carriedTaskPlan(plan) : undefined;
 }
 
 export const defaultTaskServiceDeps: TaskServiceDeps = {

@@ -21,6 +21,7 @@ export {
   taskPlanTemplateIssue,
   taskPlaybookFacts,
 } from "./core/plan-instance.ts";
+export type { TaskRunContinuationRefusal } from "./core/run-continue.ts";
 export type { TaskRunStart, TaskRunStartFacts } from "./core/run-start.ts";
 export { TASK_RUN_SEED_SKILL, taskRunStart } from "./core/run-start.ts";
 export type {
@@ -89,6 +90,11 @@ export {
 } from "./grants.ts";
 export { taskRunConversationPrepared } from "./persistence/run-start-rows.ts";
 export { recordTaskAdmissionChange } from "./service/admission.ts";
+export type {
+  ContinueTaskRunParams,
+  TaskRunContinuation,
+} from "./service/run-continue.ts";
+export { continueTaskRunInNewConversation } from "./service/run-continue.ts";
 export type { ListTaskRunsParams } from "./service/run-reads.ts";
 export {
   countTaskRuns,

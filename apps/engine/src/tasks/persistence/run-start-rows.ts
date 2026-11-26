@@ -98,6 +98,18 @@ export async function openRunConversationIds(
   return rows.map((row) => row.id);
 }
 
+export async function unattachedRunConversationIds(
+  db: Executor,
+  run: { tenant_id: string; id: string },
+): Promise<string[]> {
+  const [current] = await db
+    .select({ conversation_id: taskRuns.conversation_id })
+    .from(taskRuns)
+    .where(and(eq(taskRuns.tenant_id, run.tenant_id), eq(taskRuns.id, run.id)))
+    .limit(1);
+  return (await openRunConversationIds(db, run)).filter((id) => id !== current?.conversation_id);
+}
+
 export async function unpreparedRunIds(
   db: Db,
   tenant_id: string,

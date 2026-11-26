@@ -201,11 +201,11 @@ function transitionAudit(prior: TaskRunRow, decision: TaskRunDecision, person: T
   return entry ? [entry] : [];
 }
 
-function taskHoldsRuns(task: TaskRow): boolean {
+export function taskHoldsRuns(task: TaskRow): boolean {
   return task.paused_at !== null || task.lifecycle !== "active";
 }
 
-async function endOutdatedRun(
+export async function endOutdatedRun(
   tx: Executor,
   deps: TaskServiceDeps,
   run: TaskRunRow,
