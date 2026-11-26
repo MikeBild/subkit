@@ -4,6 +4,7 @@ import { auditLog, connectors, ownedResources } from "../../db/schema/index.ts";
 import { withTenantScope } from "../../db/tenant-scope.ts";
 import { runExecution } from "../engine.ts";
 import { recordCreatedResources, settleOwnedDelete } from "../persistence/owned-resources.ts";
+import { isSensitivePayload } from "../sensitive-payload.ts";
 import {
   createEngineCtx,
   createMockServer,
@@ -18,6 +19,7 @@ let mock: MockServer;
 let connectorId = "";
 let created = 0;
 const hits: string[] = [];
+const echoed: unknown[] = [];
 
 const deletes = (id: string, collection = "jobs") =>
   hits.filter((hit) => hit === `DELETE /api/${collection}/${id}`);
@@ -26,19 +28,28 @@ beforeAll(async () => {
   ctx = await createEngineCtx("owned-resources");
   mock = await createMockServer(async (req, res) => {
     hits.push(`${req.method} ${req.url}`);
-    for await (const _chunk of req) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    if (req.method === "POST" && req.url === "/api/echo") {
+      echoed.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      return jsonResponse(res, 200, { echoed: true });
     }
     if (req.method === "POST" && req.url === "/api/jobs")
       return jsonResponse(res, 201, { id: `job-${++created}` });
     if (req.method === "POST" && req.url === "/api/fixed")
       return jsonResponse(res, 201, { id: "job-fixed" });
+    if (req.method === "POST" && req.url === "/api/legacy")
+      return jsonResponse(res, 201, { id: "job-legacy" });
+    if (req.method === "POST" && req.url === "/api/sealed")
+      return jsonResponse(res, 201, { id: "job-sealed" });
     if (req.method === "POST" && req.url === "/api/broken")
       return jsonResponse(res, 201, { id: "broken-1" });
     if (req.method === "POST" && req.url === "/api/items/search")
       return jsonResponse(res, 200, { ids: ["job-1", "job-2"] });
     if (req.method === "DELETE" && req.url === "/api/broken/broken-1")
       return jsonResponse(res, 503, { error: "unavailable" });
-    if (req.method === "DELETE") return jsonResponse(res, 200, { ok: true });
+    if (req.method === "DELETE")
+      return jsonResponse(res, 200, { ok: true, removed: req.url, count: 1 });
     return jsonResponse(res, 404, { error: "not found" });
   });
   const [api] = await ctx.testDb.db
@@ -138,12 +149,10 @@ describe("governed DELETE of ids the workflow created", () => {
     const id = `job-${created}`;
     expect(result.steps.find((step) => step.step_key === "drop")?.status).toBe("succeeded");
     expect(result.status).toBe("succeeded");
-    expect(result.output("drop_again")).toMatchObject({
-      replayed: true,
-      outcome: "already_deleted",
-      resource_keys: [id],
-      replayed_from: [{ resource_key: id, execution_id: result.execution_id, step_id: "drop" }],
-    });
+    const step = (key: string) => result.steps.find((entry) => entry.step_key === key);
+    expect(result.output("drop")).toEqual({ ok: true, removed: `/api/jobs/${id}`, count: 1 });
+    expect(result.output("drop_again")).toEqual(result.output("drop"));
+    expect(step("drop_again")?.request_meta).toEqual(step("drop")?.request_meta);
     expect(deletes(id)).toHaveLength(1);
     expect(await ledger(lifecycle)).toEqual([
       {
@@ -157,19 +166,31 @@ describe("governed DELETE of ids the workflow created", () => {
     ]);
   });
 
+  const echo = {
+    kind: "request",
+    id: "echo",
+    connector_id: "",
+    method: "POST",
+    path: "/echo",
+    body: { removed: "${scope.drop.data.removed}", count: "${scope.drop.data.count}" },
+  };
+
   test("a later run removing the same id replays the stored outcome", async () => {
     const again = await workflow("owned-again", [
       make("/fixed"),
       drop("drop", "scope.make.data.id", "/fixed"),
+      { ...echo, connector_id: connectorId },
     ]);
+    const echoedBefore = echoed.length;
     const first = await run(again);
     expect(first.status).toBe("succeeded");
     const later = await run(again);
     expect(later.status).toBe("succeeded");
-    expect(later.output("drop")).toMatchObject({
-      replayed: true,
-      replayed_from: [{ resource_key: "job-fixed", execution_id: first.execution_id }],
-    });
+    expect(later.output("drop")).toEqual(first.output("drop"));
+    expect(echoed.slice(echoedBefore)).toEqual([
+      { removed: "/api/fixed/job-fixed", count: 1 },
+      { removed: "/api/fixed/job-fixed", count: 1 },
+    ]);
     expect(deletes("job-fixed", "fixed")).toHaveLength(1);
     expect((await ledger(again)).map((row) => row.state)).toEqual(["deleted"]);
     const replays = await ctx.testDb.db
@@ -183,6 +204,54 @@ describe("governed DELETE of ids the workflow created", () => {
         ),
       );
     expect(replays).toHaveLength(1);
+  });
+
+  test("a removal confirmed before outputs were stored replays without output", async () => {
+    const legacy = await workflow("owned-legacy", [
+      make("/legacy"),
+      drop("drop", "scope.make.data.id", "/legacy"),
+    ]);
+    expect((await run(legacy)).status).toBe("succeeded");
+    await withTenantScope(ctx.testDb.db, ctx.tenantId, (tx) =>
+      tx
+        .update(ownedResources)
+        .set({ deleted_result: null })
+        .where(eq(ownedResources.workflow_id, legacy)),
+    );
+    const replay = await run(legacy);
+    expect(replay.status).toBe("succeeded");
+    expect(replay.output("drop") ?? null).toBeNull();
+    expect(deletes("job-legacy", "legacy")).toHaveLength(1);
+  });
+
+  test("a sensitive workflow stores the removal outcome sealed and replays it", async () => {
+    const sealed = (
+      await createWorkflowRow(ctx, {
+        name: "owned-sealed",
+        execution_privacy: "sensitive",
+        steps: [
+          make("/sealed"),
+          drop("drop", "scope.make.data.id", "/sealed"),
+          { ...echo, connector_id: connectorId },
+        ],
+      })
+    ).workflow_id;
+    const echoedBefore = echoed.length;
+    expect((await run(sealed)).status).toBe("succeeded");
+    expect((await run(sealed)).status).toBe("succeeded");
+    expect(deletes("job-sealed", "sealed")).toHaveLength(1);
+    expect(echoed.slice(echoedBefore)).toEqual([
+      { removed: "/api/sealed/job-sealed", count: 1 },
+      { removed: "/api/sealed/job-sealed", count: 1 },
+    ]);
+    const [row] = await withTenantScope(ctx.testDb.db, ctx.tenantId, (tx) =>
+      tx
+        .select({ deleted_result: ownedResources.deleted_result })
+        .from(ownedResources)
+        .where(eq(ownedResources.workflow_id, sealed)),
+    );
+    expect(isSensitivePayload(row?.deleted_result)).toBe(true);
+    expect(JSON.stringify(row?.deleted_result)).not.toContain("job-sealed");
   });
 
   test("an id this workflow did not create is refused before anything is sent", async () => {

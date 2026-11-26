@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, pgTable, primaryKey, text, uuid } from "drizzle-orm/pg-core";
+import { check, jsonb, pgTable, primaryKey, text, uuid } from "drizzle-orm/pg-core";
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 import { workflows } from "./workflows.ts";
@@ -20,6 +20,7 @@ export const ownedResources = pgTable(
     created_step_id: text("created_step_id").notNull(),
     deleted_execution_id: uuid("deleted_execution_id"),
     deleted_step_id: text("deleted_step_id"),
+    deleted_result: jsonb("deleted_result"),
     state: text("state")
       .$type<"owned" | "deleting" | "deleted" | "delete_unknown">()
       .notNull()

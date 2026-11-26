@@ -156,6 +156,7 @@ describe("claiming a removal", () => {
         step_id: "drop",
       },
       resource_keys: ["job-1"],
+      sensitive: true,
     };
     expect(await settleClaimedOwnedDelete(claim, unavailable, succeeded(null))).toBeUndefined();
   });

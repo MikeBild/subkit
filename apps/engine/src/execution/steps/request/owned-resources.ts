@@ -17,13 +17,52 @@ import {
   settleOwnedDelete,
 } from "../../persistence/owned-resources.ts";
 import { resolveValuePath } from "../../selectors.ts";
+import { protectExecutionPayload, recoverExecutionPayload } from "../../sensitive-payload.ts";
 import { GOVERNANCE_REFUSALS } from "../../state.ts";
-import type { StepResult } from "../../types.ts";
+import type { RequestMeta, StepResult } from "../../types.ts";
 import { failedStep, type RequestDispatch, type RunRequestStepParams } from "./drivers/context.ts";
 
 export interface OwnedDeleteClaim {
   correlation: OwnedResourceCorrelation;
   resource_keys: string[];
+  sensitive: boolean;
+}
+
+const STORED_RESULT_SLOT = "owned_resource_delete_result";
+
+type StoredDeleteResult = { output: unknown; request_meta: RequestMeta | null };
+
+function storedDeleteResult(claim: OwnedDeleteClaim, result: StepResult): unknown {
+  const stored: StoredDeleteResult = {
+    output: result.output ?? null,
+    request_meta: result.request_meta
+      ? {
+          ...result.request_meta,
+          extras: { ...result.request_meta.extras, effect_kind: "write" },
+        }
+      : null,
+  };
+  return claim.sensitive
+    ? protectExecutionPayload(
+        stored,
+        claim.correlation.tenant_id,
+        claim.correlation.execution_id,
+        STORED_RESULT_SLOT,
+      )
+    : stored;
+}
+
+function replayedDeleteResult(
+  tenantId: string,
+  replayed: { execution_id: string | null; stored: unknown },
+): StoredDeleteResult {
+  const recovered = recoverExecutionPayload(
+    replayed.stored,
+    tenantId,
+    String(replayed.execution_id),
+    STORED_RESULT_SLOT,
+  ) as Partial<StoredDeleteResult> | null;
+  return { output: null, request_meta: null, ...recovered };
 }
 
 function correlationOf(
@@ -82,21 +121,34 @@ export async function claimDeclaredOwnedDelete(
     resource_keys,
   });
   if (!decision.allow) return denied(d, decision.code, OWNED_DELETE_DENIAL_MESSAGE[decision.code]);
-  if (decision.replay)
+  if (decision.replay) {
+    if (decision.replayed_result.stored === null)
+      logger.warn({
+        module: "execution",
+        action: "owned_resource.replay_output_missing",
+        msg: "the removal was confirmed before its output was stored; the replay returns no output and sends nothing",
+        execution_id: p.ctx.execution_id,
+        step_id: p.step.id,
+        replayed_from: decision.replayed_from,
+      });
+    const replayed = replayedDeleteResult(p.ctx.tenant_id, decision.replayed_result);
     return {
       result: {
         status: "succeeded",
         retry_count: 0,
         duration_ms: d.clock.now() - d.start,
-        output: {
-          replayed: true,
-          outcome: "already_deleted",
-          resource_keys,
-          replayed_from: decision.replayed_from ?? [],
-        },
+        output: replayed.output,
+        request_meta: replayed.request_meta,
       },
     };
-  return { claim: { correlation, resource_keys } };
+  }
+  return {
+    claim: {
+      correlation,
+      resource_keys,
+      sensitive: p.ctx.execution_privacy === "sensitive",
+    },
+  };
 }
 
 export async function settleClaimedOwnedDelete(
@@ -106,7 +158,13 @@ export async function settleClaimedOwnedDelete(
 ): Promise<void> {
   const outcome = deleteOutcome(result, GOVERNANCE_REFUSALS);
   try {
-    await settleOwnedDelete(db, claim.correlation, claim.resource_keys, outcome);
+    await settleOwnedDelete(
+      db,
+      claim.correlation,
+      claim.resource_keys,
+      outcome,
+      outcome === "delete_confirmed" ? storedDeleteResult(claim, result) : null,
+    );
   } catch (err) {
     logger.error({
       module: "execution",
