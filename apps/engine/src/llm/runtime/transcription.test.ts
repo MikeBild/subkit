@@ -187,14 +187,31 @@ describe.skipIf(skip)("what a failed provider call proves", () => {
     expect(transcriptionFailureOutcome(error)).toBe("reconcile");
   });
 
-  test("a refused connection never reached the provider, even when retried", async () => {
+  test("a refused connection never reached the provider", async () => {
     const error = await failureOf(
       call(async () => {
         throw Object.assign(new TypeError("Unable to connect"), { code: "ECONNREFUSED" });
       }),
     );
-    expect(error.attempts).toEqual([{ phase: "unsent" }, { phase: "unsent" }]);
+    expect(error.attempts).toEqual([{ phase: "unsent" }]);
     expect(transcriptionFailureOutcome(error)).toBe("release");
+  });
+
+  test("an ambiguous failure is not retried even if another attempt would succeed", async () => {
+    let dispatched = 0;
+    const error = await failureOf(
+      call(async () => {
+        dispatched += 1;
+        if (dispatched === 1)
+          throw Object.assign(new TypeError("socket closed"), { code: "ECONNRESET" });
+        return new Response(JSON.stringify({ text: "hello", duration: 1.5 }), {
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    expect(dispatched).toBe(1);
+    expect(error.attempts).toEqual([{ phase: "sent" }]);
+    expect(transcriptionFailureOutcome(error)).toBe("reconcile");
   });
 
   test("a reset connection after sending stays charged", async () => {

@@ -131,7 +131,7 @@ export async function transcribeAudio(
     const result = await transcribe({
       model: transcriptionModel(request.provider, request.tenantId, modelId, fetch),
       audio: request.audio,
-      maxRetries: 1,
+      maxRetries: 0,
       ...(request.language && request.provider !== "gemini"
         ? { providerOptions: { [request.provider]: { language: request.language } } }
         : {}),
