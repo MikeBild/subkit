@@ -14,6 +14,7 @@ const removal = (extra: Record<string, unknown> = {}) =>
   step({
     method: "DELETE",
     path: "/jobs/${scope.make.data.id}",
+    max_retries: 0,
     boundary: { variables: owned, max_body_bytes: 0, max_calls: 1, destructive: true },
     ...extra,
   });
@@ -75,6 +76,8 @@ test.each([
     },
   ],
   ["a segment that is not the last", { path: "/jobs/${scope.make.data.id}/runs" }],
+  ["automatic retries", { max_retries: 2 }],
+  ["a retried status", { retry_on_status: [503] }],
   [
     "a paged removal",
     {

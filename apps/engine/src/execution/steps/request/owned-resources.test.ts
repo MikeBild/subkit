@@ -101,7 +101,9 @@ describe("claiming a removal", () => {
       id: "drop",
       kind: "request",
       method: "DELETE",
-      url: "https://a.test/jobs/${scope.make.data.id}",
+      connector_id: CONNECTOR,
+      path: "/jobs/${scope.make.data.id}",
+      max_retries: 0,
       boundary: {
         variables: { "scope.make.data.id": { created_by_workflow: true } },
         max_body_bytes: 0,

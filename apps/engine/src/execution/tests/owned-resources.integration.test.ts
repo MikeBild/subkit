@@ -211,6 +211,23 @@ describe("governed DELETE of ids the workflow created", () => {
     expect((await ledger(elsewhere)).map((row) => row.state)).toEqual(["owned"]);
   });
 
+  test("an owned removal that asks for retries is refused before anything is sent", async () => {
+    const retried = await workflow("owned-retried", [
+      make("/broken"),
+      {
+        ...drop("drop", "scope.make.data.id", "/broken"),
+        max_retries: 3,
+        retry_on_status: [503],
+        retry_backoff_ms: 50,
+      },
+    ]);
+    const before = deletes("broken-1", "broken").length;
+    const result = await run(retried);
+    expect(result.failure("drop")).toBe("created_by_workflow_misplaced");
+    expect(deletes("broken-1", "broken")).toHaveLength(before);
+    expect((await ledger(retried)).map((row) => row.state)).toEqual(["owned"]);
+  });
+
   test("a paged removal sends nothing and keeps the id", async () => {
     const paged = await workflow("owned-paged", [
       make(),

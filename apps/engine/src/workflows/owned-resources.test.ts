@@ -204,8 +204,18 @@ describe("rule placement", () => {
   const at = (path: string, extra: Record<string, unknown> = {}) => ({
     connector_id: connector,
     path,
+    max_retries: 0,
     ...extra,
   });
+  test.each([
+    ["default retries", at(`/jobs/\${${id}}`, { max_retries: undefined })],
+    ["two retries", at(`/jobs/\${${id}}`, { max_retries: 2 })],
+    ["a retried status", at(`/jobs/\${${id}}`, { retry_on_status: [503] })],
+  ])("a removal with %s is misplaced though its path fits", (_name, step) => {
+    expect(ownedDeleteCollection({ variables }, step)).toBe("/jobs");
+    expect(createdByWorkflowMisplaced({ variables }, "DELETE", step)).toBe(true);
+  });
+
   test.each([
     ["the last segment after a fixed collection", "DELETE", at(`/jobs/\${${id}}`), "/jobs"],
     ["a nested fixed collection", "DELETE", at(`v2/sites/jobs/\${${id}}/`), "/v2/sites/jobs"],

@@ -1,5 +1,6 @@
 import { errorFields, logger } from "../../../logging/index.ts";
 import {
+  createdByWorkflowMisplaced,
   createdByWorkflowVariables,
   createdResourceKey,
   deleteOutcome,
@@ -60,11 +61,11 @@ export async function claimDeclaredOwnedDelete(
 ): Promise<{ result: StepResult } | { claim: OwnedDeleteClaim } | null> {
   const { p } = d;
   if (!p.step.boundary || createdByWorkflowVariables(p.step.boundary).length === 0) return null;
-  if (p.step.pagination)
+  if (createdByWorkflowMisplaced(p.step.boundary, (p.step.method ?? "GET").toUpperCase(), p.step))
     return denied(
       d,
       "created_by_workflow_misplaced",
-      "a removal of ids this workflow created is exactly one claimed request and never pages",
+      "a removal of ids this workflow created is exactly one claimed DELETE of `<collection>/${id}` with `max_retries: 0`, no `retry_on_status` and no `pagination`",
     );
   const collection = ownedDeleteCollection(p.step.boundary, p.step);
   if (!declared || !p.step.connector_id || collection === null)

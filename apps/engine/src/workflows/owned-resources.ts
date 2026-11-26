@@ -34,6 +34,8 @@ type AddressedStep = {
   path?: string | undefined;
   url?: string | undefined;
   pagination?: unknown;
+  max_retries?: number | undefined;
+  retry_on_status?: readonly number[] | undefined;
 };
 
 const UNSAFE_PATH = /[?#%\\]|\$\{/;
@@ -208,7 +210,10 @@ export function createdByWorkflowMisplaced(
 ): boolean {
   return (
     createdByWorkflowVariables(boundary).length > 0 &&
-    (method !== "DELETE" || ownedDeleteCollection(boundary, step) === null)
+    (method !== "DELETE" ||
+      ownedDeleteCollection(boundary, step) === null ||
+      step?.max_retries !== 0 ||
+      (step.retry_on_status?.length ?? 0) > 0)
   );
 }
 

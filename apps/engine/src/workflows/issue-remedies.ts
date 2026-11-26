@@ -120,7 +120,7 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "like an id is not something a human can approve.",
   created_by_workflow_misplaced:
     "`{created_by_workflow: true}` belongs only on the LAST segment of a DELETE `path` whose other " +
-    "segments are fixed, on a step with `connector_id`, `destructive: true` and no `pagination`, once per " +
+    "segments are fixed, on a step with `connector_id`, `destructive: true`, `max_retries: 0` and no `retry_on_status` or `pagination`, once per " +
     "step. The id must come from a POST or PUT of this workflow to exactly that fixed collection " +
     "path on the same connector that records it with `records_created: {id_path}`; use " +
     "`{enum: [...]}` for any other value.",
