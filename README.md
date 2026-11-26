@@ -9,12 +9,16 @@
 
 <p align="center">
   <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-mac-dark.webp" /><img src=".github/readme/button-mac.webp" alt="Download for Mac" width="200" /></picture></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-windows-dark.webp" /><img src=".github/readme/button-windows.webp" alt="Download for Windows" width="200" /></picture></a>
+</p>
+
+<p align="center">
   <a href="https://subkit-cloud.mikebild.dev"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-cloud-dark.webp" /><img src=".github/readme/button-cloud.webp" alt="Sign up for SubKit Cloud" width="200" /></picture></a>
   <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-selfhost-dark.webp" /><img src=".github/readme/button-selfhost.webp" alt="Self-host with Docker" width="200" /></picture></a>
   <a href="https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-chrome-dark.webp" /><img src=".github/readme/button-chrome.webp" alt="Add to Chrome" width="200" /></picture></a>
 </p>
 
-<p align="center"><sub>macOS 13+ on Apple Silicon · Chrome and Chromium browsers · Windows coming soon</sub></p>
+<p align="center"><sub>SubKit Desktop for macOS 13+ on Apple silicon and Windows 10 or 11 (x64) · Web Clipper for Chrome and Chromium browsers</sub></p>
 
 <p align="center">
   <a href="https://subkit.mikebild.dev/en/documentation/"><strong>Documentation</strong></a> ·
@@ -348,7 +352,7 @@ SubKit is in Preview. Everything for self-hosting, from the Compose file to SubK
   <tr>
     <td width="33%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you. Set up your workspace in the browser.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-cloud/">How SubKit Cloud works</a></td>
     <td width="33%" valign="top"><strong>Your own server</strong><br />The engine and everything it needs, started with Docker Compose.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
-    <td width="33%" valign="top"><strong>SubKit Desktop</strong><br />The Cockpit as an app on your Mac, with or without a server.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">How to get SubKit Desktop</a></td>
+    <td width="33%" valign="top"><strong>SubKit Desktop</strong><br />The Cockpit as an app on your Mac or Windows PC, with or without a server.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">How to get SubKit Desktop</a></td>
   </tr>
 </table>
 
@@ -360,11 +364,32 @@ SubKit is in Preview. Everything for self-hosting, from the Compose file to SubK
 2. Select **Create an account** and confirm your email address with the link you receive.
 3. Sign in, name your workspace and add the API key of your AI provider.
 
-**Then connect your tools.** Install the `subkit` CLI for the terminal ([guide](https://subkit.mikebild.dev/en/documentation/use-the-subkit-cli-on-your-machine/)):
+**Then connect your tools.** Install the `subkit` CLI for the terminal ([guide](https://subkit.mikebild.dev/en/documentation/use-the-subkit-cli-on-your-machine/)).
+
+On macOS and Linux:
 
 ```bash
 curl -fsSL https://github.com/MikeBild/subkit/releases/latest/download/install.sh | bash
 ```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://github.com/MikeBild/subkit/releases/latest/download/install.ps1 | iex
+```
+
+Both scripts check the download against the published checksums before they install. You can also download the binary directly:
+
+| System | Download |
+|---|---|
+| macOS, Apple silicon | [subkit-darwin-arm64](https://github.com/MikeBild/subkit/releases/latest/download/subkit-darwin-arm64) |
+| Windows, x64 | [subkit-windows-x64.exe](https://github.com/MikeBild/subkit/releases/latest/download/subkit-windows-x64.exe) |
+| Linux, x64 | [subkit-linux-x64](https://github.com/MikeBild/subkit/releases/latest/download/subkit-linux-x64) |
+| Linux, arm64 | [subkit-linux-arm64](https://github.com/MikeBild/subkit/releases/latest/download/subkit-linux-arm64) |
+
+Check direct downloads against [`SHA256SUMS`](https://github.com/MikeBild/subkit/releases/latest/download/SHA256SUMS).
+
+**Get SubKit Desktop** for [macOS](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg) or [Windows](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe). Both update themselves.
 
 [Connect Claude Code, Codex and other AI clients](https://subkit.mikebild.dev/en/documentation/mcp-clients/) over MCP.
 
@@ -401,7 +426,11 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 
 | What your team gets done | Since |
 | --- | --- |
+| SubKit Desktop for Windows, with automatic updates | 13.1.2 |
+| Continue a task run in a new conversation when its conversation was closed | 13.1.1 |
 | Private conversations, shared with your team only when you choose | 13.1.0 |
+| Voice dictation in the Cockpit, SubKit Desktop and the CLI | 13.1.0 |
+| The subkit CLI for Windows, with an installer | 13.1.0 |
 | Workspace isolation enforced in the database, in SubKit Cloud too | 13.1.0 |
 | A personal and a team second brain, with private notes only you can see | 13.0.0 |
 | Model steps: your workspace AI model inside a workflow, with structured output | 13.0.0 |
@@ -412,7 +441,7 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 | One vault for workspace, personal and device secrets | 12.1.0 |
 | A monthly AI budget in US dollars | 12.1.0 |
 | “Always ask first” for every write | 12.1.0 |
-| SubKit Desktop | 11.2.0 |
+| SubKit Desktop for macOS | 11.2.0 |
 | Tasks: a goal, a plan and limits | 11.0.0 |
 | SubKit Cloud | 10.1.4 |
 | A shared inbox for knowledge, fed by the Web Clipper | 9.10.0 |
