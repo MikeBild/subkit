@@ -879,6 +879,7 @@ export function DocsArticleView({
       }
     >
       <article
+        id={doc.titleAnchor}
         data-testid="docs-article"
         data-sk-surface="detail"
         className="flex min-w-0 flex-col"

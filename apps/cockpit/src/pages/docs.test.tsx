@@ -431,6 +431,27 @@ describe("docs pages", () => {
     }
   });
 
+  test("a link to a chapter's title heading lands on an element carrying that anchor", async () => {
+    const target = findPage(DOCS, "features");
+    if (!target) throw new Error("features chapter is missing");
+    for (const locale of ["en", "de"] as const) {
+      const anchor = article(target, locale).headings[0]?.anchor ?? "";
+      const bundle = {
+        ...DOCS,
+        pages: DOCS.pages.map((page) =>
+          page.slug === "web-clipper" ? withLinks(`[x](setup.md#${anchor})`).pages[0] : page,
+        ),
+      } as DocsBundle;
+      const source = await renderAt(bundle, "/cockpit/docs/web-clipper", locale);
+      const fragment = encodeURIComponent(anchor);
+      expect(source).toContain(`href="/cockpit/docs/features#${fragment}"`);
+      const landing = await renderAt(bundle, `/cockpit/docs/features#${fragment}`, locale);
+      const articleTag = landing.match(/<article[^>]*data-testid="docs-article"[^>]*>/)?.[0] ?? "";
+      expect(articleTag, `${locale} misses ${anchor}`).toContain(`id="${anchor}"`);
+      expect(count(landing, `id="${anchor}"`)).toBe(1);
+    }
+  });
+
   test("a screenshot renders root-relative and lazy with its alt, size, build caption and full-size link", async () => {
     const html = await renderAt(withImage(VERSION), "/cockpit/docs/web-clipper");
     const image = html.match(/<img [^>]*>/)?.[0] ?? "";

@@ -301,6 +301,14 @@ describe("docs model", () => {
     expect(headingLevel(1, doc.titleDepth)).toBe(2);
   });
 
+  test("keeps the stripped title heading's anchor so links to it still resolve", () => {
+    const clipper = findPage(FIXTURE, "clipper");
+    if (!clipper) throw new Error("fixture");
+    expect(article(clipper, "en").titleAnchor).toBe("web-clipper");
+    const untitled = page("plain", 0, "public", content("Plain", "Just text."));
+    expect(article(untitled, "en").titleAnchor).toBeUndefined();
+  });
+
   test("a single shallow section brings its subsections into the table of contents", () => {
     expect(
       tableOfContents([

@@ -233,6 +233,7 @@ export interface DocsArticle {
   body: string;
   headings: readonly DocsHeading[];
   titleDepth: number;
+  titleAnchor?: string;
   toc: DocsHeading[];
 }
 
@@ -294,6 +295,7 @@ export function article(page: DocsPage, locale: Locale): DocsArticle {
     body,
     headings: content.headings,
     titleDepth: title?.depth ?? Math.min(...sections.map((h) => h.depth), 2) - 1,
+    ...(title ? { titleAnchor: title.anchor } : {}),
     toc: tableOfContents(sections),
   };
 }
