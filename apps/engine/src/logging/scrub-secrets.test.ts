@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { utils } from "ssh2";
+import { generateSshKeyPair } from "../test-helpers/sftp-server.ts";
 import { redact } from "./redact.ts";
 import {
   referencesKeyMaterialPath,
@@ -315,7 +315,7 @@ describe("referencesKeyMaterialPath", () => {
 });
 
 describe("SSH private keys", () => {
-  const openssh = utils.generateKeyPairSync("ed25519").private;
+  const openssh = generateSshKeyPair().private;
   const body = openssh.split("\n")[1] as string;
 
   test("scrubString hides an OpenSSH private key block", () => {

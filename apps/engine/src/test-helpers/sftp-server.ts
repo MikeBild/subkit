@@ -47,6 +47,23 @@ function folderEntries(files: Map<string, Buffer>, folder: string) {
   }));
 }
 
+type SshKeyPair = ReturnType<typeof utils.generateKeyPairSync>;
+type SshKeyPairOptions = Parameters<typeof utils.generateKeyPairSync>[1];
+
+const parses = (text: string, passphrase?: string | Buffer) =>
+  !(utils.parseKey(text, passphrase) instanceof Error);
+
+export function generateSshKeyPair(options?: SshKeyPairOptions, attempts = 32): SshKeyPair {
+  const passphrase = options && "passphrase" in options ? options.passphrase : undefined;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const pair = options
+      ? utils.generateKeyPairSync("ed25519", options)
+      : utils.generateKeyPairSync("ed25519");
+    if (parses(pair.public) && parses(pair.private, passphrase)) return pair;
+  }
+  throw new Error(`ssh2 produced no parseable ed25519 key pair in ${attempts} attempts`);
+}
+
 export interface TestSftpServerOptions {
   authorizedKey?: { username: string; publicKey: string };
 }
@@ -150,30 +167,11 @@ function serveSftp(
   client.on("error", () => {});
 }
 
-interface Ssh2KeyOptions {
-  passphrase: string;
-  cipher: string;
-  rounds: number;
-}
-
-export function parseableSsh2KeyPair(options?: Ssh2KeyOptions): {
-  private: string;
-  public: string;
-} {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const pair = options
-      ? utils.generateKeyPairSync("ed25519", options)
-      : utils.generateKeyPairSync("ed25519");
-    if (!(utils.parseKey(pair.private, options?.passphrase) instanceof Error)) return pair;
-  }
-  throw new Error("ssh2 produced no parseable ed25519 key in 20 attempts");
-}
-
 export async function startTestSftpServer(
   credentials: [string, string],
   options: TestSftpServerOptions = {},
 ): Promise<TestSftpServer> {
-  const hostKey = parseableSsh2KeyPair();
+  const hostKey = generateSshKeyPair();
   const files = new Map<string, Buffer>();
   const authorized = options.authorizedKey
     ? {

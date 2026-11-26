@@ -5,7 +5,7 @@ import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { seedConnector, seedTenant } from "../../test-helpers/seed.ts";
 import {
-  parseableSsh2KeyPair,
+  generateSshKeyPair,
   startTestSftpServer,
   type TestSftpServer,
 } from "../../test-helpers/sftp-server.ts";
@@ -21,13 +21,13 @@ import {
 import type { ConnectorView } from "../types.ts";
 
 const PASSPHRASE = "synthetic-key-passphrase";
-const deployKey = parseableSsh2KeyPair();
-const lockedKey = parseableSsh2KeyPair({
+const deployKey = generateSshKeyPair();
+const lockedKey = generateSshKeyPair({
   passphrase: PASSPHRASE,
   cipher: "aes256-ctr",
   rounds: 4,
 });
-const strangerKey = parseableSsh2KeyPair();
+const strangerKey = generateSshKeyPair();
 const pkcs8Pair = generateKeyPairSync("ed25519", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
   publicKeyEncoding: { type: "spki", format: "pem" },
