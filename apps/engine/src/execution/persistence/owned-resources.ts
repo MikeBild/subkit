@@ -89,51 +89,105 @@ export async function recordCreatedResources(
   return recorded;
 }
 
-async function statesOf(
+async function ledgerRows(
   tx: ScopedTx,
   correlation: OwnedResourceCorrelation,
   keys: readonly string[],
-): Promise<Map<string, OwnedResourceState>> {
-  const rows = await tx
-    .select({ resource_key: ownedResources.resource_key, state: ownedResources.state })
+) {
+  return tx
+    .select({
+      resource_key: ownedResources.resource_key,
+      state: ownedResources.state,
+      deleted_execution_id: ownedResources.deleted_execution_id,
+      deleted_step_id: ownedResources.deleted_step_id,
+    })
     .from(ownedResources)
     .where(scopeOf(correlation, keys))
     .for("update");
-  return new Map(rows.map((row) => [row.resource_key, row.state]));
 }
+
+export type OwnedDeleteReplay = {
+  resource_key: string;
+  execution_id: string | null;
+  step_id: string | null;
+};
+
+export type OwnedDeleteClaimDecision = OwnedDeleteDecision & {
+  replayed_from?: OwnedDeleteReplay[];
+};
 
 export async function claimOwnedDelete(
   db: Executor,
   correlation: OwnedResourceCorrelation,
   request: { method: string; destructive: boolean; resource_keys: readonly string[] },
-): Promise<OwnedDeleteDecision> {
-  const decision = await withTenantScope(db, correlation.tenant_id, async (tx) => {
-    const ledger = await statesOf(tx, correlation, request.resource_keys);
-    const verdict = ownedDeleteDecision({ ...request, ledger });
-    if (!verdict.allow) return verdict;
-    const guard = ownedResourceGuard("delete_reserved");
-    await tx
-      .update(ownedResources)
-      .set({
-        state: guard.to,
-        deleted_execution_id: correlation.execution_id,
-        deleted_step_id: correlation.step_id,
-        updated_at: sql`clock_timestamp()`,
-      })
-      .where(
-        and(scopeOf(correlation, request.resource_keys), eq(ownedResources.state, guard.from)),
+): Promise<OwnedDeleteClaimDecision> {
+  const decision = await withTenantScope(
+    db,
+    correlation.tenant_id,
+    async (tx): Promise<OwnedDeleteClaimDecision> => {
+      const rows = await ledgerRows(tx, correlation, request.resource_keys);
+      const ledger = new Map<string, OwnedResourceState>(
+        rows.map((row) => [row.resource_key, row.state]),
       );
-    return verdict;
-  });
+      const verdict = ownedDeleteDecision({ ...request, ledger });
+      if (!verdict.allow) return verdict;
+      if (verdict.replay) {
+        const replayed_from = rows.map((row) => ({
+          resource_key: row.resource_key,
+          execution_id: row.deleted_execution_id,
+          step_id: row.deleted_step_id,
+        }));
+        await auditAwait(
+          {
+            tenant_id: correlation.tenant_id,
+            action: AuditAction.OWNED_RESOURCE_DELETE_REPLAYED,
+            resource_type: "execution",
+            resource_id: correlation.execution_id,
+            actor_type: "system",
+            result: "success",
+            metadata: {
+              workflow_id: correlation.workflow_id,
+              step_id: correlation.step_id,
+              connector_id: correlation.connector_id,
+              collection_path: correlation.collection_path,
+              replayed_from,
+            },
+          },
+          tx,
+        );
+        return { ...verdict, replayed_from };
+      }
+      const guard = ownedResourceGuard("delete_reserved");
+      await tx
+        .update(ownedResources)
+        .set({
+          state: guard.to,
+          deleted_execution_id: correlation.execution_id,
+          deleted_step_id: correlation.step_id,
+          updated_at: sql`clock_timestamp()`,
+        })
+        .where(
+          and(scopeOf(correlation, request.resource_keys), eq(ownedResources.state, guard.from)),
+        );
+      return verdict;
+    },
+  );
   logger[decision.allow ? "info" : "warn"]({
     module: "execution",
-    action: decision.allow ? "owned_resource.delete_reserved" : "owned_resource.delete_denied",
-    msg: decision.allow
-      ? "removal of ids this workflow created reserved before sending"
-      : "removal refused by the ownership ledger; nothing was sent",
+    action: !decision.allow
+      ? "owned_resource.delete_denied"
+      : decision.replay
+        ? "owned_resource.delete_replayed"
+        : "owned_resource.delete_reserved",
+    msg: !decision.allow
+      ? "removal refused by the ownership ledger; nothing was sent"
+      : decision.replay
+        ? "removal already confirmed earlier; the stored outcome is replayed and nothing was sent"
+        : "removal of ids this workflow created reserved before sending",
     execution_id: correlation.execution_id,
     step_id: correlation.step_id,
     ...(decision.allow ? {} : { code: decision.code }),
+    ...(decision.replayed_from ? { replayed_from: decision.replayed_from } : {}),
   });
   return decision;
 }

@@ -207,6 +207,7 @@ export const AuditAction = {
   TRANSACTIONAL_MAIL_SETTLED: "transactional_mail.settled",
   OWNED_RESOURCE_RECORDED: "owned_resource.recorded",
   OWNED_RESOURCE_DELETE_SETTLED: "owned_resource.delete_settled",
+  OWNED_RESOURCE_DELETE_REPLAYED: "owned_resource.delete_replayed",
 
   EVENT_EMITTED: "event.emitted",
 

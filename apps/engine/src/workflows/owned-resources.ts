@@ -128,7 +128,8 @@ export type OwnedDeleteDenial =
   | "delete_target_outcome_unknown";
 
 export type OwnedDeleteDecision =
-  | { allow: true }
+  | { allow: true; replay: false }
+  | { allow: true; replay: true }
   | { allow: false; code: OwnedDeleteDenial; resource_key: string | null };
 
 export function ownedDeleteDecision(input: {
@@ -139,18 +140,23 @@ export function ownedDeleteDecision(input: {
 }): OwnedDeleteDecision {
   if (input.method.toUpperCase() !== "DELETE" || !input.destructive)
     return { allow: false, code: "delete_not_destructive", resource_key: null };
+  if (input.resource_keys.length === 0)
+    return { allow: false, code: "delete_target_not_created_by_workflow", resource_key: null };
   for (const key of input.resource_keys) {
     const state = input.ledger.get(key);
-    if (state === "owned") continue;
+    if (state === "owned" || state === "deleted") continue;
     const code: OwnedDeleteDenial =
       state === undefined
         ? "delete_target_not_created_by_workflow"
-        : state === "deleted"
-          ? "delete_target_already_deleted"
-          : "delete_target_outcome_unknown";
+        : "delete_target_outcome_unknown";
     return { allow: false, code, resource_key: key };
   }
-  return { allow: true };
+  const deleted = input.resource_keys.filter((key) => input.ledger.get(key) === "deleted");
+  if (deleted.length === input.resource_keys.length) return { allow: true, replay: true };
+  const [first] = deleted;
+  return first === undefined
+    ? { allow: true, replay: false }
+    : { allow: false, code: "delete_target_already_deleted", resource_key: first };
 }
 
 export const OWNED_DELETE_DENIAL_MESSAGE: Record<OwnedDeleteDenial, string> = {
@@ -159,7 +165,7 @@ export const OWNED_DELETE_DENIAL_MESSAGE: Record<OwnedDeleteDenial, string> = {
   delete_target_not_created_by_workflow:
     "the id was not recorded by `records_created` of a step of this workflow on this connector and environment",
   delete_target_already_deleted:
-    "this workflow already removed that id; a second removal is never sent",
+    "one of the ids was already removed and the others were not; a request that mixes them is never sent",
   delete_target_outcome_unknown:
     "an earlier removal of that id has no confirmed outcome; inspect the target before removing it again",
 };

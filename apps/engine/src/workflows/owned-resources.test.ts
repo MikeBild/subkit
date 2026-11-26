@@ -75,29 +75,67 @@ describe("owned delete decision", () => {
     ["job-3", "delete_unknown"],
     ["job-4", "deleting"],
   ]);
-  const table: Array<[string, string, boolean, string[], string | null, string | null]> = [
-    ["owned id", "DELETE", true, ["job-1"], null, null],
-    ["lowercase method", "delete", true, ["job-1"], null, null],
-    ["not marked destructive", "DELETE", false, ["job-1"], "delete_not_destructive", null],
-    ["not a DELETE", "POST", true, ["job-1"], "delete_not_destructive", null],
-    ["foreign id", "DELETE", true, ["job-9"], "delete_target_not_created_by_workflow", "job-9"],
-    ["already removed", "DELETE", true, ["job-2"], "delete_target_already_deleted", "job-2"],
-    ["outcome unknown", "DELETE", true, ["job-3"], "delete_target_outcome_unknown", "job-3"],
-    ["removal in flight", "DELETE", true, ["job-4"], "delete_target_outcome_unknown", "job-4"],
+  const send = { allow: true, replay: false };
+  const replay = { allow: true, replay: true };
+  const deny = (code: string, resource_key: string | null) => ({
+    allow: false,
+    code,
+    resource_key,
+  });
+  const table: Array<[string, string, boolean, string[], object]> = [
+    ["an owned id is sent", "DELETE", true, ["job-1"], send],
+    ["a lowercase method", "delete", true, ["job-1"], send],
+    ["a removed id replays its outcome", "DELETE", true, ["job-2"], replay],
+    ["not marked destructive", "DELETE", false, ["job-1"], deny("delete_not_destructive", null)],
+    ["not a DELETE", "POST", true, ["job-2"], deny("delete_not_destructive", null)],
+    ["no id at all", "DELETE", true, [], deny("delete_target_not_created_by_workflow", null)],
+    [
+      "a foreign id",
+      "DELETE",
+      true,
+      ["job-9"],
+      deny("delete_target_not_created_by_workflow", "job-9"),
+    ],
+    [
+      "an unknown outcome",
+      "DELETE",
+      true,
+      ["job-3"],
+      deny("delete_target_outcome_unknown", "job-3"),
+    ],
+    [
+      "a removal in flight",
+      "DELETE",
+      true,
+      ["job-4"],
+      deny("delete_target_outcome_unknown", "job-4"),
+    ],
     [
       "one foreign of two",
       "DELETE",
       true,
       ["job-1", "job-9"],
-      "delete_target_not_created_by_workflow",
-      "job-9",
+      deny("delete_target_not_created_by_workflow", "job-9"),
+    ],
+    [
+      "a removed and an owned id",
+      "DELETE",
+      true,
+      ["job-1", "job-2"],
+      deny("delete_target_already_deleted", "job-2"),
+    ],
+    [
+      "a removed and an unknown id",
+      "DELETE",
+      true,
+      ["job-2", "job-3"],
+      deny("delete_target_outcome_unknown", "job-3"),
     ],
   ];
 
-  test.each(table)("%s", (_name, method, destructive, keys, code, key) => {
-    const decision = ownedDeleteDecision({ method, destructive, resource_keys: keys, ledger });
-    expect(decision).toEqual(
-      code === null ? { allow: true } : { allow: false, code: code as never, resource_key: key },
+  test.each(table)("%s", (_name, method, destructive, keys, expected) => {
+    expect(ownedDeleteDecision({ method, destructive, resource_keys: keys, ledger })).toEqual(
+      expected as never,
     );
   });
 });

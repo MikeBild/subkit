@@ -75,6 +75,20 @@ export async function claimDeclaredOwnedDelete(
     resource_keys,
   });
   if (!decision.allow) return denied(d, decision.code, OWNED_DELETE_DENIAL_MESSAGE[decision.code]);
+  if (decision.replay)
+    return {
+      result: {
+        status: "succeeded",
+        retry_count: 0,
+        duration_ms: d.clock.now() - d.start,
+        output: {
+          replayed: true,
+          outcome: "already_deleted",
+          resource_keys,
+          replayed_from: decision.replayed_from ?? [],
+        },
+      },
+    };
   return { claim: { correlation, resource_keys } };
 }
 

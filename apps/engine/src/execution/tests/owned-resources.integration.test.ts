@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { connectors, ownedResources } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { auditLog, connectors, ownedResources } from "../../db/schema/index.ts";
 import { withTenantScope } from "../../db/tenant-scope.ts";
 import { runExecution } from "../engine.ts";
 import { recordCreatedResources, settleOwnedDelete } from "../persistence/owned-resources.ts";
@@ -100,10 +100,14 @@ async function run(workflow_id: string, input: Record<string, unknown> = {}, hol
     input,
     ...(hold ? { options: { hold_writes: true } } : {}),
   });
+  const output = (step: string) =>
+    result.steps.find((entry) => entry.step_key === step)?.output_preview as
+      | Record<string, unknown>
+      | undefined;
   const failure = (step: string) =>
     (result.steps.find((entry) => entry.step_key === step)?.error as { code?: string } | null)
       ?.code;
-  return { ...result, failure };
+  return { ...result, failure, output };
 }
 
 async function ledger(workflow_id: string) {
@@ -124,7 +128,7 @@ async function ledger(workflow_id: string) {
 }
 
 describe("governed DELETE of ids the workflow created", () => {
-  test("a created id is recorded and its removal is sent once, then settled", async () => {
+  test("a created id is recorded, removed once and a repeated removal replays", async () => {
     const lifecycle = await workflow("owned-lifecycle", [
       make(),
       drop("drop", "scope.make.data.id"),
@@ -133,7 +137,13 @@ describe("governed DELETE of ids the workflow created", () => {
     const result = await run(lifecycle);
     const id = `job-${created}`;
     expect(result.steps.find((step) => step.step_key === "drop")?.status).toBe("succeeded");
-    expect(result.failure("drop_again")).toBe("delete_target_already_deleted");
+    expect(result.status).toBe("succeeded");
+    expect(result.output("drop_again")).toMatchObject({
+      replayed: true,
+      outcome: "already_deleted",
+      resource_keys: [id],
+      replayed_from: [{ resource_key: id, execution_id: result.execution_id, step_id: "drop" }],
+    });
     expect(deletes(id)).toHaveLength(1);
     expect(await ledger(lifecycle)).toEqual([
       {
@@ -145,6 +155,34 @@ describe("governed DELETE of ids the workflow created", () => {
         created_step_id: "make",
       },
     ]);
+  });
+
+  test("a later run removing the same id replays the stored outcome", async () => {
+    const again = await workflow("owned-again", [
+      make("/fixed"),
+      drop("drop", "scope.make.data.id", "/fixed"),
+    ]);
+    const first = await run(again);
+    expect(first.status).toBe("succeeded");
+    const later = await run(again);
+    expect(later.status).toBe("succeeded");
+    expect(later.output("drop")).toMatchObject({
+      replayed: true,
+      replayed_from: [{ resource_key: "job-fixed", execution_id: first.execution_id }],
+    });
+    expect(deletes("job-fixed", "fixed")).toHaveLength(1);
+    expect((await ledger(again)).map((row) => row.state)).toEqual(["deleted"]);
+    const replays = await ctx.testDb.db
+      .select({ resource_id: auditLog.resource_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "owned_resource.delete_replayed"),
+          eq(auditLog.resource_id, later.execution_id),
+        ),
+      );
+    expect(replays).toHaveLength(1);
   });
 
   test("an id this workflow did not create is refused before anything is sent", async () => {

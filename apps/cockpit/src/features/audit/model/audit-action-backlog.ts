@@ -135,6 +135,7 @@ export const UNNAMED_AUDIT_ACTIONS: readonly string[] = [
   "oauth_client.registration_failed",
   "operator.risk_signal_cleared",
   "operator.risk_signal_raised",
+  "owned_resource.delete_replayed",
   "owned_resource.delete_settled",
   "owned_resource.recorded",
   "patch_candidate.prepared",
