@@ -19,6 +19,10 @@ export interface TranscribeRequest {
   readonly actor?: SpeechActor | undefined;
 }
 
+export type TranscriptionInput = Omit<TranscribeRequest, "clientRequestId"> & {
+  readonly clientRequestId?: string | undefined;
+};
+
 export interface TranscriberOutput {
   readonly text: string;
   readonly model?: string | undefined;
@@ -88,9 +92,12 @@ export type SpeechErrorCode =
   | "local_model_missing"
   | "local_needs_wav"
   | "transcription_in_progress"
-  | "transcription_unsettled";
+  | "transcription_unsettled"
+  | "client_request_id_required";
 
-const STATUS: Record<SpeechErrorCode, 409 | 422 | 502> = {
+type SpeechErrorStatus = 400 | 409 | 422 | 502;
+
+const STATUS: Record<SpeechErrorCode, SpeechErrorStatus> = {
   speech_off: 409,
   speech_unavailable: 409,
   no_speech: 422,
@@ -99,10 +106,11 @@ const STATUS: Record<SpeechErrorCode, 409 | 422 | 502> = {
   local_needs_wav: 422,
   transcription_in_progress: 409,
   transcription_unsettled: 409,
+  client_request_id_required: 400,
 };
 
 export class SpeechError extends Error {
-  readonly status: 409 | 422 | 502;
+  readonly status: SpeechErrorStatus;
   constructor(
     readonly code: SpeechErrorCode,
     message: string,

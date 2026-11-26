@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   reservationEstimateSeconds,
   settledAudioSeconds,
@@ -19,6 +20,7 @@ import {
   SpeechError,
   type TranscribeRequest,
   type Transcriber,
+  type TranscriptionInput,
   type TranscriptionKeyOwner,
   type TranscriptionLedger,
 } from "./port.ts";
@@ -50,6 +52,7 @@ export interface SpeechServiceDeps {
     prepare(): Promise<LocalModelState>;
   };
   readonly clock: () => number;
+  readonly newRequestId?: () => string;
 }
 
 export interface SpeechStatus {
@@ -187,10 +190,14 @@ export function createSpeechService(deps: SpeechServiceDeps) {
     };
   }
 
-  async function transcribe(request: TranscribeRequest): Promise<Transcription> {
-    const prior = await deps.ledger.prior(request);
-    if (prior.kind !== "fresh") return answerPrior(request, prior);
-    const { settings, owners, order } = await orderFor(request.tenantId);
+  async function transcribe(input: TranscriptionInput): Promise<Transcription> {
+    const supplied = input.clientRequestId;
+    if (supplied) {
+      const prior = await deps.ledger.prior({ ...input, clientRequestId: supplied });
+      if (prior.kind !== "fresh")
+        return answerPrior({ ...input, clientRequestId: supplied }, prior);
+    }
+    const { settings, owners, order } = await orderFor(input.tenantId);
     if (order.length === 0)
       throw new SpeechError(
         settings.preference === "off" ? "speech_off" : "speech_unavailable",
@@ -198,6 +205,22 @@ export function createSpeechService(deps: SpeechServiceDeps) {
           ? "voice dictation is turned off for this workspace"
           : "no speech-to-text service is available",
       );
+    if (!supplied && order.some((id) => isCloud(id) && owners?.[id] === "operator")) {
+      logger.info({
+        module: "speech",
+        action: "transcribe.request_id_missing",
+        msg: "operator-funded transcription refused without a client request id",
+        tenant_id: input.tenantId,
+      });
+      throw new SpeechError(
+        "client_request_id_required",
+        "send one client_request_id per recording; this transcription is billed to the operator budget",
+      );
+    }
+    const request: TranscribeRequest = {
+      ...input,
+      clientRequestId: supplied ?? (deps.newRequestId ?? randomUUID)(),
+    };
     const measured = wavSeconds(request.audio);
     const estimateSeconds = reservationEstimateSeconds(measured);
     const failures: SpeechError[] = [];

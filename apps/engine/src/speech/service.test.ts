@@ -427,6 +427,58 @@ describe("operator key reservation", () => {
     expect(asked).toBe(0);
   });
 
+  test("an operator-funded request without a request id is refused before any reservation", async () => {
+    const { speech, steps, calls } = service();
+    const { clientRequestId: _, ...anonymous } = request;
+    await expect(speech.transcribe(anonymous)).rejects.toMatchObject({
+      code: "client_request_id_required",
+      status: 400,
+    });
+    expect(steps).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  test.each([
+    ["a workspace key", { owner: "workspace" as const }],
+    [
+      "the local model",
+      {
+        settings: () => ({
+          preference: "local" as const,
+          model: undefined,
+          primaryProvider: "openai",
+        }),
+      },
+    ],
+    ["a reached spend limit", { spendAllows: async () => false }],
+  ])("an unmetered request through %s needs no request id", async (_, overrides) => {
+    const { speech, steps } = service({ ...overrides, newRequestId: () => "minted" });
+    const { clientRequestId: __, ...anonymous } = request;
+    expect((await speech.transcribe(anonymous)).text).toBeTruthy();
+    expect(steps).toEqual([]);
+  });
+
+  test("an unmetered request without a request id gets a fresh one per call", async () => {
+    const seenIds: string[] = [];
+    const { speech } = service({
+      owner: "workspace",
+      transcribers: {
+        ...withOpenai(""),
+        openai: {
+          id: "openai",
+          transcribe: async (input) => {
+            seenIds.push(input.clientRequestId);
+            return { text: "fine" };
+          },
+        },
+      },
+    });
+    const { clientRequestId: _, ...anonymous } = request;
+    await speech.transcribe(anonymous);
+    await speech.transcribe(anonymous);
+    expect(new Set(seenIds).size).toBe(2);
+  });
+
   test("a refused ledger write leaves the reservation to the sweep and still falls back", async () => {
     const memory = memoryLedger();
     const failure = new TranscriptionDispatchError(new Error("bad audio"), [

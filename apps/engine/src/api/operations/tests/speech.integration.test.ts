@@ -30,11 +30,15 @@ const fake = (id: Transcriber["id"], text: string | Error): Transcriber => ({
   },
 });
 
-function useFakeSpeech(text: string | Error, preference: "auto" | "off" = "auto") {
+function useFakeSpeech(
+  text: string | Error,
+  preference: "auto" | "off" = "auto",
+  owner: "operator" | "workspace" = "operator",
+) {
   setSpeechServiceForTests(
     createSpeechService({
       settings: () => ({ preference, model: undefined, primaryProvider: "openai" }),
-      keyOwner: async (id) => (id === "openai" ? "operator" : null),
+      keyOwner: async (id) => (id === "openai" ? owner : null),
       spendAllows: async () => true,
       ledger: transcriptionLedger,
       transcribers: {
@@ -91,8 +95,8 @@ describe("speech routes", () => {
     });
   });
 
-  test("transcribes a recording and passes the language hint", async () => {
-    useFakeSpeech("  dictated   text ");
+  test("transcribes a recording with a workspace key and passes the language hint", async () => {
+    useFakeSpeech("  dictated   text ", "auto", "workspace");
     seen.length = 0;
     const result = await post("/v1/speech/transcriptions", { ...recording, language: "de" });
     expect(result).toEqual({
@@ -116,7 +120,10 @@ describe("speech routes", () => {
 
   test("keeps the code of the last failure", async () => {
     useFakeSpeech(new Error("HTTP 401 key rejected"));
-    const result = await post("/v1/speech/transcriptions", recording);
+    const result = await post("/v1/speech/transcriptions", {
+      ...recording,
+      client_request_id: "00000000-0000-4000-8000-000000000919",
+    });
     expect(result.status).toBe(409);
     expect(result.body).toMatchObject({ code: "local_model_missing" });
   });
@@ -126,6 +133,16 @@ describe("speech routes", () => {
     const result = await post("/v1/speech/transcriptions", recording);
     expect(result.status).toBe(409);
     expect(result.body).toMatchObject({ code: "speech_off" });
+  });
+
+  test("an operator-funded recording without a request id is refused before anything is booked", async () => {
+    useFakeSpeech("never");
+    seen.length = 0;
+    const before = await ctx.db.select().from(llmUsage);
+    const result = await post("/v1/speech/transcriptions", recording);
+    expect(result).toMatchObject({ status: 400, body: { code: "client_request_id_required" } });
+    expect(seen).toEqual([]);
+    expect(await ctx.db.select().from(llmUsage)).toHaveLength(before.length);
   });
 
   test("a retry of one recording calls the provider once and books one row", async () => {
