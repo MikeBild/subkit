@@ -9,6 +9,15 @@ export const QUALITY_RUNTIME_WITNESSES = [
       "Added with the voice dictation change; the focused worker test exercises the real entry and protocol.",
   },
   {
+    consumer: "apps/engine/src/speech/local/whisper-runtime.ts",
+    test: "apps/engine/src/speech/local/whisper-worker.test.ts",
+    kind: "source-worker",
+    rationale:
+      "The source Worker imports whisper-runtime.ts unchanged and calls transcribeSamples for the transcribe request. With the model absent, the call configures the web build, maps the model URL in the fetch override and fails while reading the model file; the test asserts the correlated failed response.",
+    independent_review:
+      "Root traced the absent-model failure to the fetch override in whisper-runtime.ts (ENOENT on config.json from its Bun.file read) after the asset build. A successful transcription is not exercised. The pair is accepted only through the hash-bound passing execution receipt.",
+  },
+  {
     consumer: "apps/engine/src/embeddings/embedding-worker.ts",
     test: "apps/engine/src/embeddings/tests/worker-entry.test.ts",
     kind: "source-worker",

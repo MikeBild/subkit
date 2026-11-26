@@ -86,6 +86,10 @@
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
+      "id": "speech",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
       "id": "tasks",
       "resource_tags": ["db", "ports", "global-state"]
     },
