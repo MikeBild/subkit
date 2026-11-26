@@ -141,6 +141,10 @@ export {
   storeTemplateOAuthCredentialsOperation,
 } from "./operations/connector-templates.ts";
 export {
+  connectorWriteRejection,
+  connectorWriteRejectionStatus,
+} from "./operations/connector-write-rejection.ts";
+export {
   createConnectorOperation,
   deleteConnectorOperation,
   disableConnectorOperation,

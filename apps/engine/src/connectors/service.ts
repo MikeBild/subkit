@@ -19,7 +19,7 @@ import {
   totalOverWindow,
 } from "../db/list-result.ts";
 import { connectors, vaultItems } from "../db/schema/index.ts";
-import { BadRequestError, HttpError } from "../http/errors.ts";
+import { BadRequestError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { validateConnectorConfigOrThrow, withMcpConfigDefaults } from "./config-schemas.ts";
@@ -36,6 +36,13 @@ import {
   templateWasRebound,
 } from "./core/connector-config.ts";
 import { toConnectorView } from "./core/view.ts";
+import {
+  CONNECTOR_TEMPLATE_CONFLICT,
+  type ConnectorWriteOutcome,
+  connectorTemplateUnknown,
+  connectorWriteAccepted,
+  connectorWriteRejected,
+} from "./core/write-rejection.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { connectorCountsAgainstHealth } from "./health-ratio.ts";
 import { carryMcpTrustList } from "./mcp-tool-trust.ts";
@@ -52,6 +59,7 @@ import type {
   Environment,
   UpdateConnectorInput,
 } from "./types.ts";
+import { connectorWriteValue } from "./write-rejected-error.ts";
 
 function assertAuthTypeAllowedForDriver(
   driver: DriverName,
@@ -103,12 +111,14 @@ async function resolveCreateTemplateBinding(
   tenant_id: string,
   input: CreateConnectorInput,
   exec: Executor,
-): Promise<{
-  effective: CreateConnectorInput;
-  binding: ReturnType<typeof buildTemplateBindingFields> | null;
-}> {
+): Promise<
+  ConnectorWriteOutcome<{
+    effective: CreateConnectorInput;
+    binding: ReturnType<typeof buildTemplateBindingFields> | null;
+  }>
+> {
   if (!input.template_slug) {
-    return { effective: input, binding: null };
+    return connectorWriteAccepted({ effective: input, binding: null });
   }
   const resolved = await resolveConnectorTemplate({
     db: exec,
@@ -116,16 +126,7 @@ async function resolveCreateTemplateBinding(
     slug: input.template_slug,
     preferred_source: input.template_source,
   });
-  if (!resolved) {
-    throw new HttpError(
-      400,
-      "connector_template_unknown",
-      `unknown connector template: ${input.template_slug}`,
-      {
-        details: { template_slug: input.template_slug },
-      },
-    );
-  }
+  if (!resolved) return connectorWriteRejected(connectorTemplateUnknown(input.template_slug));
   const enriched = enrichConnectorFromTemplate(
     {
       name: input.name,
@@ -143,14 +144,14 @@ async function resolveCreateTemplateBinding(
       ? { environment: input.template_base_url_environment }
       : undefined,
   );
-  return {
+  return connectorWriteAccepted({
     effective: {
       ...enriched,
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.category !== undefined ? { category: input.category } : {}),
     },
     binding: buildTemplateBindingFields(resolved),
-  };
+  });
 }
 
 interface CreateConnectorParams {
@@ -188,9 +189,18 @@ export async function createConnector(
   p: CreateConnectorParams,
   db: Executor,
 ): Promise<ConnectorView> {
+  return connectorWriteValue(await createConnectorOutcome(p, db));
+}
+
+export async function createConnectorOutcome(
+  p: CreateConnectorParams,
+  db: Executor,
+): Promise<ConnectorWriteOutcome<ConnectorView>> {
   return await db.transaction(async (tx) => {
     await lockCatalogVocabulary(tx, p.tenant_id);
-    const resolved = await resolveCreateTemplateBinding(p.tenant_id, p.input, tx);
+    const binding = await resolveCreateTemplateBinding(p.tenant_id, p.input, tx);
+    if (!binding.ok) return binding;
+    const resolved = binding.value;
     const resolvedEffective = resolved.effective;
     const auth_type = resolvedEffective.auth_type ?? "none";
     const effective = {
@@ -276,7 +286,7 @@ export async function createConnector(
         type: "connector.updated",
         ids: { connector_id: row.id },
       });
-      return toView(row);
+      return connectorWriteAccepted(toView(row));
     }
     const inserted = await tx
       .insert(connectors)
@@ -327,7 +337,7 @@ export async function createConnector(
       type: "connector.created",
       ids: { connector_id: row.id },
     });
-    return toView(row);
+    return connectorWriteAccepted(toView(row));
   });
 }
 
@@ -618,8 +628,20 @@ export async function updateConnector(
   actor_input: ConnectorActorInput,
   db: Executor,
 ): Promise<ConnectorView | null> {
+  return connectorWriteValue(
+    await updateConnectorOutcome(tenant_id, id, requested, actor_input, db),
+  );
+}
+
+export async function updateConnectorOutcome(
+  tenant_id: string,
+  id: string,
+  requested: UpdateConnectorInput,
+  actor_input: ConnectorActorInput,
+  db: Executor,
+): Promise<ConnectorWriteOutcome<ConnectorView | null>> {
   const actorFields = connectorActorFields(actor_input);
-  const updated = await db.transaction(async (tx) => {
+  return await db.transaction(async (tx): Promise<ConnectorWriteOutcome<ConnectorView | null>> => {
     await lockCatalogVocabulary(tx, tenant_id);
     const existing = await tx
       .select()
@@ -634,7 +656,7 @@ export async function updateConnector(
       .limit(1)
       .for("update");
     const prior = existing[0];
-    if (!prior) return null;
+    if (!prior) return connectorWriteAccepted(null);
     const patch = restoreMaskedConnectorSecrets(requested, prior, {
       template_rebound: templateWasRebound(
         prior.template_slug,
@@ -642,13 +664,8 @@ export async function updateConnector(
         requested.clear_template_binding,
       ),
     });
-    if (patch.clear_template_binding && patch.template_slug) {
-      throw new HttpError(
-        409,
-        "connector_template_conflict",
-        "clear_template_binding cannot be combined with template_slug: send one of them",
-      );
-    }
+    if (patch.clear_template_binding && patch.template_slug)
+      return connectorWriteRejected(CONNECTOR_TEMPLATE_CONFLICT);
     const set: Partial<typeof connectors.$inferInsert> = { updated_at: new Date() };
     if (patch.name !== undefined) set.display_name = patch.name;
     if (patch.base_url !== undefined) set.base_url = patch.base_url;
@@ -670,16 +687,7 @@ export async function updateConnector(
         slug: patch.template_slug,
         preferred_source: patch.template_source,
       });
-      if (!resolved) {
-        throw new HttpError(
-          400,
-          "connector_template_unknown",
-          `unknown connector template: ${patch.template_slug}`,
-          {
-            details: { template_slug: patch.template_slug },
-          },
-        );
-      }
+      if (!resolved) return connectorWriteRejected(connectorTemplateUnknown(patch.template_slug));
       Object.assign(set, buildTemplateBindingFields(resolved));
       const enriched = enrichConnectorFromTemplate(
         {
@@ -752,7 +760,7 @@ export async function updateConnector(
       set.auth_failed_reason = "oauth scope changed — sign in again to grant it";
     }
     const [row] = await tx.update(connectors).set(set).where(eq(connectors.id, id)).returning();
-    if (!row) return null;
+    if (!row) return connectorWriteAccepted(null);
     await auditAwait(
       {
         tenant_id,
@@ -772,9 +780,8 @@ export async function updateConnector(
       type: "connector.updated",
       ids: { connector_id: id },
     });
-    return toView(row);
+    return connectorWriteAccepted(toView(row));
   });
-  return updated;
 }
 
 export async function setConnectorEnabled(

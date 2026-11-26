@@ -14,7 +14,7 @@ import type { Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { catalogGroupOrder } from "../db/list-result.ts";
 import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
-import { ConflictError, HttpError, NotFoundError } from "../http/errors.ts";
+import { ConflictError } from "../http/errors.ts";
 import { log } from "../logging/index.ts";
 import { isUuid } from "../utils/index.ts";
 import {
@@ -719,6 +719,15 @@ export async function getSkillHistoryEntry(
   };
 }
 
+export type RestoreSkillRejection =
+  | "audit_entry_not_found"
+  | "audit_entry_not_a_skill_update"
+  | "audit_entry_without_snapshot";
+
+export type RestoreSkillOutcome =
+  | { readonly ok: true; readonly skill: Skill | null }
+  | { readonly ok: false; readonly rejection: RestoreSkillRejection };
+
 export async function restoreSkill(
   tenant_id: string,
   id: string,
@@ -726,29 +735,19 @@ export async function restoreSkill(
   actor_id: string | null,
   db: Executor,
   actor_type?: AuditActorType,
-): Promise<Skill | null> {
+): Promise<RestoreSkillOutcome> {
   const rows = await db
     .select()
     .from(auditLog)
     .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.id, audit_entry_id)))
     .limit(1);
   const entry = rows[0];
-  if (!entry) throw new NotFoundError("audit entry");
-  if (entry.action !== AuditAction.SKILL_UPDATED || entry.resource_id !== id) {
-    throw new HttpError(409, "conflict", "audit entry does not reference an update of this skill", {
-      hint: `Pick an audit_entry_id from GET /v1/skills/${id}/history.`,
-    });
-  }
+  if (!entry) return { ok: false, rejection: "audit_entry_not_found" };
+  if (entry.action !== AuditAction.SKILL_UPDATED || entry.resource_id !== id)
+    return { ok: false, rejection: "audit_entry_not_a_skill_update" };
   const snapshot = snapshotFromAudit(entry.after);
-  if (!snapshot) {
-    throw new HttpError(
-      409,
-      "conflict",
-      "audit entry predates full skill snapshots and cannot be restored",
-      { hint: `Pick a history entry with has_snapshot=true from GET /v1/skills/${id}/history.` },
-    );
-  }
-  return await updateSkill(
+  if (!snapshot) return { ok: false, rejection: "audit_entry_without_snapshot" };
+  const skill = await updateSkill(
     tenant_id,
     id,
     {
@@ -774,6 +773,7 @@ export async function restoreSkill(
     db,
     actor_type,
   );
+  return { ok: true, skill };
 }
 
 interface RetrieveApplicableParams {

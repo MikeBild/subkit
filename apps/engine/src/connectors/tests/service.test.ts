@@ -5,11 +5,13 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   createConnector,
+  createConnectorOutcome,
   deleteConnector,
   getConnector,
   listConnectors,
   setConnectorEnabled,
   updateConnector,
+  updateConnectorOutcome,
 } from "../service.ts";
 
 let ctx: TestDb;
@@ -286,18 +288,20 @@ describe("connectors/service", () => {
       },
       ctx.db,
     );
-    await expect(
-      updateConnector(
+    expect(
+      await updateConnectorOutcome(
         tenant_id,
         created.id,
         { clear_template_binding: true, template_slug: "github" },
         null,
         ctx.db,
       ),
-    ).rejects.toMatchObject({
-      status: 409,
-      code: "connector_template_conflict",
-      message: "clear_template_binding cannot be combined with template_slug: send one of them",
+    ).toEqual({
+      ok: false,
+      rejection: {
+        code: "connector_template_conflict",
+        message: "clear_template_binding cannot be combined with template_slug: send one of them",
+      },
     });
     const after = await getConnector(tenant_id, created.id, ctx.db);
     expect(after?.template_slug).toBe("stripe");
@@ -305,16 +309,15 @@ describe("connectors/service", () => {
     expect(after?.updated_at.toISOString()).toBe(created.updated_at.toISOString());
   });
 
-  test("an unknown template slug is a 400 on create and on update", async () => {
+  test("an unknown template slug is rejected as a value on create and on update", async () => {
     const tenant_id = (await seedTenant(ctx.db)).id;
     const unknown = {
-      status: 400,
-      code: "connector_template_unknown",
+      code: "connector_template_unknown" as const,
       message: "unknown connector template: no-such-template",
       details: { template_slug: "no-such-template" },
     };
-    await expect(
-      createConnector(
+    expect(
+      await createConnectorOutcome(
         {
           tenant_id,
           input: {
@@ -329,7 +332,7 @@ describe("connectors/service", () => {
         },
         ctx.db,
       ),
-    ).rejects.toMatchObject(unknown);
+    ).toEqual({ ok: false, rejection: unknown });
     const created = await createConnector(
       {
         tenant_id,
@@ -344,6 +347,15 @@ describe("connectors/service", () => {
       },
       ctx.db,
     );
+    expect(
+      await updateConnectorOutcome(
+        tenant_id,
+        created.id,
+        { template_slug: "no-such-template" },
+        null,
+        ctx.db,
+      ),
+    ).toEqual({ ok: false, rejection: unknown });
     await expect(
       updateConnector(tenant_id, created.id, { template_slug: "no-such-template" }, null, ctx.db),
     ).rejects.toMatchObject(unknown);

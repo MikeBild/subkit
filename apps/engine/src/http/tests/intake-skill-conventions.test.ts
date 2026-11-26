@@ -200,7 +200,7 @@ describe("typed skill rules published through intake", () => {
       ctx.db,
       "user",
     );
-    expect(restored?.rules).toEqual(before?.rules ?? []);
+    expect(restored.ok ? restored.skill?.rules : null).toEqual(before?.rules ?? []);
   });
 
   test("changing the rules needs a new review", async () => {

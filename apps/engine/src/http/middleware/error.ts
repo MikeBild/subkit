@@ -1,9 +1,9 @@
 import { PROVIDER_LIMITED, PROVIDER_QUOTA_EXHAUSTED } from "@shared/error-taxonomy.ts";
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
+import { connectorWriteRejectionStatus, DescriptionAcceptanceError } from "../../api/index.ts";
 import { HostedChatOwnershipRequired } from "../../chat/hosted-ownership.ts";
-import { connectorConfigIssues } from "../../connectors/config-schemas.ts";
+import { ConnectorWriteRejectedError, connectorConfigIssues } from "../../connectors/index.ts";
 import {
   describeTurnFailure,
   timeoutPhaseOf,
@@ -217,6 +217,10 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
   if (err instanceof DescriptionAcceptanceError)
     return envelope(c, err.code === "description_changed" ? 409 : 400, err.code, err.message);
   if (err instanceof ApiKeyOwnerNotFoundError) return envelope(c, 404, err.code, err.message);
+  if (err instanceof ConnectorWriteRejectedError)
+    return envelope(c, connectorWriteRejectionStatus(err.code), err.code, err.message, {
+      details: err.details,
+    });
   if (err instanceof UnknownScopeError)
     return envelope(c, 422, err.code, err.message, { details: { scopes: err.scopes } });
   if (err instanceof ScopeExceedsIssuerError)

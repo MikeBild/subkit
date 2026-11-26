@@ -3,7 +3,6 @@ import { and, desc, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog, skills } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { HttpError } from "../../http/errors.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
@@ -24,17 +23,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
-
-async function expectHttpError(p: Promise<unknown>, status: number): Promise<HttpError> {
-  try {
-    await p;
-  } catch (err) {
-    expect(err).toBeInstanceOf(HttpError);
-    expect((err as HttpError).status).toBe(status);
-    return err as HttpError;
-  }
-  throw new Error(`expected HttpError(${status}) to be thrown`);
-}
 
 describe("skills/history", () => {
   test("update writes full snapshots; history lists newest-first; restore round-trips", async () => {
@@ -72,13 +60,14 @@ describe("skills/history", () => {
     expect(history.every((h) => h.has_snapshot)).toBe(true);
     expect(history.every((h) => typeof h.updated_at === "string")).toBe(true);
 
-    const restored = await restoreSkill(
+    const outcome = await restoreSkill(
       tenant_id,
       skill.id,
       history[1]!.audit_entry_id,
       null,
       ctx.db,
     );
+    const restored = outcome.ok ? outcome.skill : null;
     expect(restored?.version).toBe(4);
     expect(restored?.title).toBe("v2-title");
     expect(restored?.body).toBe("v2 body");
@@ -155,12 +144,10 @@ describe("skills/history", () => {
     expect(legacy!.title).toBe("thin-skill-renamed");
     expect(legacy!.lifecycle).toBe("active");
 
-    const err = await expectHttpError(
-      restoreSkill(tenant_id, skill.id, legacyId, null, ctx.db),
-      409,
-    );
-    expect(err.code).toBe("conflict");
-    expect(err.hint).toContain("has_snapshot=true");
+    expect(await restoreSkill(tenant_id, skill.id, legacyId, null, ctx.db)).toEqual({
+      ok: false,
+      rejection: "audit_entry_without_snapshot",
+    });
   });
 
   test("restore rejects entries that do not reference this skill, and 404s unknown entries", async () => {
@@ -177,21 +164,21 @@ describe("skills/history", () => {
     const aHistory = await listSkillHistory(tenant_id, a.id, ctx.db);
     expect(aHistory.length).toBe(1);
 
-    const err = await expectHttpError(
-      restoreSkill(tenant_id, b.id, aHistory[0]!.audit_entry_id, null, ctx.db),
-      409,
-    );
-    expect(err.code).toBe("conflict");
-    expect(err.hint).toContain(`/v1/skills/${b.id}/history`);
+    expect(await restoreSkill(tenant_id, b.id, aHistory[0]!.audit_entry_id, null, ctx.db)).toEqual({
+      ok: false,
+      rejection: "audit_entry_not_a_skill_update",
+    });
 
-    await expectHttpError(restoreSkill(tenant_id, a.id, nextUuid(), null, ctx.db), 404);
+    expect(await restoreSkill(tenant_id, a.id, nextUuid(), null, ctx.db)).toEqual({
+      ok: false,
+      rejection: "audit_entry_not_found",
+    });
 
     const otherTenant = (await seedTenant(ctx.db)).id;
     expect(await listSkillHistory(otherTenant, a.id, ctx.db)).toEqual([]);
-    await expectHttpError(
-      restoreSkill(otherTenant, a.id, aHistory[0]!.audit_entry_id, null, ctx.db),
-      404,
-    );
+    expect(
+      await restoreSkill(otherTenant, a.id, aHistory[0]!.audit_entry_id, null, ctx.db),
+    ).toEqual({ ok: false, rejection: "audit_entry_not_found" });
   });
 
   test("one history entry carries title and body before and after its change", async () => {

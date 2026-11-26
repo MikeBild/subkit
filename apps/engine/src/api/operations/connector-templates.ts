@@ -4,7 +4,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
-import { createConnector } from "../../connectors/service.ts";
+import { createConnectorOutcome } from "../../connectors/service.ts";
 import { upsertTemplateOAuthCredentials } from "../../connectors/template-credentials.ts";
 import {
   listResolvedConnectorTemplates,
@@ -39,6 +39,7 @@ import {
   TemplateSlugParam,
   templateAuthToConnectorAuth,
 } from "./connector-template-representation.ts";
+import { connectorWriteRejection } from "./connector-write-rejection.ts";
 import { defineOperation, type OperationScope, reject } from "./index.ts";
 
 type TemplateList = z.infer<typeof ListResponseSchema>;
@@ -338,7 +339,7 @@ export const createConnectorFromTemplateOperation = defineOperation<
         { slug: template.slug },
       );
     }
-    const created = await createConnector(
+    const outcome = await createConnectorOutcome(
       {
         tenant_id: scope.tenant_id,
         input: {
@@ -358,6 +359,8 @@ export const createConnectorFromTemplateOperation = defineOperation<
       },
       scope.db,
     );
+    if (!outcome.ok) return connectorWriteRejection(outcome.rejection);
+    const created = outcome.value;
     const shouldIngest =
       input.ingest_now ?? (template.inline_schema !== null || template.ingestion_url !== null);
     if (shouldIngest) {

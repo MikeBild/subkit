@@ -6,5 +6,3 @@
 # `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
 
 apps/engine/src/connectors/oauth-start.ts  3
-apps/engine/src/connectors/service.ts      3
-apps/engine/src/skills/service.ts          2

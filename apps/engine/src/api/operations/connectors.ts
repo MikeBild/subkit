@@ -6,13 +6,13 @@ import { connectorObservations } from "../../connectors/observations.ts";
 import { toPublicConnector } from "../../connectors/public-view.ts";
 import {
   connectorCategoryCounts,
-  createConnector,
+  createConnectorOutcome,
   deleteConnector,
   getConnector,
   listConnectorCredentials,
   listConnectors,
   setConnectorEnabled,
-  updateConnector,
+  updateConnectorOutcome,
 } from "../../connectors/service.ts";
 import {
   type ConnectorView,
@@ -33,6 +33,7 @@ import {
 } from "../catalog-metadata.ts";
 import { IdParam } from "../common-schemas.ts";
 import { ConnectorListResponse, ConnectorSchema, serialize } from "./connector-representation.ts";
+import { connectorWriteRejection } from "./connector-write-rejection.ts";
 import { defineOperation, isRejection, type OperationScope, reject } from "./index.ts";
 
 const ListConnectorsQuery = z
@@ -262,7 +263,7 @@ export const createConnectorOperation = defineOperation<CreateConnectorInput, Co
   async handler(scope, input) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    const created = await createConnector(
+    const outcome = await createConnectorOutcome(
       {
         tenant_id: scope.tenant_id,
         input,
@@ -271,6 +272,8 @@ export const createConnectorOperation = defineOperation<CreateConnectorInput, Co
       },
       scope.db,
     );
+    if (!outcome.ok) return connectorWriteRejection(outcome.rejection);
+    const created = outcome.value;
     await warmGraphqlSchema(scope.db, scope.tenant_id, principal.kind, principal.id, created);
     return created;
   },
@@ -409,8 +412,15 @@ export const updateConnectorOperation = defineOperation<ConnectorUpdateInput, Co
   async handler(scope, { id, patch }) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    const updated = await updateConnector(scope.tenant_id, id, patch, actorOf(principal), scope.db);
-    return updated ?? reject.notFound("connector");
+    const outcome = await updateConnectorOutcome(
+      scope.tenant_id,
+      id,
+      patch,
+      actorOf(principal),
+      scope.db,
+    );
+    if (!outcome.ok) return connectorWriteRejection(outcome.rejection);
+    return outcome.value ?? reject.notFound("connector");
   },
   http: {
     method: "patch",

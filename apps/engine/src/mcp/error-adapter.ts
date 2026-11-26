@@ -1,3 +1,4 @@
+import { ConnectorWriteRejectedError } from "../connectors/index.ts";
 import {
   ConversationTurnInProgressError,
   PendingElicitationBlockedError,
@@ -19,7 +20,8 @@ export function mcpErrorCodeOf(err: unknown): string | undefined {
   if (
     err instanceof ConversationTurnInProgressError ||
     err instanceof PendingElicitationBlockedError ||
-    err instanceof HttpError
+    err instanceof HttpError ||
+    err instanceof ConnectorWriteRejectedError
   )
     return err.code;
   if (typeof err === "string") return conversationTurnAbortReasonOf(err) ?? undefined;
@@ -29,7 +31,7 @@ export function mcpErrorCodeOf(err: unknown): string | undefined {
 export function toMcpErrorText(err: unknown): string {
   if (err instanceof ConversationTurnInProgressError) return `${err.code}: ${err.message}`;
   if (err instanceof PendingElicitationBlockedError) return `${err.code}: ${err.message}`;
-  if (err instanceof HttpError) {
+  if (err instanceof HttpError || err instanceof ConnectorWriteRejectedError) {
     return `${err.code}: ${err.message}`;
   }
   if (err instanceof Error) return err.message;

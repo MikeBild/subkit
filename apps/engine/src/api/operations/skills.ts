@@ -11,6 +11,7 @@ import {
   getSkillHistoryEntry,
   listSkillHistory,
   listSkills,
+  type RestoreSkillRejection,
   restoreSkill,
   updateSkill,
 } from "../../skills/service.ts";
@@ -26,7 +27,13 @@ import {
 } from "../../skills/types.ts";
 import { CatalogGroupBySchema, CategoryFilterSchema } from "../catalog-metadata.ts";
 import { IdParam, paginatedResponse } from "../common-schemas.ts";
-import { defineOperation, isRejection, type OperationScope, reject } from "./index.ts";
+import {
+  defineOperation,
+  isRejection,
+  type OperationScope,
+  type Rejection,
+  reject,
+} from "./index.ts";
 
 const LIST_DEFAULT_LIMIT = 50;
 const LIST_MAX_LIMIT = 200;
@@ -499,6 +506,25 @@ export const getSkillHistoryEntryOperation = defineOperation<
   },
 });
 
+function restoreSkillRejection(id: string, rejection: RestoreSkillRejection): Rejection {
+  if (rejection === "audit_entry_not_found") return reject.notFound("audit entry");
+  if (rejection === "audit_entry_not_a_skill_update")
+    return reject.status(
+      409,
+      "conflict",
+      "audit entry does not reference an update of this skill",
+      undefined,
+      `Pick an audit_entry_id from GET /v1/skills/${id}/history.`,
+    );
+  return reject.status(
+    409,
+    "conflict",
+    "audit entry predates full skill snapshots and cannot be restored",
+    undefined,
+    `Pick a history entry with has_snapshot=true from GET /v1/skills/${id}/history.`,
+  );
+}
+
 export const restoreSkillOperation = defineOperation<SkillHistoryEntryInput, Skill>({
   id: "skill.restore",
   summary: "Restore a skill to a prior audited snapshot",
@@ -516,7 +542,8 @@ export const restoreSkillOperation = defineOperation<SkillHistoryEntryInput, Ski
       scope.db,
       actor.type,
     );
-    return restored ?? reject.notFound("skill");
+    if (!restored.ok) return restoreSkillRejection(id, restored.rejection);
+    return restored.skill ?? reject.notFound("skill");
   },
   http: {
     method: "post",
