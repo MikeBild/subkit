@@ -13,7 +13,8 @@ import {
 } from "../../core/http-request.ts";
 import { injectTraceContext } from "../../egress.ts";
 import { fetchWithEgressGuard } from "../../egress-fetch.ts";
-import { assertEgressAllowedResolved } from "../../egress-guard.ts";
+import { assertEgressAllowedResolved, type EgressGuardContext } from "../../egress-guard.ts";
+import type { LocalMcpScope } from "../../local-egress.ts";
 import type { ConnectorView } from "../../types.ts";
 import { settleOnAbort } from "../abort-boundary.ts";
 import { signSigV4Request } from "../aws-sigv4.ts";
@@ -64,8 +65,21 @@ export async function checkAuthorityRedirect(
   }
 }
 
+function httpEgressContext(params: {
+  tenant_id: string;
+  exec: Executor;
+  local_scope?: LocalMcpScope;
+}): EgressGuardContext {
+  return {
+    tenant_id: params.tenant_id,
+    exec: params.exec,
+    ...(params.local_scope ? { local_mcp: params.local_scope } : {}),
+  };
+}
+
 export async function executePlannedHttpRequest(params: {
   exec: Executor;
+  local_scope?: LocalMcpScope;
   before_dispatch?: (
     request: HttpDispatchObservation,
   ) => Promise<RequestDispatchPolicy | undefined>;
@@ -135,10 +149,7 @@ export async function executePlannedHttpRequest(params: {
   if (policy) init.redirect = policy.redirect;
   let signedJwtToken: string | null = null;
   if (params.signed_jwt) {
-    await assertEgressAllowedResolved(params.url, {
-      tenant_id: params.tenant_id,
-      exec: params.exec,
-    });
+    await assertEgressAllowedResolved(params.url, httpEgressContext(params));
     signedJwtToken = await applySignedJwtAuth(
       params.signed_jwt.connector,
       params.signed_jwt.credential,
@@ -154,14 +165,9 @@ export async function executePlannedHttpRequest(params: {
     fields: { method: params.method, url_host: params.url.host },
     fn: () =>
       settleOnAbort(
-        fetchWithEgressGuard(
-          params.url,
-          init,
-          { tenant_id: params.tenant_id, exec: params.exec },
-          {
-            fetchImpl: getDriverFetch(),
-          },
-        ),
+        fetchWithEgressGuard(params.url, init, httpEgressContext(params), {
+          fetchImpl: getDriverFetch(),
+        }),
         params.signal,
       ),
   });

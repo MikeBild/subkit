@@ -18,6 +18,7 @@ const ENGINE_COMMIT_INTENT_KINDS = [
   "commit_held_workflow_writes",
   "execute_confirmed_tool_call",
   "grant_relayed_tool_call",
+  "confirm_local_command",
 ] as const;
 
 export const COMMIT_INTENT_KINDS = [

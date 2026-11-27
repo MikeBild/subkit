@@ -30,6 +30,7 @@ interface McpBoundaryPresentation {
   unconfirmedRead: boolean;
   cautious: boolean;
   target: string;
+  command: string | null;
   variables: Array<{ key: TranslationKey; values: Record<string, string> }>;
   fixed: TranslationKey;
   calls: number;
@@ -53,7 +54,9 @@ export function mcpBoundaryOf(effect: unknown): McpBoundaryView | null {
 export function presentMcpBoundary(
   boundary: McpBoundaryView,
   comparedWithServer = false,
+  command: string | null = null,
 ): McpBoundaryPresentation {
+  const localCommand = boundary.server.startsWith("stdio:") ? command : null;
   const hints = isRecord(boundary.descriptor.annotations) ? boundary.descriptor.annotations : {};
   const statedRead = boundary.effect === "read";
   const describesReadOnly = hints.readOnlyHint === true && hints.destructiveHint !== true;
@@ -95,7 +98,8 @@ export function presentMcpBoundary(
     hint,
     unconfirmedRead: statedRead && !describesReadOnly,
     cautious: unknownRule || (statedRead && !describesReadOnly),
-    target: `${boundary.server} · ${boundary.tool}`,
+    target: `${localCommand ?? boundary.server} · ${boundary.tool}`,
+    command: localCommand,
     variables,
     fixed: variables.length > 0 ? "authority.mcp.fixedArguments" : "authority.mcp.noVariables",
     calls: boundary.max_calls,

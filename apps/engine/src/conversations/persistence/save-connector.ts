@@ -23,6 +23,13 @@ import {
   withConnectorValidation,
 } from "../authoring-state/index.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
+import {
+  isStdioDraft,
+  mcpConfigBlock,
+  readLocalCommand,
+  sameLocalCommand,
+  withoutConfirmationFields,
+} from "../local-command.ts";
 import { auditActorFromToolContext, connectorActorFromToolContext } from "../tools/audit-actor.ts";
 import {
   buildGateError,
@@ -62,6 +69,12 @@ export function connectorFieldPatch(
   }
   if (connector.auth_type !== undefined && connector.auth_type !== existing.auth_type) {
     patch.auth_type = connector.auth_type;
+  }
+  const draftCommand = readLocalCommand(connector.config);
+  const existingConfig = (existing.config ?? {}) as Record<string, unknown>;
+  if (draftCommand && !sameLocalCommand(draftCommand, readLocalCommand(existingConfig))) {
+    const draftMcp = mcpConfigBlock(connector.config) ?? {};
+    patch.config = { ...existingConfig, mcp: withoutConfirmationFields(draftMcp) };
   }
   return patch;
 }
@@ -108,6 +121,7 @@ export interface SaveConnectorAtomicParams {
   emitAutoPersistAudit?: boolean;
   commitIntentKind?: string;
   skipBackgroundDiscovery?: boolean;
+  localCommandConfirmation?: boolean;
 }
 
 export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise<ToolResult> {
@@ -266,7 +280,9 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     connector.auth_type !== "oauth2" &&
     connector.auth_type !== "oauth2_client" &&
     connector.auth_type !== "oauth2_private_key";
+  const confirmsLocalCommand = p.localCommandConfirmation === true && isStdioDraft(connector);
   const requiresProbe =
+    !confirmsLocalCommand &&
     authCanProbeBeforeSave &&
     (connector.driver === "http" ||
       connector.driver === "graphql" ||

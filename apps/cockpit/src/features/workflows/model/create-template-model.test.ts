@@ -501,6 +501,20 @@ describe("connector templates: list, detail, connect", () => {
     expect(templateConnectProblem({ ...base, needsAddress: true, address: "http://x" })).toBe(
       "create.connector.addressInvalid",
     );
+    expect(
+      templateConnectProblem({ ...base, needsAddress: true, address: "http://localhost:8931" }),
+    ).toBeNull();
+    expect(
+      templateConnectProblem({ ...base, needsAddress: true, address: "https://intranet/mcp" }),
+    ).toBe("create.connector.addressInvalid");
+    expect(
+      templateConnectProblem({
+        ...base,
+        needsAddress: true,
+        address: "https://intranet/mcp",
+        target: "mcp",
+      }),
+    ).toBeNull();
     expect(templateConnectProblem({ ...base, signIn: "account", secret: "" })).toBe(
       "signIn.failed.publicUrl",
     );

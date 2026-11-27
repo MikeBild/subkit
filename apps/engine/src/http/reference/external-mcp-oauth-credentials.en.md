@@ -11,6 +11,8 @@ Some external MCP servers require an OAuth sign-in before SubKit may use their t
 
 OAuth is the common method by which one service grants another access. The authorization server issues the tokens for it.
 
+A remote authorization server must use HTTPS. A local one on `localhost`, `127.0.0.1` or `[::1]`, announced by a local MCP server, also works over `http`. More on that in “Connect local services”.
+
 ### Sign-in with client credentials
 
 For connectors using `oauth2_client_credentials` or `oauth2_private_key_jwt`, enter the trusted authorization server URL as `config.mcp.auth.issuer` before connecting. Without that binding SubKit does not use the credentials. Discovery, the automatic lookup of server addresses, then cannot redirect a client secret or signed assertion to another authorization server.

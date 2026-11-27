@@ -101,6 +101,7 @@ export const AuditAction = {
   CONNECTOR_UPDATED: "connector.updated",
   CONNECTOR_DELETED: "connector.deleted",
   CONNECTOR_ENVIRONMENT_PROMOTED: "connector.environment_promoted",
+  CONNECTOR_LOCAL_COMMAND_CONFIRMED: "connector.local_command_confirmed",
   CONNECTOR_DOCS_INGESTED: "connector.docs_ingested",
   CONNECTOR_DOCS_CLEARED: "connector.docs_cleared",
   CONNECTOR_SAVED_OVERRIDE: "connector.saved_override",

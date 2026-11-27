@@ -47,7 +47,8 @@ export const createEn = {
   "create.connector.signIn.none": "None",
   "create.connector.signIn.current": "As before",
   "create.connector.address": "Address",
-  "create.connector.addressInvalid": "Enter an address with https://.",
+  "create.connector.addressInvalid":
+    "Enter an address with https://. A local server such as localhost also works with http://.",
   "create.connector.secret": "Access key",
   "create.connector.created": "{name} added",
   "create.connector.taken": "A connector with this name already exists.",
@@ -137,6 +138,28 @@ export const createEn = {
   "wizard.step.when": "When",
   "wizard.step.review": "Check",
   "wizard.next": "Next",
+  "create.connector.source": "Reach the server by",
+  "create.connector.sourceHelp":
+    "Choose a local command for an MCP server that runs as a process on this computer, such as docker mcp gateway run.",
+  "create.connector.source.address": "Address",
+  "create.connector.source.command": "Local command",
+  "create.connector.keyMode": "Send the key as",
+  "create.connector.keyMode.bearer": "Bearer token",
+  "create.connector.keyMode.header": "Custom header",
+  "create.connector.headerName": "Header name",
+  "create.connector.headerNameInvalid":
+    "Use only letters, digits and hyphens in the header name, such as X-API-Key.",
+  "create.connector.headerNameReserved":
+    "MCP uses this header itself. Choose another name, such as X-API-Key.",
+  "create.connector.tls.ca": "CA certificate (optional)",
+  "create.connector.tls.caHelp":
+    "Paste the PEM of the certificate authority that signed the local server’s certificate, such as the mkcert root, or choose a .pem or .crt file.",
+  "create.connector.tls.caFile": "Choose certificate file",
+  "create.connector.tls.caFileFailed":
+    "The file could not be read. Paste the certificate as text instead.",
+  "create.connector.tls.skipVerify": "Don’t verify certificate (local only)",
+  "create.connector.tls.skipVerifyWarning":
+    "SubKit then accepts any certificate from this local server. Use this only for a server you run yourself.",
 } as const;
 
 export const createDe: Record<keyof typeof createEn, string> = {
@@ -188,7 +211,8 @@ export const createDe: Record<keyof typeof createEn, string> = {
   "create.connector.signIn.none": "Ohne",
   "create.connector.signIn.current": "Wie bisher",
   "create.connector.address": "Adresse",
-  "create.connector.addressInvalid": "Gib eine Adresse mit https:// ein.",
+  "create.connector.addressInvalid":
+    "Gib eine Adresse mit https:// ein. Ein lokaler Server wie localhost geht auch mit http://.",
   "create.connector.secret": "Zugangsschlüssel",
   "create.connector.created": "{name} angelegt",
   "create.connector.taken": "Einen Connector mit diesem Namen gibt es schon.",
@@ -282,4 +306,26 @@ export const createDe: Record<keyof typeof createEn, string> = {
   "wizard.step.when": "Wann",
   "wizard.step.review": "Prüfen",
   "wizard.next": "Weiter",
+  "create.connector.source": "Server erreichen über",
+  "create.connector.sourceHelp":
+    "Wähle einen lokalen Befehl für einen MCP-Server, der als Prozess auf diesem Rechner läuft, etwa docker mcp gateway run.",
+  "create.connector.source.address": "Adresse",
+  "create.connector.source.command": "Lokaler Befehl",
+  "create.connector.keyMode": "Schlüssel senden als",
+  "create.connector.keyMode.bearer": "Bearer-Token",
+  "create.connector.keyMode.header": "Eigener Header",
+  "create.connector.headerName": "Header-Name",
+  "create.connector.headerNameInvalid":
+    "Nutze im Header-Namen nur Buchstaben, Ziffern und Bindestriche, etwa X-API-Key.",
+  "create.connector.headerNameReserved":
+    "Diesen Header nutzt MCP selbst. Wähle einen anderen Namen, etwa X-API-Key.",
+  "create.connector.tls.ca": "CA-Zertifikat (optional)",
+  "create.connector.tls.caHelp":
+    "Füge das PEM der Zertifizierungsstelle ein, die das Zertifikat des lokalen Servers ausgestellt hat, etwa die mkcert-Root, oder wähle eine .pem- oder .crt-Datei.",
+  "create.connector.tls.caFile": "Zertifikatsdatei wählen",
+  "create.connector.tls.caFileFailed":
+    "Die Datei ließ sich nicht lesen. Füge das Zertifikat stattdessen als Text ein.",
+  "create.connector.tls.skipVerify": "Zertifikat nicht prüfen (nur lokal)",
+  "create.connector.tls.skipVerifyWarning":
+    "SubKit akzeptiert dann jedes Zertifikat dieses lokalen Servers. Nutze das nur für einen Server, den du selbst betreibst.",
 };

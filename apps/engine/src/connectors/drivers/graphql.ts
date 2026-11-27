@@ -6,7 +6,8 @@ import { instrument } from "../../observability/runtime-telemetry.ts";
 import { resolveSigV4Target } from "../core/http-request.ts";
 import { injectTraceContext } from "../egress.ts";
 import { fetchWithEgressGuard } from "../egress-fetch.ts";
-import { assertEgressAllowedResolved } from "../egress-guard.ts";
+import { assertEgressAllowedResolved, type EgressGuardContext } from "../egress-guard.ts";
+import { connectorLocalScope } from "../local-egress.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorMaskedQueryKeys, recordedUrl } from "../recorded-url.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
@@ -183,7 +184,7 @@ export async function executeGraphQLRequest(p: {
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
   }
-  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id, exec: p.db });
+  await assertEgressAllowedResolved(url, graphqlEgressContext(p));
 
   logger.debug({
     module: "connector",
@@ -212,7 +213,7 @@ export async function executeGraphQLRequest(p: {
       : requestedDispatchPolicy;
   let signedJwtToken: string | null = null;
   if (credential?.mode === "signed_jwt") {
-    await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id, exec: p.db });
+    await assertEgressAllowedResolved(url, graphqlEgressContext(p));
     signedJwtToken = await applySignedJwtAuth(p.connector, credential, url, headers);
   }
   const body = JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} });
@@ -249,7 +250,7 @@ export async function executeGraphQLRequest(p: {
           body,
           signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
         },
-        { tenant_id: p.tenant_id, exec: p.db },
+        graphqlEgressContext(p),
         { fetchImpl },
       ),
   });
@@ -427,4 +428,13 @@ export async function probeGraphQLConnector(p: {
       error_code: "unknown_upstream_error",
     };
   }
+}
+
+function graphqlEgressContext(p: {
+  tenant_id: string;
+  db: Db;
+  connector: { base_url?: string | null; config?: unknown };
+}): EgressGuardContext {
+  const localScope = connectorLocalScope(p.connector);
+  return { tenant_id: p.tenant_id, exec: p.db, ...(localScope ? { local_mcp: localScope } : {}) };
 }

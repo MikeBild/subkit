@@ -20,6 +20,11 @@ export type ProbeErrorCode =
   | "remote_api_disabled"
   | "remote_resource_not_found"
   | "connector_disabled"
+  | "mcp_stdio_disabled"
+  | "mcp_stdio_unavailable_in_container"
+  | "mcp_stdio_capacity"
+  | "mcp_stdio_start_failed"
+  | "mcp_local_command_unconfirmed"
   | "unknown_upstream_error";
 
 export interface ProbeResult {

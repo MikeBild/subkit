@@ -76,7 +76,7 @@ services:
       ]
 
   engine:
-    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-13.2.0}}
+    image: ${SUBKIT_IMAGE:-mikebild/subkit:${SUBKIT_IMAGE_TAG:-13.3.0}}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -94,6 +94,8 @@ services:
       OBJECT_STORAGE_ACCESS_KEY_ID: subkit
       OBJECT_STORAGE_SECRET_ACCESS_KEY: subkit-object-local-only
       OBJECT_STORAGE_PATH_STYLE: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${SUBKIT_HOST_PORT:-3000}:3000"
     healthcheck:

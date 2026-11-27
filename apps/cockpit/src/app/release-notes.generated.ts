@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "a847670767908b417879e19ee3c6622c56caa6c9",
+  "source": "045c277e0573a732cf65add81969e6e74f99d680",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2437,6 +2437,16 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "SubKit Desktop for Windows: the desktop app now ships for Windows x64 with automatic updates. Builds are not code signed yet, so every update is checked against the signed checksums before it installs.",
         "Smaller fixes for the desktop build on Windows."
       ]
+    },
+    {
+      "version": "v13.2.0",
+      "notes": [],
+      "highlights": [
+        "Workflows can remove what they created: a step records the id it created, and a later step may delete exactly that id, once, in the same environment. Any other id is refused before anything is sent, and a repeated removal returns the stored outcome instead of sending again.",
+        "Webhooks wait for approval: until a person approves the workflow, SubKit keeps each signed delivery and answers `202` with `held`. After the approval every kept delivery runs exactly once. Kept deliveries expire after 7 days.",
+        "Voice dictation counts against the AI spend limit when it uses the operator's key. Each recording carries a `client_request_id`, so a retry returns the first text and is booked once. Update the `subkit` CLI to dictate against a 13.2 engine that pays with the operator's key.",
+        "Fixes: long dictations settle correctly in cloud workspaces, shared values in request bodies are no longer marked as circular, skill examples load in MCP prompts, and the documentation keeps the current heading in view."
+      ]
     }
   ],
   "unpublished": {
@@ -2562,6 +2572,15 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "Webhooks wait for approval: until a person approves the workflow, SubKit keeps each signed delivery and answers `202` with `held`. After the approval every kept delivery runs exactly once. Kept deliveries expire after 7 days.",
       "Voice dictation counts against the AI spend limit when it uses the operator's key. Each recording carries a `client_request_id`, so a retry returns the first text and is booked once. Update the `subkit` CLI to dictate against a 13.2 engine that pays with the operator's key.",
       "Fixes: long dictations settle correctly in cloud workspaces, shared values in request bodies are no longer marked as circular, skill examples load in MCP prompts, and the documentation keeps the current heading in view."
+    ],
+    "13.3.0": [
+      "Local services by default: connectors reach servers on your own machine at localhost, 127.0.0.1, [::1] or, from Docker, host.docker.internal, over http or https. SubKit Cloud stays shut off from local addresses.",
+      "Local MCP servers by command: start stdio servers such as `docker mcp gateway run` from SubKit Desktop. A command runs only after an owner or admin confirms it, and again after every change.",
+      "Every way to sign in: no sign-in, an API key as Bearer or in your own header, or OAuth with a local authorization server, even without a public engine address.",
+      "Local https: trust a local certificate authority such as mkcert per connector, or skip the certificate check for local addresses only.",
+      "Fewer needless keys: connector discovery no longer asks for a key when an API only declares one as optional.",
+      "The same in chat and by hand: the chat sets up local connectors without asking for a key, and the Cockpit form accepts local addresses and commands.",
+      "Fixes: Desktop finds tools like docker through your login shell, and OAuth sign-in on a local engine no longer needs server.public_base_url."
     ]
   }
 };

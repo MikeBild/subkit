@@ -137,6 +137,16 @@ export const settingsLeafEn = {
   "settings.leaf.connectors.mcp.remote_tool_call_timeout_ms":
     "External MCP · tool call timeout (ms)",
   "settings.leaf.connectors.mcp.tools_list_max_pages": "External MCP · tool list pages",
+  "settings.leaf.connectors.local_servers": "Local servers",
+  "settings.leaf.connectors.mcp.stdio": "Local MCP commands",
+  "settings.leaf.connectors.mcp.stdio_limits.startup_timeout_ms":
+    "Local MCP commands · start timeout (ms)",
+  "settings.leaf.connectors.mcp.stdio_limits.idle_timeout_ms":
+    "Local MCP commands · idle stop after (ms)",
+  "settings.leaf.connectors.mcp.stdio_limits.max_processes":
+    "Local MCP commands · processes at once",
+  "settings.leaf.connectors.mcp.stdio_limits.stderr_ring_bytes":
+    "Local MCP commands · kept error output (bytes)",
 } as const;
 
 export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
@@ -285,4 +295,14 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
   "settings.leaf.connectors.mcp.remote_tool_call_timeout_ms":
     "Externes MCP · Zeitgrenze je Werkzeugaufruf (ms)",
   "settings.leaf.connectors.mcp.tools_list_max_pages": "Externes MCP · Seiten der Werkzeugliste",
+  "settings.leaf.connectors.local_servers": "Lokale Server",
+  "settings.leaf.connectors.mcp.stdio": "Lokale MCP-Befehle",
+  "settings.leaf.connectors.mcp.stdio_limits.startup_timeout_ms":
+    "Lokale MCP-Befehle · Zeitgrenze für den Start (ms)",
+  "settings.leaf.connectors.mcp.stdio_limits.idle_timeout_ms":
+    "Lokale MCP-Befehle · Stopp ohne Nutzung nach (ms)",
+  "settings.leaf.connectors.mcp.stdio_limits.max_processes":
+    "Lokale MCP-Befehle · Prozesse gleichzeitig",
+  "settings.leaf.connectors.mcp.stdio_limits.stderr_ring_bytes":
+    "Lokale MCP-Befehle · gespeicherte Fehlerausgabe (Bytes)",
 };

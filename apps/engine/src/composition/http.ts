@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import type { ChatAdapterRegistry } from "../chat/registry.ts";
 import { getConfig } from "../config/loader.ts";
+import { setLocalEngineOrigin } from "../credentials/index.ts";
 import type { Db } from "../db/client.ts";
 import type { EngineBootLifetime } from "../engine-boot-lifetime.ts";
 import { envSnapshot } from "../env.ts";
@@ -10,6 +11,7 @@ import { createApp } from "../http/server.ts";
 import {
   attachLocalLauncher,
   chooseLocalPort,
+  LOCAL_LOOPBACK,
   type LocalWorkspace,
 } from "../identity/local-workspace.ts";
 import { logger } from "../logging/index.ts";
@@ -30,6 +32,7 @@ export async function startHttp(db: Db, deps: HttpDeps): Promise<void> {
   const app = createApp({ db, chatRegistry, ...(localWorkspace ? { localWorkspace } : {}) });
   const localPort = localWorkspace ? await chooseLocalPort(localWorkspace.preferredPort) : null;
   const port = localPort?.port ?? getConfig().server.port;
+  if (localPort) setLocalEngineOrigin(`http://${LOCAL_LOOPBACK}:${localPort.port}`);
   deps.recordBootConsumer("http_server");
 
   const opts = engineServeOptions(port, envSnapshot(), localWorkspace !== null);

@@ -251,10 +251,71 @@ describe("mcp", () => {
     expect(validateConnectorConfig("mcp", { mcp: {} })).toEqual([]);
   });
 
-  test("refuses stdio — the pool does not serve a local subprocess", () => {
+  test("a stdio block without a command is refused at the command", () => {
     const issues = validateConnectorConfig("mcp", { mcp: { transport: "stdio" } });
-    expect(issues.length).toBeGreaterThan(0);
-    expect(issues[0]?.path).toBe("mcp.transport");
+    expect(issues.map((issue) => issue.path)).toEqual(["mcp.command"]);
+  });
+
+  test("accepts a stdio command with args, env, secret env names and an absolute cwd", () => {
+    expect(
+      validateConnectorConfig("mcp", {
+        mcp: {
+          transport: "stdio",
+          command: "docker",
+          args: ["mcp", "gateway", "run"],
+          env: { LOG_LEVEL: "info" },
+          env_secret_names: ["GITHUB_TOKEN"],
+          cwd: "/Users/me/work",
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  test("refuses a relative cwd and a malformed env name", () => {
+    const issues = validateConnectorConfig("mcp", {
+      mcp: { transport: "stdio", command: "npx", env: { "bad-name": "x" }, cwd: "work" },
+    });
+    expect(issues.map((issue) => issue.path).sort()).toEqual(["mcp.cwd", "mcp.env.bad-name"]);
+  });
+
+  test("refuses an env declared both as a plain value and as a secret", () => {
+    const issues = validateConnectorConfig("mcp", {
+      mcp: { transport: "stdio", command: "npx", env: { TOKEN: "y" }, env_secret_names: ["TOKEN"] },
+    });
+    expect(issues.map((issue) => issue.path)).toEqual(["mcp.env_secret_names"]);
+  });
+
+  test("refuses more than 64 args or env entries", () => {
+    const env = Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`E${i}`, "v"]));
+    const issues = validateConnectorConfig("mcp", {
+      mcp: {
+        transport: "stdio",
+        command: "node",
+        args: Array.from({ length: 65 }, () => "a"),
+        env,
+      },
+    });
+    expect(issues.map((issue) => issue.path).sort()).toEqual(["mcp.args", "mcp.env"]);
+  });
+
+  test("refuses tls on a stdio server and stdio fields on an http server", () => {
+    expect(
+      validateConnectorConfig("mcp", {
+        mcp: { transport: "stdio", command: "node", tls: { skip_verify: true } },
+      }).map((issue) => issue.path),
+    ).toEqual(["mcp.tls"]);
+    expect(
+      validateConnectorConfig("mcp", {
+        mcp: { transport: "http", command: "node", args: ["x"] },
+      }).map((issue) => issue.path),
+    ).toEqual(["mcp.command", "mcp.args"]);
+  });
+
+  test("refuses a certificate that is not PEM", () => {
+    const issues = validateConnectorConfig("mcp", {
+      mcp: { transport: "http", tls: { ca_pem: "not a certificate" } },
+    });
+    expect(issues.map((issue) => issue.path)).toEqual(["mcp.tls.ca_pem"]);
   });
 
   test("is strict — mcp has no legacy configs to stay compatible with", () => {

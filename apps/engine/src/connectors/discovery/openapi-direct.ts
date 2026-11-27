@@ -222,6 +222,67 @@ function extractServers(spec: LooseObject): string[] {
   return [];
 }
 
+interface SecurityRequirement {
+  names: Set<string>;
+  anonymous: boolean;
+}
+
+function readSecurityRequirement(raw: unknown): SecurityRequirement | null {
+  if (!Array.isArray(raw)) return null;
+  const names = new Set<string>();
+  let anonymous = raw.length === 0;
+  for (const entry of raw) {
+    if (!isObject(entry)) continue;
+    const keys = Object.keys(entry);
+    if (keys.length === 0) anonymous = true;
+    for (const key of keys) names.add(key);
+  }
+  return { names, anonymous };
+}
+
+function everyOperationOptsOut(spec: LooseObject): boolean {
+  let operations = 0;
+  for (const pathItem of Object.values(asRecord(spec.paths))) {
+    if (!isObject(pathItem)) continue;
+    for (const method of HTTP_METHODS) {
+      const operation = pathItem[method.toLowerCase()];
+      if (!isObject(operation)) continue;
+      operations += 1;
+      if (readSecurityRequirement(operation.security)?.anonymous !== true) return false;
+    }
+  }
+  return operations > 0;
+}
+
+function operationRequiredSchemes(spec: LooseObject): Set<string> {
+  const required = new Set<string>();
+  for (const pathItem of Object.values(asRecord(spec.paths))) {
+    if (!isObject(pathItem)) continue;
+    for (const method of HTTP_METHODS) {
+      const operation = pathItem[method.toLowerCase()];
+      if (!isObject(operation)) continue;
+      const requirement = readSecurityRequirement(operation.security);
+      if (!requirement || requirement.anonymous) continue;
+      for (const name of requirement.names) required.add(name);
+    }
+  }
+  return required;
+}
+
+function withSecurityRequirement(
+  spec: LooseObject,
+  schemes: DiscoveredAuthScheme[],
+): DiscoveredAuthScheme[] {
+  const root = readSecurityRequirement(spec.security);
+  const required =
+    root === null
+      ? operationRequiredSchemes(spec)
+      : root.anonymous || everyOperationOptsOut(spec)
+        ? new Set<string>()
+        : root.names;
+  return schemes.map((scheme) => ({ ...scheme, required: required.has(scheme.name) }));
+}
+
 function extractAuthSchemesV3(spec: LooseObject): DiscoveredAuthScheme[] {
   const components = asRecord(spec.components);
   const schemes = asRecord(components.securitySchemes);
@@ -503,7 +564,10 @@ export function normalizeSpec(
     );
   }
   const isV2 = version === "swagger-2";
-  const auth = isV2 ? extractAuthSchemesV2(spec) : extractAuthSchemesV3(spec);
+  const auth = withSecurityRequirement(
+    spec,
+    isV2 ? extractAuthSchemesV2(spec) : extractAuthSchemesV3(spec),
+  );
   const endpoints = buildEndpoints(spec, isV2, linkHeader);
   return {
     source_url: sourceUrl,

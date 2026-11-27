@@ -14,3 +14,4 @@ export {
   secureEqual,
 } from "./aes-gcm.ts";
 export { sha256OfFile } from "./file-digest.ts";
+export { type CommandSpecForDigest, commandSpecDigest, sha256HexOfText } from "./text-digest.ts";

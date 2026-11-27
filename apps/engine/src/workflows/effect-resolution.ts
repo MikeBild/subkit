@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { resolveGraphqlStepEndpoint } from "../connectors/drivers/graphql-endpoint.ts";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import { type ConnectorSystem, loadConnectorSystem } from "../connectors/system.ts";
-import type { Executor } from "../db/client.ts";
+import type { Executor } from "../db/index.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { activeAllowances } from "../devices/index.ts";
 import {
@@ -11,6 +11,7 @@ import {
   type FoundConnectorUnavailability,
 } from "../execution/connector-availability.ts";
 import { transactionalWebhookAvailable } from "../execution/transactional-mail.ts";
+import { mcpServerIdentityOf } from "../mcp/client/stdio-identity.ts";
 import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape, type ResolvedCallShape } from "./authority-execution-shape.ts";
 import { contradictedStorageBoundaries } from "./boundary-evidence.ts";
@@ -428,7 +429,7 @@ async function resolveBindings(
     }
     let toolCall: McpBoundary | null = null;
     if (driver === "mcp" && step.mcp?.operation === "call_tool") {
-      const compiled = compileMcpBoundary(step, connector?.base_url);
+      const compiled = compileMcpBoundary(step, mcpServerIdentityOf(connector));
       if (compiled.refusal) request_refusals.push({ step_id: step.id, reason: compiled.refusal });
       else {
         toolCall = compiled.boundary;

@@ -11,6 +11,7 @@ import {
   resolveEgressGuardMode,
   resolveTenantEgressContext,
 } from "../egress-guard.ts";
+import { ownTargetEntry } from "../local-egress.ts";
 import type { ConnectorView } from "../types.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import type {
@@ -179,7 +180,11 @@ class ObservedS3Client extends S3Client {
   override async makeRequest(options: Parameters<S3Client["makeRequest"]>[0]): Promise<Response> {
     const bucket = options.bucketName ?? this.defaultBucket;
     const host = this.pathStyle ? this.host : `${bucket}.${this.host}`;
-    const context = await resolveTenantEgressContext({ tenant_id: this.tenantId, exec: this.exec });
+    const context = await resolveTenantEgressContext({
+      tenant_id: this.tenantId,
+      exec: this.exec,
+      ...ownTargetEntry(`${this.protocol}//${host}/`),
+    });
     if (resolveEgressGuardMode(context) === "strict") {
       await assertEgressAllowedResolved(`${this.protocol}//${host}/`, context);
       return makeGuardedS3Request({
@@ -368,7 +373,11 @@ async function executeS3Operation(ctx: {
       let res: Response;
       if (p.range) {
         const url = await client.getPresignedUrl("GET", key, { expirySeconds: 60 });
-        const context = await resolveTenantEgressContext({ tenant_id: p.tenant_id, exec: p.db });
+        const context = await resolveTenantEgressContext({
+          tenant_id: p.tenant_id,
+          exec: p.db,
+          ...ownTargetEntry(url),
+        });
         if (resolveEgressGuardMode(context) === "strict")
           await assertEgressAllowedResolved(url, context);
         await p.on_credential_use?.(snapshot);

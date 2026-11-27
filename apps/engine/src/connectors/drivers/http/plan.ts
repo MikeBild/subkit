@@ -10,6 +10,7 @@ import {
   resolveRespectRobots,
 } from "../../core/http-request.ts";
 import { assertEgressAllowedResolved, assertRobotsAllowed } from "../../egress-guard.ts";
+import { connectorLocalScope } from "../../local-egress.ts";
 import { requestUsedStoredCredential } from "../../reauth.ts";
 import { connectorMaskedQueryKeys, recordedUrl } from "../../recorded-url.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../../request-header-policy.ts";
@@ -107,7 +108,12 @@ export async function buildRequestPlan(
         caller_query: callerQuery,
       }),
   };
-  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id, exec: p.db });
+  const localScope = connectorLocalScope(p.connector);
+  await assertEgressAllowedResolved(url, {
+    tenant_id: p.tenant_id,
+    exec: p.db,
+    ...(localScope ? { local_mcp: localScope } : {}),
+  });
   const snapshot = (p.connector.template_snapshot as { respects_robots?: unknown } | null) ?? null;
   if (snapshot?.respects_robots === true) {
     const cfg = getConfig(p.tenant_id).connectors.web_scraper.runtime;

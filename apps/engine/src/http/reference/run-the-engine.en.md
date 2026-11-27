@@ -122,10 +122,24 @@ Browser crawling runs only when both conditions hold:
 - The outbound network guard is not strict. The container starts with `NODE_ENV=production`
   and therefore strict; it refuses browser discovery. The setting `egress.mode: permissive`
   also allows private and loopback addresses for every connector. Choose it only behind
-  a network boundary you have reviewed.
+  a network boundary you have reviewed. Local services on `localhost` or
+  `host.docker.internal` do not need it: they are allowed by default, see
+  “Local services from the container” below.
 
 A derived image is yours to maintain: keep Playwright and the browser updated, scan it
 and ship the browser licenses. This path is not part of the release checks.
+
+### Local services from the container
+
+Inside the container, `localhost` is the engine itself. To reach a service on your server,
+such as a local MCP server, use `http://host.docker.internal:<port>`. `docker-compose.yml`
+maps `host.docker.internal` to your server through `extra_hosts`. On Linux, the service
+must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`.
+
+These local addresses are allowed by default through `connectors.local_servers`; you do not
+need `egress.mode: permissive` for them. MCP servers started by command (stdio) do not run
+in the container. Use SubKit Desktop or an engine on the host for them.
+Everything else is in “Connect local services”.
 
 ### Backup and recovery
 

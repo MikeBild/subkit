@@ -4,6 +4,7 @@ import {
   ClientCredentialsProvider,
   PrivateKeyJwtProvider,
 } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
+import type { LocalMcpScope } from "../../connectors/index.ts";
 import { type EgressGuardContext, getDriverFetch, guardedFetch } from "../../connectors/index.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { recordCredentialProviderIdentity } from "../../credentials/index.ts";
@@ -16,6 +17,7 @@ import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
+import { mcpLocalScope } from "./egress-context.ts";
 import { McpDbOAuthClientProvider } from "./oauth-provider.ts";
 import { buildMcpOAuthRedirectUri } from "./oauth-redirect.ts";
 import {
@@ -227,12 +229,18 @@ const TRANSPORT_OWNED_HEADERS = new Set([
   "last-event-id",
 ]);
 
-function oauthRedirectUriFor(): string {
+function localScopeInput(row: McpConnectorRow): { local_mcp?: LocalMcpScope } {
+  const local_mcp = mcpLocalScope(row);
+  return local_mcp ? { local_mcp } : {};
+}
+
+function oauthRedirectUriFor(auth?: McpAuthConfig): string {
   const canonical = buildMcpOAuthRedirectUri();
   if (canonical) return canonical;
+  if (auth?.redirect_uri) return auth.redirect_uri;
   throw new McpPreflightError(
     "config_incomplete",
-    "no canonical OAuth redirect URI — set server.public_base_url",
+    "no OAuth redirect URI yet — sign in to this MCP connector once from the Cockpit, or set server.public_base_url",
   );
 }
 
@@ -261,11 +269,12 @@ export async function invalidateOAuth2TokenForServer(
     tenant_id,
     connector_id,
     environment,
-    redirect_uri: oauthRedirectUriFor(),
+    redirect_uri: oauthRedirectUriFor(auth),
     state: "",
     auth,
     interactive: false,
     request_source: requestSource,
+    ...localScopeInput(row),
   });
   await provider.invalidateCredentials("tokens");
   logger.warn({
@@ -312,11 +321,12 @@ export async function resolveAuthProvider(
         tenant_id,
         connector_id: row.id,
         environment,
-        redirect_uri: oauthRedirectUriFor(),
+        redirect_uri: oauthRedirectUriFor(auth),
         state: "",
         auth,
         interactive: false,
         request_source: requestSource,
+        ...localScopeInput(row),
       });
 
     case "oauth2_client_credentials": {

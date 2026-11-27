@@ -292,18 +292,34 @@ describe("update_connector_draft — clean updates pass", () => {
     expect(getDraft().connector?.name).toBe("Updated Name");
   });
 
-  it("rejects auth_type downgrade to 'none' when a credential is cached", async () => {
+  it("rejects auth_type downgrade to 'none' when a cached credential passed a probe", async () => {
     const { setDraftCredential, _resetDraftCredentialCacheForTests } = await import(
       "../../persistence/draft-credential-cache.ts"
     );
     _resetDraftCredentialCacheForTests();
-    const { base } = await makeCtx();
+    const { base, getDraft } = await makeCtx();
     await updateConnectorDraftTool.execute(base, {
       name: "AppSync",
       driver: "graphql",
       environment: "dev",
       base_url: "https://abc.appsync-api.eu-central-1.amazonaws.com/graphql",
       auth_type: "oauth2",
+    });
+    const probed = getDraft();
+    await base.setDraft({
+      ...probed,
+      connector: {
+        ...probed.connector,
+        latest_probe: {
+          ok: true,
+          method: "POST",
+          path: "(introspection)",
+          environment: "dev",
+          duration_ms: 4,
+          summary: "GraphQL introspection probe succeeded.",
+          probed_at: "2026-11-27T00:00:00.000Z",
+        },
+      },
     });
     setDraftCredential(base.conversation_id, {
       mode: "cognito_user_password",

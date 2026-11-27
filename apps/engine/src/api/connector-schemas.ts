@@ -48,6 +48,7 @@ export const DiscoveredAuthSchemeSchema = z
     location: z.enum(["header", "query", "cookie"]).optional(),
     scheme: z.string().optional(),
     flows: z.record(z.string(), DiscoveredAuthSchemeOAuth2FlowSchema).optional(),
+    required: z.boolean().optional(),
   })
   .openapi("DiscoveredAuthScheme");
 

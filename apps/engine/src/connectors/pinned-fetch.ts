@@ -19,6 +19,7 @@ export async function fetchPinnedOrigin(
   address: { address: string; family: number },
   init: RequestInit,
   fetchImpl: typeof fetch,
+  localTls: { ca?: string; rejectUnauthorized?: boolean } | null = null,
 ): Promise<Response> {
   for (const name of [
     "HTTP_PROXY",
@@ -44,7 +45,13 @@ export async function fetchPinnedOrigin(
     redirect: "manual" as const,
     proxy: false as const,
     ...(target.protocol === "https:"
-      ? { tls: { serverName: target.hostname.replace(/^\[|\]$/g, ""), rejectUnauthorized: true } }
+      ? {
+          tls: {
+            serverName: target.hostname.replace(/^\[|\]$/g, ""),
+            rejectUnauthorized: true,
+            ...(localTls ?? {}),
+          },
+        }
       : {}),
   };
   const response = await fetchImpl(pinned, options);

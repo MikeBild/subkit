@@ -1,6 +1,7 @@
 import type { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
+import { ownTargetEntry } from "../local-egress.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import {
   checkAuthorityRedirect,
@@ -60,7 +61,11 @@ export async function executeBoundS3Request(p: {
       `${client.protocol}//${host}${path.split("/").map(encodeURIComponent).join("/")}`,
     );
   }
-  await assertEgressAllowedResolved(target, { tenant_id: params.tenant_id, exec: params.db });
+  await assertEgressAllowedResolved(target, {
+    tenant_id: params.tenant_id,
+    exec: params.db,
+    ...ownTargetEntry(target),
+  });
   const signal = params.signal
     ? AbortSignal.any([params.signal, AbortSignal.timeout(params.timeout_ms ?? 30_000)])
     : AbortSignal.timeout(params.timeout_ms ?? 30_000);
@@ -90,7 +95,7 @@ export async function executeBoundS3Request(p: {
       signal,
       ...(verb === "PUT" ? { body } : {}),
     },
-    { tenant_id: params.tenant_id, exec: params.db },
+    { tenant_id: params.tenant_id, exec: params.db, ...ownTargetEntry(target) },
     { fetchImpl: getDriverFetch() },
   );
   await checkAuthorityRedirect(response, { redirect: "manual" });

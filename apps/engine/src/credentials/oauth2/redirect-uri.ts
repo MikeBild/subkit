@@ -1,4 +1,5 @@
 import { getConfig } from "../../config/loader.ts";
+import { currentLocalEngineOrigin } from "./local-origin.ts";
 
 export const OAUTH_CALLBACK_PATH = "/v1/oauth/callback";
 
@@ -47,7 +48,7 @@ function resolveOrigin(req?: { url: string; headers?: Headers } | Request): stri
       if (origin && origin !== "null") return origin;
     } catch {}
   }
-  return null;
+  return currentLocalEngineOrigin();
 }
 
 function safeUrlProto(rawUrl: string): string | null {

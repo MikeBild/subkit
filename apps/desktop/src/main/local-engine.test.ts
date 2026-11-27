@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { SQL } from "bun";
@@ -115,12 +115,60 @@ describe("engine start failure", () => {
         masterKey: "a".repeat(64),
         preferredPort: null,
         readyTimeoutMs: 20_000,
+        resolvePath: async () => process.env.PATH ?? "",
       });
       Object.assign(engine, { endpoint: { kind: "tcp", host: "127.0.0.1", port: 5432 } });
       await expect(engine.startEngine()).rejects.toThrow(
         "the engine ended while starting (exit 1) in listen: listen EADDRINUSE: address already in use 127.0.0.1:47811; see engine.log",
       );
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("engine environment", () => {
+  test("passes the login-shell PATH, Docker settings and system CAs but no other host variables", async () => {
+    const root = await mkdtemp(join(tmpdir(), "subkit-engine-env-"));
+    const saved = {
+      DOCKER_HOST: process.env.DOCKER_HOST,
+      SUBKIT_UNRELATED: process.env.SUBKIT_UNRELATED,
+    };
+    process.env.DOCKER_HOST = "unix:///tmp/docker-test.sock";
+    process.env.SUBKIT_UNRELATED = "leak";
+    try {
+      const layout = localLayout(root, "default");
+      await mkdir(layout.logs, { recursive: true });
+      const dump = join(root, "env.json");
+      const engine = new LocalEngine({
+        postgresDir: root,
+        target: "darwin-arm64",
+        engineCommand: [
+          process.execPath,
+          "-e",
+          `require("node:fs").writeFileSync(${JSON.stringify(dump)}, JSON.stringify(process.env)); process.exit(1)`,
+        ],
+        appVersion: "13.3.0",
+        layout,
+        databasePassword: PASSWORD,
+        masterKey: "a".repeat(64),
+        preferredPort: null,
+        readyTimeoutMs: 20_000,
+        resolvePath: async () => `/opt/homebrew/bin:${process.env.PATH ?? ""}`,
+      });
+      Object.assign(engine, { endpoint: { kind: "tcp", host: "127.0.0.1", port: 5432 } });
+      await expect(engine.startEngine()).rejects.toThrow("the engine ended while starting");
+      const env = JSON.parse(await readFile(dump, "utf8")) as Record<string, string>;
+      expect(env.PATH?.startsWith("/opt/homebrew/bin:")).toBe(true);
+      expect(env.DOCKER_HOST).toBe("unix:///tmp/docker-test.sock");
+      expect(env.NODE_USE_SYSTEM_CA).toBe("1");
+      expect(env.SUBKIT_DEPLOYMENT_MODE).toBe("local_workspace");
+      expect(env.SUBKIT_UNRELATED).toBeUndefined();
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
       await rm(root, { recursive: true, force: true });
     }
   });

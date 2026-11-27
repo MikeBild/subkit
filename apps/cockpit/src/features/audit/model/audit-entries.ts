@@ -413,6 +413,7 @@ export const ACTION_KEYS: Record<string, TranslationKey> = {
   "chat.composer_attachments_claimed": "audit.action.chatComposerAttachmentsClaimed",
   "session.issued": "audit.action.sessionIssued",
   "connector.mcp_handshake_ok": "audit.action.connectorHandshakeOk",
+  "connector.local_command_confirmed": "audit.action.connectorLocalCommandConfirmed",
   "conversation.created": "audit.action.conversationCreated",
   "conversation.shared": "audit.action.conversationShared",
   "conversation.unshared": "audit.action.conversationUnshared",

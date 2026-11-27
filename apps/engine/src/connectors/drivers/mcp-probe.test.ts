@@ -280,7 +280,7 @@ describe("probeMcpConnector", () => {
     expect(res.detail).toContain("expected bearer credential");
   });
 
-  test("an unserved transport fails before any handshake is attempted", async () => {
+  test("an sse transport is probed like streamable HTTP", async () => {
     __resetMcpClientPoolForTests();
     const seeded = await seedSession("probesse", "golf");
     const res = await probeMcpConnector({
@@ -294,8 +294,8 @@ describe("probeMcpConnector", () => {
       }),
       requestSource: "api",
     });
-    expect(res.ok).toBe(false);
-    expect(res.detail).toContain("streamable HTTP");
+    expect(res.ok).toBe(true);
+    expect(res.detail).toContain("handshake ok");
   });
 
   test("a config the driver cannot read fails with the offending field named", async () => {

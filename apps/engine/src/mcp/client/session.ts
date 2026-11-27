@@ -6,12 +6,13 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { assertEgressAllowed, assertEgressAllowedResolved } from "../../connectors/egress-guard.ts";
 import { getDriverFetch, guardedFetch } from "../../connectors/index.ts";
-import type { CredentialUseSnapshot } from "../../credentials/index.ts";
-import type { DecryptedCredential } from "../../credentials/types.ts";
+import type { CredentialUseSnapshot, DecryptedCredential } from "../../credentials/index.ts";
+import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { observeMcpCredential, withMcpCredentialObserver } from "./credential-observation.ts";
+import { mcpEgressContext } from "./egress-context.ts";
 import {
   capManifest,
   hashManifest,
@@ -33,6 +34,14 @@ import {
   resolveAuthProvider,
   resolveStaticAuthHeaders,
 } from "./session-auth.ts";
+import {
+  assertStdioAllowed,
+  assertStdioConfirmed,
+  connectStdioClient,
+  startStdioTransport,
+  stdioRowOf,
+  stdioSecretEnv,
+} from "./stdio-supervisor.ts";
 
 export interface McpClientLike extends RemoteCallClient {
   connect(transport: Transport): Promise<void>;
@@ -87,8 +96,9 @@ function buildTransport(
   environment: "dev" | "prod" = "prod",
 ): StreamableHTTPClientTransport | SSEClientTransport {
   const url = new URL(row.url);
-  assertEgressAllowed(url, { tenant_id, exec: db });
-  const safeFetch = guardedFetch({ tenant_id, exec: db }, getDriverFetch());
+  const egress = mcpEgressContext(tenant_id, db, row);
+  if (!egress.local_mcp) assertEgressAllowed(url, egress);
+  const safeFetch = guardedFetch(egress, getDriverFetch());
   const requestHeaders = mcpRequestHeaders(headers);
   const requestInit: RequestInit = { headers: requestHeaders };
   const observedFetch = async (
@@ -113,7 +123,7 @@ function buildTransport(
     };
     await observeMcpCredential(used);
     return authProvider
-      ? fetchWithMcpOAuth(authProvider, target, init, { tenant_id, exec: db })
+      ? fetchWithMcpOAuth(authProvider, target, init, egress)
       : safeFetch(target, init);
   };
   switch (row.transport) {
@@ -135,7 +145,7 @@ function buildTransport(
     case "stdio":
       throw new McpPreflightError(
         "mcp_transport_unsupported",
-        "stdio transport is not supported for external MCP servers",
+        "stdio MCP servers are started by the stdio supervisor, not over a network transport",
       );
     default: {
       const exhaustive: never = row.transport;
@@ -163,14 +173,14 @@ export function openMcpSession(
   return withMcpCredentialObserver(undefined, () => openMcpSessionWithContext(...args));
 }
 
-async function openMcpSessionWithContext(
+async function openRemoteTransport(
   db: Db,
   tenant_id: string,
   row: McpConnectorRow,
   environment: "dev" | "prod",
   requestSource: RequestSource,
   credentialOverride?: DecryptedCredential | null,
-): Promise<OpenMcpSessionResult> {
+): Promise<Transport> {
   const auth = row.auth;
   const material =
     credentialOverride !== undefined
@@ -184,18 +194,66 @@ async function openMcpSessionWithContext(
 
   await assertEgressAllowedResolved(
     new URL(row.url),
-    { tenant_id, exec: db },
+    mcpEgressContext(tenant_id, db, row),
     testFactories?.lookupDns ? { lookupImpl: testFactories.lookupDns } : {},
   );
-  const transport =
+  return (
     testFactories?.makeTransport?.(row, headers) ??
-    buildTransport(db, tenant_id, row, headers, authProvider, material.snapshot, environment);
+    buildTransport(db, tenant_id, row, headers, authProvider, material.snapshot, environment)
+  );
+}
+
+async function openStdioTransport(
+  db: Db,
+  tenant_id: string,
+  row: McpConnectorRow,
+  environment: "dev" | "prod",
+  credentialOverride?: DecryptedCredential | null,
+): Promise<Transport> {
+  const stdio = stdioRowOf(row);
+  await assertStdioAllowed(tenant_id, db);
+  assertStdioConfirmed(stdio);
+  const credential =
+    stdio.env_secret_names.length === 0
+      ? null
+      : credentialOverride !== undefined
+        ? credentialOverride
+        : ((await getCredentialForConnector(tenant_id, row.id, environment, db))?.value ?? null);
+  return startStdioTransport({
+    tenant_id,
+    connector_id: row.id,
+    connector_slug: row.slug,
+    environment,
+    stdio,
+    secret_env: stdioSecretEnv(stdio, credential),
+  });
+}
+
+async function openMcpSessionWithContext(
+  db: Db,
+  tenant_id: string,
+  row: McpConnectorRow,
+  environment: "dev" | "prod",
+  requestSource: RequestSource,
+  credentialOverride?: DecryptedCredential | null,
+): Promise<OpenMcpSessionResult> {
+  const transport =
+    row.transport === "stdio"
+      ? await openStdioTransport(db, tenant_id, row, environment, credentialOverride)
+      : await openRemoteTransport(
+          db,
+          tenant_id,
+          row,
+          environment,
+          requestSource,
+          credentialOverride,
+        );
   const readNegotiatedProtocolVersion = captureNegotiatedProtocolVersion(transport as Transport);
   const client: McpClientLike =
     testFactories?.makeClient?.(row) ??
     new Client({ name: "subkit-mcp-client", version: "1" }, { capabilities: CLIENT_CAPABILITIES });
   try {
-    await client.connect(transport as Transport);
+    await connectStdioClient(client, transport as Transport);
     const capabilities = negotiatedCapabilities(client);
     const server_version = client.getServerVersion?.() ?? null;
     const instructions = client.getInstructions?.() ?? null;

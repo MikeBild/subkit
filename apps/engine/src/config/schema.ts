@@ -1606,12 +1606,63 @@ export const ConnectorsMcpSection = z
         "Max tools/list pages followed per external MCP handshake; a server paginating past this keeps only the pages read",
       )
       .meta(tenant()),
+    stdio: z
+      .enum(["auto", "on", "off"])
+      .default("auto")
+      .describe(
+        "Starts stdio MCP servers by command on the engine host. auto enables it in the desktop local workspace only; on is refused inside a container.",
+      )
+      .meta(global()),
+    stdio_limits: z
+      .object({
+        startup_timeout_ms: z
+          .number()
+          .int()
+          .min(1_000)
+          .max(120_000)
+          .default(30_000)
+          .describe("Max time (ms) a stdio MCP server may take to answer the MCP handshake")
+          .meta(global()),
+        idle_timeout_ms: z
+          .number()
+          .int()
+          .min(10_000)
+          .max(3_600_000)
+          .default(300_000)
+          .describe("Idle time (ms) after which a stdio MCP server process is stopped")
+          .meta(global()),
+        max_processes: z
+          .number()
+          .int()
+          .min(1)
+          .max(64)
+          .default(8)
+          .describe("Max stdio MCP server processes running at once on this engine")
+          .meta(global()),
+        stderr_ring_bytes: z
+          .number()
+          .int()
+          .min(1_024)
+          .max(1_048_576)
+          .default(16_384)
+          .describe("Bytes of redacted stderr kept per stdio MCP server process for diagnostics")
+          .meta(global()),
+      })
+      .prefault({})
+      .describe("Limits for stdio MCP server processes"),
   })
   .prefault({})
   .describe("External MCP connector client pool");
 
 const ConnectorsSection = z
   .object({
+    local_servers: z
+      .enum(["allow", "deny"])
+      .default("allow")
+      .describe(
+        "Lets connectors whose own address is local (localhost, 127.0.0.0/8, ::1, host.docker.internal) reach that address on self-hosted workspaces. Hosted self-service workspaces are always denied.",
+      )
+      .meta(global()),
     web_scraper: WebScraperSection,
     http: ConnectorsHttpSection,
     mcp: ConnectorsMcpSection,

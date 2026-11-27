@@ -64,6 +64,7 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   cancel: "permission.action.cancel",
   commit: "permission.action.commit",
   confirm: "permission.action.confirm",
+  confirm_local_command: "permission.action.confirmLocalCommand",
   delete: "permission.action.delete",
   disable: "permission.action.disable",
   export: "permission.action.export",

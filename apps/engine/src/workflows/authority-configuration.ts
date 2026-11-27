@@ -1,4 +1,5 @@
-import type { ConnectorView } from "../connectors/types.ts";
+import type { ConnectorView } from "../connectors/index.ts";
+import { withoutStdioServerManagedFields } from "../mcp/client/stdio-identity.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 
 type AuthorityConnector = Pick<
@@ -26,7 +27,7 @@ export function authorityConnectorConfiguration(connector: AuthorityConnector | 
         auth_type: connector.auth_type,
         base_url: connector.base_url,
         dsn: connector.dsn,
-        config: connector.config,
+        config: withoutStdioServerManagedFields(connector.config) ?? connector.config,
         template_slug: connector.template_slug,
         template_source: connector.template_source,
         template_version: connector.template_version,

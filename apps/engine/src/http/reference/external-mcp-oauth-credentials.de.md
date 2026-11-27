@@ -11,6 +11,8 @@ Manche externen MCP-Server verlangen eine OAuth-Anmeldung, bevor SubKit ihre Too
 
 OAuth ist das übliche Verfahren, mit dem ein Dienst einem anderen Zugriff gewährt. Der Autorisierungsserver stellt dafür die Tokens aus.
 
+Ein entfernter Autorisierungsserver muss HTTPS nutzen. Ein lokaler auf `localhost`, `127.0.0.1` oder `[::1]`, den ein lokaler MCP-Server ankündigt, funktioniert auch über `http`. Mehr dazu unter „Lokale Dienste verbinden“.
+
 ### Anmeldung mit Client-Zugangsdaten
 
 Für Connectors mit `oauth2_client_credentials` oder `oauth2_private_key_jwt` trägst du vor dem Verbinden die vertrauenswürdige Adresse des Autorisierungsservers als `config.mcp.auth.issuer` ein. Ohne diese Bindung verwendet SubKit die Zugangsdaten nicht. Die Discovery, das automatische Nachschlagen der Server-Adressen, kann ein Client-Secret oder eine signierte Assertion dann nicht an einen anderen Autorisierungsserver umleiten.

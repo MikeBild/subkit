@@ -9,7 +9,7 @@ idempotency: none
 maturity: stable
 tags: [mcp, integration]
 audience: [runtime]
-version: 5
+version: 6
 ---
 
 # Connecting a client to subkit as an MCP server
@@ -23,6 +23,21 @@ tools, `POST /v1/connectors`, or `subkit connectors` (`mcp-inspect`,
 `mcp-authorize`, `enable`, `disable`). There is no separate MCP-server
 registry, no `subkit mcp-servers` command and no `/v1/mcp-servers` route — never
 send a user to one. The `connector-creation-guidance` skill carries that path.
+
+**Local MCP servers are that other direction too.** "Connect my MCP on
+localhost:8931" or "start `docker mcp gateway run`" means a connector with
+`driver: "mcp"`:
+
+- **Address:** `http://` or `https://` on `localhost`, `127.0.0.1`, `[::1]`,
+  or `host.docker.internal` when the engine runs in Docker. No sign-in by
+  default; bearer, an own header name, or OAuth when the server asks for it.
+  Local https takes a CA certificate (PEM) or, local only, skip-verify.
+- **Command (`transport: "stdio"`):** the engine starts the program itself,
+  without a shell. A person must allow the literal command before it runs,
+  and again after every change. The model's own message never counts as that
+  confirmation. A Docker engine cannot run commands; use Desktop or a host
+  engine, or reach a host server over `host.docker.internal`.
+- **SubKit Cloud** cannot reach servers on the user's machine.
 
 subkit exposes MCP at two transports:
 

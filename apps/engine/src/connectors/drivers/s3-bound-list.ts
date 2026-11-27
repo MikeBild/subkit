@@ -2,6 +2,7 @@ import type { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { parseXmlBody } from "../../utils/xml-parser.ts";
 import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
+import { ownTargetEntry } from "../local-egress.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import {
@@ -67,7 +68,11 @@ export async function executeBoundS3List(p: {
     url.searchParams.set("prefix", prefix);
     url.searchParams.set("max-keys", String(Math.min(1000, cap - items.length)));
     if (token) url.searchParams.set("continuation-token", token);
-    await assertEgressAllowedResolved(url, { tenant_id: params.tenant_id, exec: params.db });
+    await assertEgressAllowedResolved(url, {
+      tenant_id: params.tenant_id,
+      exec: params.db,
+      ...ownTargetEntry(url),
+    });
     const headers: Record<string, string> = {};
     if (credentials)
       signSigV4Request({
@@ -93,7 +98,7 @@ export async function executeBoundS3List(p: {
         redirect: "manual",
         signal,
       },
-      { tenant_id: params.tenant_id, exec: params.db },
+      { tenant_id: params.tenant_id, exec: params.db, ...ownTargetEntry(url) },
       { fetchImpl: getDriverFetch() },
     );
     await checkAuthorityRedirect(response, { redirect: "manual" });

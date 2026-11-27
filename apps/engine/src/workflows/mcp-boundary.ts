@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { isStdioIdentity } from "@shared/stdio-identity.ts";
 import { canonicalWorkflowJson, workflowJsonDigest } from "./canonical-json.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import {
@@ -199,6 +200,7 @@ function refuse(refusal: McpBoundaryRefusal) {
 
 function serverOf(server_url: string | null | undefined): string | null {
   if (!server_url) return null;
+  if (isStdioIdentity(server_url)) return server_url;
   try {
     const url = new URL(server_url);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;

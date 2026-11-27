@@ -4,10 +4,12 @@ import {
   assertEgressAllowed,
   EgressBlockedError,
   type EgressGuardContext,
+  grantedLocalTarget,
   resolveAllowedEgressAddresses,
   resolveEgressGuardMode,
   resolveTenantEgressContext,
 } from "./egress-guard.ts";
+import { ownTargetScope } from "./local-egress.ts";
 
 export function sftpTarget(address: SftpAddress): URL {
   const host =
@@ -21,9 +23,12 @@ async function sftpDialTarget(
   address: SftpAddress,
   context: EgressGuardContext,
 ): Promise<{ host: string; family?: number }> {
-  const resolved = await resolveTenantEgressContext(context);
   const target = sftpTarget(address);
-  if (resolveEgressGuardMode(resolved) === "permissive") {
+  const ownScope = context.local_mcp ? undefined : ownTargetScope(target);
+  const resolved = await resolveTenantEgressContext(
+    ownScope ? { ...context, local_mcp: ownScope } : context,
+  );
+  if (resolveEgressGuardMode(resolved) === "permissive" || grantedLocalTarget(target, resolved)) {
     assertEgressAllowed(target, resolved);
     return { host: address.host };
   }

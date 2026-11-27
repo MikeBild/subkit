@@ -14837,6 +14837,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connectors/{id}/mcp/confirm-command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the local command of a stdio MCP connector so the engine may start it */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConfirmLocalCommandBody"];
+                };
+            };
+            responses: {
+                /** @description Confirmed, or already confirmed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConfirmLocalCommandResponse"];
+                    };
+                };
+                /** @description The person who entered or changed the command cannot confirm it */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The command changed after it was shown */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The connector starts no local command */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors/{id}/call": {
         parameters: {
             query?: never;
@@ -37485,6 +37563,27 @@ export interface components {
             /** @enum {string} */
             strategy: "copy" | "move";
         };
+        ConfirmLocalCommandResponse: {
+            /** Format: uuid */
+            connector_id: string;
+            command: components["schemas"]["LocalCommand"];
+            confirmed_by: string;
+            confirmed_at: string;
+            already_confirmed: boolean;
+        };
+        LocalCommand: {
+            command_line: string;
+            command: string;
+            args: string[];
+            env_names: string[];
+            env_secret_names: string[];
+            cwd: string | null;
+            command_hash: string;
+        };
+        ConfirmLocalCommandBody: {
+            /** @description The command_hash of the command shown to the person; a command changed since then is refused */
+            command_hash: string;
+        };
         ConnectorCallResponse: {
             status: number;
             headers: {
@@ -37656,6 +37755,7 @@ export interface components {
             flows?: {
                 [key: string]: components["schemas"]["DiscoveredAuthSchemeOAuth2Flow"];
             };
+            required?: boolean;
         };
         DiscoveredAuthSchemeOAuth2Flow: {
             authorization_url?: string;

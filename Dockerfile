@@ -94,6 +94,7 @@ RUN chmod 755 /usr/local/bin/engine.bin /usr/local/bin/subkit.bin \
     && chown -R subkit:subkit /tmp/subkit-home /tmp/subkit-state
 
 ENV NODE_ENV=production \
+    SUBKIT_CONTAINER=1 \
     ENGINE_LISTEN_HOST=0.0.0.0 \
     HOME=/tmp/subkit-home \
     CONFIGURATION_DIRECTORY=/tmp/subkit-state \

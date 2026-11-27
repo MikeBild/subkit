@@ -359,10 +359,24 @@ Browser crawling runs only when both conditions hold:
 - The outbound network guard is not strict. The container starts with `NODE_ENV=production`
   and therefore strict; it refuses browser discovery. The setting `egress.mode: permissive`
   also allows private and loopback addresses for every connector. Choose it only behind
-  a network boundary you have reviewed.
+  a network boundary you have reviewed. Local services on `localhost` or
+  `host.docker.internal` do not need it: they are allowed by default, see
+  “Local services from the container” below.
 
 A derived image is yours to maintain: keep Playwright and the browser updated, scan it
 and ship the browser licenses. This path is not part of the release checks.
+
+### Local services from the container
+
+Inside the container, `localhost` is the engine itself. To reach a service on your server,
+such as a local MCP server, use `http://host.docker.internal:<port>`. `docker-compose.yml`
+maps `host.docker.internal` to your server through `extra_hosts`. On Linux, the service
+must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`.
+
+These local addresses are allowed by default through `connectors.local_servers`; you do not
+need `egress.mode: permissive` for them. MCP servers started by command (stdio) do not run
+in the container. Use SubKit Desktop or an engine on the host for them.
+Everything else is in “Connect local services”.
 
 ### Backup and recovery
 
@@ -4611,6 +4625,8 @@ Some external MCP servers require an OAuth sign-in before SubKit may use their t
 
 OAuth is the common method by which one service grants another access. The authorization server issues the tokens for it.
 
+A remote authorization server must use HTTPS. A local one on `localhost`, `127.0.0.1` or `[::1]`, announced by a local MCP server, also works over `http`. More on that in “Connect local services”.
+
 ### Sign-in with client credentials
 
 For connectors using `oauth2_client_credentials` or `oauth2_private_key_jwt`, enter the trusted authorization server URL as `config.mcp.auth.issuer` before connecting. Without that binding SubKit does not use the credentials. Discovery, the automatic lookup of server addresses, then cannot redirect a client secret or signed assertion to another authorization server.
@@ -4835,7 +4851,7 @@ Both are in the Cockpit under **Settings** and apply to the whole engine, withou
 
 | Setting | Shown in the Cockpit as | Default | Effect |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `13.2.0`. |
+| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `13.3.0`. |
 | `server.desktop_dev_callback` | **Accept desktop development builds** | `false` | Also accepts `subkit-dev://callback` as a target. Outside `NODE_ENV=production` this applies without the setting. |
 
 This is how you raise the minimum version:
@@ -4852,7 +4868,7 @@ The app and the engine both enforce the minimum version. The app checks the publ
 | Confirmation page, when shown and when submitted | The same page with `426`. No code is issued. |
 | `POST /v1/identity/desktop-session` | `426` with the code `desktop_app_outdated`. The sign-in code is not consumed. The app shows “This version of the app is too old for this server. …” |
 
-A pre-release such as `13.2.0-beta.1` counts as older than `13.2.0`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
+A pre-release such as `13.3.0-beta.1` counts as older than `13.3.0`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
 
 Leave `server.desktop_dev_callback` switched off in production. Development builds are called “SubKit Dev”, use the scheme `subkit-dev://` and are meant only for developing the app.
 
@@ -4949,6 +4965,129 @@ An exchange with an unknown code only appears in the engine log, not in the audi
 | `401 browser_session_required` when listing devices | The route accepts only a session of the Cockpit and no API key. |
 | `403 own_installation_only` when revoking | The request comes from an installation and names another one. Revoke the other device in the browser. |
 | `426 desktop_app_outdated` at sign-in | The app is older than `server.desktop_min_version` or names no version. Update the app. |
+## Connect local services
+
+Some services run right next to SubKit: an MCP server on your laptop, an API in a development container, a PostgreSQL database on your machine. You need this chapter when you want to connect such a local service as a connector. Afterwards SubKit reaches it over `localhost` or `host.docker.internal`, with or without sign-in, over `http` or `https`.
+
+A local service is one whose address points to your own computer. Every connector type can use one: HTTP, GraphQL, S3, SFTP, PostgreSQL and MCP. MCP servers can also run as a command (stdio), which SubKit starts itself.
+
+### Where local services work
+
+SubKit can only reach a local service when the engine runs on the same computer.
+
+| Where SubKit runs | Local services |
+| --- | --- |
+| SubKit Desktop on macOS, local workspace | Yes, including stdio MCP servers |
+| Engine started directly on your computer (`bun`) | Yes; stdio MCP servers after you turn them on |
+| Engine in Docker on your computer | Yes, through `http://host.docker.internal:<port>`; no stdio MCP servers |
+| SubKit Cloud | No |
+| SubKit Desktop connected to SubKit Cloud | No, because the engine runs in the cloud |
+| SubKit Desktop on Windows | No, the local workspace is not available on Windows yet |
+
+### Which addresses count as local
+
+A connector counts as local when its own address uses one of these hosts:
+
+- `localhost` and names ending in `.localhost`
+- `127.0.0.1` and every other address that starts with `127.`
+- `[::1]`
+- `host.docker.internal`, the address of your computer as seen from inside a Docker container
+
+Both `http://` and `https://` work, with any port, for example `http://localhost:8931/mcp` or `https://127.0.0.1:8443`. `0.0.0.0` is not a valid target.
+
+The connector reaches only its own address. A remote connector can never reach a local address, not even through a redirect or a sign-in address it announces. A local connector cannot jump to a different local port either. The only exception is the local authorization server that a local MCP server names for its OAuth sign-in. Other private network addresses, such as `192.168.x.x`, stay blocked.
+
+### Example: a local MCP server without sign-in
+
+Say you start the Playwright MCP server on your computer:
+
+```bash
+npx @playwright/mcp@latest --port 8931
+```
+
+1. In the Cockpit, open “Connectors” and choose “Add connector”.
+2. Choose MCP and enter `http://localhost:8931/mcp` as the address.
+3. Leave the sign-in at “None”. That is the default for local addresses.
+4. Save. SubKit checks the connection and lists the server’s tools.
+
+You can also ask in the chat: “Connect my MCP server on localhost:8931.” SubKit creates the same connector.
+
+If the engine runs in Docker, enter `http://host.docker.internal:8931/mcp` instead.
+
+### Sign-in
+
+Local services start without sign-in. If your service expects one, choose it in the connector:
+
+- **API key:** SubKit sends the key as `Authorization: Bearer <key>` or in a header you name, for example `X-API-Key`.
+- **OAuth (MCP):** The MCP server names its own authorization server, which may also run locally, for example on `http://localhost:9000`. Sign in once in the browser. After that, SubKit renews the sign-in on its own, even when `server.public_base_url` is not set.
+
+HTTPS is required only for remote authorization servers. A local one on `localhost` works over `http`.
+
+### HTTPS with a local certificate
+
+Many local services use a certificate from a local certificate authority (CA), for example one made with `mkcert`. SubKit does not trust such a CA by default. You have two options:
+
+1. **Add the CA (recommended):** Paste the CA certificate in PEM format into the connector. With `mkcert`, `mkcert -CAROOT` shows the folder; the file is `rootCA.pem`. In the configuration it lives at `config.tls` for HTTP and GraphQL connectors and at `config.mcp.tls` for MCP connectors. SubKit Desktop also trusts the CAs in the macOS keychain, where `mkcert -install` puts its CA.
+2. **“Don’t verify certificate (local only)”:** SubKit then accepts any certificate from this address. Use this only for tests on your own computer. The Cockpit shows a warning.
+
+Both options apply only to local addresses. For remote addresses, SubKit always verifies the certificate.
+
+### MCP servers by command (stdio)
+
+Some MCP servers do not listen on a port. They run as a program that SubKit starts and talks to through its input and output. That is called stdio. Examples:
+
+```bash
+docker mcp gateway run
+npx @playwright/mcp@latest
+```
+
+In the connector you enter the command, its arguments, environment variables and optionally a working folder. Mark secret values as secret; SubKit stores them encrypted.
+
+stdio runs only where the engine runs directly on your computer: in SubKit Desktop and in an engine started with `bun`. An engine in a Docker container refuses stdio. Use an `http` address through `host.docker.internal` there instead.
+
+#### Confirm before the first start
+
+SubKit starts a command only after a person has confirmed it. The chat and the Cockpit may enter a command, but they do not start it.
+
+- Confirmation needs the permission `connectors:confirm_local_command`. By default only the owner and admin roles have it.
+- The person who entered or changed the command cannot confirm it themselves. The exception is the local workspace in SubKit Desktop, where you are the only person.
+- The confirmation dialog shows the full command: program, arguments, names of the environment variables and working folder.
+- An answer from the AI model never counts as confirmation.
+- Every change to command, arguments, environment or working folder removes the confirmation. SubKit then asks again.
+
+#### What the started program sees
+
+The program does not inherit the engine’s environment. Engine secrets such as `MASTER_KEY` or `DATABASE_URL` stay hidden from it. It receives only:
+
+- `PATH` and `HOME`
+- `DOCKER_HOST`, `DOCKER_CONFIG` and `DOCKER_CONTEXT`, when they are set
+- the environment variables you entered in the connector, including the secret ones
+
+SubKit Desktop reads `PATH` from your login shell. That way it finds `docker`, `npx` and other tools from Homebrew even when you start SubKit from the Finder.
+
+SubKit starts a program on first use and stops it after a period without requests. If it crashes, SubKit restarts it with a growing delay. Its error output appears, redacted, in the logs and in the connection check.
+
+### Settings
+
+| Setting | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `connectors.local_servers` | `allow`, `deny` | `allow` | Allows or blocks local addresses for all connectors. Takes effect immediately, without a restart. |
+| `connectors.mcp.stdio` | `auto`, `on`, `off` | `auto` | `auto` turns stdio on in the Desktop local workspace and off elsewhere. `on` turns it on for an engine on your computer and is refused inside a container. |
+| `connectors.mcp.stdio_limits` | see “Settings” | | Startup timeout, idle time, maximum number of processes and the size of the kept error output. |
+
+You do not need `egress.mode: permissive` for local services. That setting opens all private addresses for all connectors; local services are allowed without it.
+
+### Troubleshooting
+
+| What you see | Cause | What to do |
+| --- | --- | --- |
+| “Connection refused” with `localhost` while the engine runs in Docker | Inside the container, `localhost` is the engine itself. | Use `http://host.docker.internal:<port>`. On Linux, the service must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`. |
+| TLS or certificate error on `https://localhost` | SubKit does not know the local CA. | Add the CA as PEM to the connector (for `mkcert`: `rootCA.pem`). |
+| `mcp_local_command_unconfirmed` | Nobody has confirmed the command yet, or it changed after the confirmation. | Ask a person with `connectors:confirm_local_command` to confirm it. |
+| `mcp_stdio_unavailable_in_container` | The engine runs in a Docker container. | Run the server over `http` and connect it through `host.docker.internal`, or use SubKit Desktop or an engine on your computer. |
+| `docker` or `npx` not found in SubKit Desktop | The program is not in the `PATH` of your login shell. | Add its folder to `PATH` in your shell profile, for example `~/.zprofile`, and restart SubKit Desktop. |
+| `local_target_from_remote_origin` | A remote service tried to redirect SubKit to a local address. | This is blocked on purpose. Connect the local service with its own connector. |
+| Local address blocked on a self-hosted engine | `connectors.local_servers` is set to `deny`. | Set it to `allow`. |
 ## License
 
 Apache License 2.0 (`Apache-2.0`). The full text is in the `LICENSE` file of every release.
@@ -5117,7 +5256,7 @@ Query parameters of `GET /v1/identity/desktop-login/start`:
 | `device_id` | A UUID the app creates once per server profile. |
 | `device_label` | 1 to 64 characters without control characters. |
 | `redirect_uri` | Optional: `subkit://callback` or, where accepted, `subkit-dev://callback`. |
-| `app_version` | The version of the app such as `13.2.0`, also with a pre-release tag such as `13.2.0-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
+| `app_version` | The version of the app such as `13.3.0`, also with a pre-release tag such as `13.3.0-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
 
 Body of `POST /v1/identity/desktop-session`: `code` (43 characters), `code_verifier` (43 to 128 characters), `app_version` and optionally `state`. The answer is `200` with `installation_id`, `cockpit_path` and `created`, and it sets the session cookie.
 
@@ -5198,7 +5337,7 @@ An action that ran in chat without a question is written as `tool_policy.confirm
 
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | Version such as `13.2.0` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
+| `server.desktop_min_version` | Version such as `13.3.0` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
 | `server.desktop_dev_callback` | `true` or `false` | `false` | Also accept `subkit-dev://callback` as a sign-in target, for development builds. |
 
 Both also appear in the generated settings reference. The thresholds for schedules, rules and notices are fixed and have no setting: backoff from 3 failures, pause at 5, history for 90 days, rules for 90 days with 20 runs a day, before an approval ends a notice in the overview 7 days before, with push also on devices, and a notification through channels and rules 3 days before.
@@ -8817,8 +8956,14 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `connectors.http.max_response_bytes` | number | `104857600` | tenant | no | no | Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB). |
+| `connectors.local_servers` | enum("allow" \| "deny") | `"allow"` | global | no | no | Lets connectors whose own address is local (localhost, 127.0.0.0/8, ::1, host.docker.internal) reach that address on self-hosted workspaces. Hosted self-service workspaces are always denied. |
 | `connectors.mcp.per_server_manifest_byte_cap` | number | `30000` | tenant | no | no | Byte cap on one external MCP connector's serialized tool manifest; the heaviest tools are dropped first when exceeded |
 | `connectors.mcp.remote_tool_call_timeout_ms` | number | `30000` | tenant | no | no | Bounded timeout (ms) for one remote external MCP tools/call invocation |
+| `connectors.mcp.stdio` | enum("auto" \| "on" \| "off") | `"auto"` | global | no | no | Starts stdio MCP servers by command on the engine host. auto enables it in the desktop local workspace only; on is refused inside a container. |
+| `connectors.mcp.stdio_limits.idle_timeout_ms` | number | `300000` | global | no | no | Idle time (ms) after which a stdio MCP server process is stopped |
+| `connectors.mcp.stdio_limits.max_processes` | number | `8` | global | no | no | Max stdio MCP server processes running at once on this engine |
+| `connectors.mcp.stdio_limits.startup_timeout_ms` | number | `30000` | global | no | no | Max time (ms) a stdio MCP server may take to answer the MCP handshake |
+| `connectors.mcp.stdio_limits.stderr_ring_bytes` | number | `16384` | global | no | no | Bytes of redacted stderr kept per stdio MCP server process for diagnostics |
 | `connectors.mcp.tools_list_max_pages` | number | `5` | tenant | no | no | Max tools/list pages followed per external MCP handshake; a server paginating past this keeps only the pages read |
 | `connectors.web_scraper.authoring.extract_too_large_yellow_pct` | number | `30` | tenant | no | no | Past-run extract_too_large ratio (over last 20 runs) above which the gate Yellows. |
 | `connectors.web_scraper.authoring.red_sitemap_threshold` | number | `100000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target refuses (Red). |

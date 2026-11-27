@@ -122,10 +122,25 @@ Browser-Crawling läuft nur, wenn beide Bedingungen gelten:
 - Der Schutz für ausgehende Verbindungen ist nicht strikt. Der Container startet mit
   `NODE_ENV=production` und damit strikt; er lehnt Browser-Discovery ab. Die Einstellung
   `egress.mode: permissive` erlaubt zusätzlich private und Loopback-Adressen für alle
-  Connectors. Wähle sie nur hinter einer Netzgrenze, die du geprüft hast.
+  Connectors. Wähle sie nur hinter einer Netzgrenze, die du geprüft hast. Lokale Dienste
+  auf `localhost` oder `host.docker.internal` brauchen sie nicht, denn sie sind standardmäßig
+  erlaubt, siehe „Lokale Dienste aus dem Container“ weiter unten.
 
 Ein abgeleitetes Image pflegst du selbst: Halte Playwright und den Browser aktuell, scanne
 es und liefere die Browser-Lizenzen mit. Dieser Weg ist nicht Teil der Release-Prüfungen.
+
+### Lokale Dienste aus dem Container
+
+Im Container ist `localhost` die Engine selbst. Einen Dienst auf deinem Server, etwa einen
+lokalen MCP-Server, erreichst du über `http://host.docker.internal:<port>`. Die
+`docker-compose.yml` leitet `host.docker.internal` über `extra_hosts` auf deinen Server.
+Unter Linux muss der Dienst dafür an `0.0.0.0` oder an der Docker-Bridge lauschen, nicht nur
+an `127.0.0.1`.
+
+Diese lokalen Adressen sind über `connectors.local_servers` standardmäßig erlaubt;
+`egress.mode: permissive` brauchst du dafür nicht. MCP-Server per Befehl (stdio) laufen nicht
+im Container. Nutze für sie SubKit Desktop oder eine Engine auf dem Host.
+Alles Weitere steht unter „Lokale Dienste verbinden“.
 
 ### Backup und Wiederherstellung
 

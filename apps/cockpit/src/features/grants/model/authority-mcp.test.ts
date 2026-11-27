@@ -187,3 +187,18 @@ describe("tool call copy", () => {
     expect(translate("de", "authority.mcp.hintReadOnly")).toContain("nicht prüfen");
   });
 });
+
+describe("a tool of a local command", () => {
+  test("shows the command line instead of the server hash", () => {
+    const local = { ...base, server: "stdio:3f2a" };
+    const shown = presentMcpBoundary(local, true, "docker mcp gateway run");
+    expect(shown.command).toBe("docker mcp gateway run");
+    expect(shown.target).toBe(`docker mcp gateway run · ${base.tool}`);
+  });
+
+  test("a remote server keeps its address even when a command is passed", () => {
+    const shown = presentMcpBoundary(base, true, "docker mcp gateway run");
+    expect(shown.command).toBeNull();
+    expect(shown.target).toBe(`${base.server} · ${base.tool}`);
+  });
+});

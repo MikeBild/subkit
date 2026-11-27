@@ -120,6 +120,7 @@ export {
   listConnectorDocsOperation,
   searchConnectorDocsOperation,
 } from "./operations/connector-docs.ts";
+export { confirmLocalCommandOperation } from "./operations/connector-local-command.ts";
 export { inspectMcpConnectorOperation, MCP_ERRORS } from "./operations/connector-mcp.ts";
 export {
   probeConnectorDefinitionOperation,

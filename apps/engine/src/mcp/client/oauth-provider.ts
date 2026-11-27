@@ -9,6 +9,7 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, desc, eq, gt } from "drizzle-orm";
+import type { LocalMcpScope } from "../../connectors/index.ts";
 import { getDriverFetch, guardedFetch } from "../../connectors/index.ts";
 import type { CredentialUseSnapshot, VerifiedProviderIdentity } from "../../credentials/index.ts";
 import {
@@ -44,6 +45,7 @@ export interface McpDbOAuthClientProviderInput {
   auth: McpAuthConfig;
   interactive: boolean;
   request_source: RequestSource;
+  local_mcp?: LocalMcpScope;
 }
 
 export class McpDbOAuthClientProvider implements OAuthClientProvider {
@@ -64,7 +66,11 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     const credentialId = observedMcpCredentialId(this.connector_id);
     const tokenRequest = this.tokenEvidence.isTokenRequest(target, init);
     const response = await guardedFetch(
-      { tenant_id: this.tenant_id, exec: this.db },
+      {
+        tenant_id: this.tenant_id,
+        exec: this.db,
+        ...(this.local_mcp ? { local_mcp: this.local_mcp } : {}),
+      },
       getDriverFetch(),
     )(target, init);
     if (tokenRequest && response.ok) {
@@ -140,8 +146,10 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
   private readonly auth: McpAuthConfig;
   private readonly interactive: boolean;
   private readonly request_source: RequestSource;
+  private readonly local_mcp: LocalMcpScope | undefined;
 
   constructor(input: McpDbOAuthClientProviderInput) {
+    this.local_mcp = input.local_mcp;
     this.tokenEvidence = new OAuthTokenEvidence(input.auth.issuer);
     this.db = input.db;
     this.tenant_id = input.tenant_id;
@@ -212,7 +220,12 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       },
       this.db,
     );
-    const next: McpAuthConfig = { ...this.auth, kind: "oauth2", client_id: info.client_id };
+    const next: McpAuthConfig = {
+      ...this.auth,
+      kind: "oauth2",
+      client_id: info.client_id,
+      redirect_uri: this.redirect_uri,
+    };
     await updateMcpAuthConfig(this.db, this.tenant_id, this.connector_id, next, {
       actor_id: null,
       request_source: this.request_source,

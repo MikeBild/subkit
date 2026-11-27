@@ -1,6 +1,9 @@
 import { z } from "@hono/zod-openapi";
 import { type EndpointScore, scoreEndpoints } from "../../connectors/discovery/endpoint-scorer.ts";
-import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";
+import {
+  optionalAuthSchemes,
+  recognizeAuthFromSchemes,
+} from "../../connectors/discovery/recognize-auth.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { getConnector } from "../../connectors/service.ts";
@@ -137,6 +140,8 @@ function finalizeOk(p: {
     data.next_best_actions = ["discover_systems_from_files"];
   }
   const recognized = recognizeAuthFromSchemes(p.result.auth_schemes);
+  const optional = optionalAuthSchemes(p.result.auth_schemes);
+  if (optional.length > 0) data.optional_auth_schemes = optional;
   if (recognized) {
     data.recommended_auth_type = recognized.auth_type;
     if (recognized.auth_type === "oauth2" && recognized.oauth) {

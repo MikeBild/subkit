@@ -6,10 +6,12 @@ import {
   assertEgressAllowed,
   EgressBlockedError,
   type EgressGuardContext,
+  grantedLocalTarget,
   resolveAllowedEgressAddresses,
   resolveEgressGuardMode,
   resolveTenantEgressContext,
 } from "./egress-guard.ts";
+import { ownTargetScope } from "./local-egress.ts";
 
 function rejectLocalSslFiles(dsn: string): void {
   let url: URL;
@@ -79,10 +81,15 @@ export async function postgresPoolConfiguration(
   context: EgressGuardContext = {},
   options: pg.PoolConfig = {},
 ) {
-  const resolved = await resolveTenantEgressContext(context);
+  const ownScope = context.local_mcp ? undefined : ownTargetScope(postgresDsnTarget(dsn));
+  const resolved = await resolveTenantEgressContext(
+    ownScope ? { ...context, local_mcp: ownScope } : context,
+  );
   const mode = resolveEgressGuardMode(resolved);
   const key = createHash("sha256").update(dsn).update(mode).digest("hex");
   if (mode === "permissive")
+    return { options: { ...options, connectionString: dsn }, context: resolved, key };
+  if (grantedLocalTarget(postgresDsnTarget(dsn), resolved))
     return { options: { ...options, connectionString: dsn }, context: resolved, key };
   rejectLocalSslFiles(dsn);
   const client = new pg.Client({ connectionString: strictConnectionString(dsn) });

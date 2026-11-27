@@ -6,7 +6,8 @@ import { setHealthState } from "../http/health-state.ts";
 import { beginHttpShutdown, drainHttpBounded, type HttpShutdown } from "../http/shutdown.ts";
 import { beginStreamShutdown } from "../http/stream-shutdown.ts";
 import { errorFields, logger } from "../logging/index.ts";
-import type { RuntimeConfigCoordinator } from "../runtime-config/coordinator.ts";
+import { stopAllStdioServers } from "../mcp/client/stdio-supervisor.ts";
+import type { RuntimeConfigCoordinator } from "../runtime-config/index.ts";
 import { registerRestartTrigger, shutdownExitCode } from "../runtime-config/restart.ts";
 import { closeSandboxWorkers } from "../sandboxes/quickjs/runtime.ts";
 
@@ -80,6 +81,7 @@ export function createEngineShutdown(lifetime: EngineBootLifetime): EngineShutdo
         await waitForTenantWorkDrain();
         await lifetime.finalize();
         closeSandboxWorkers();
+        await stopAllStdioServers();
         await closeAllPools();
         const inFlight = tenantWorkInFlight();
         if (httpClosed && inFlight === 0) await runtimeConfig?.stop();

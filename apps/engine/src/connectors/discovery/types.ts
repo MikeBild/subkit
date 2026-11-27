@@ -43,6 +43,7 @@ export interface DiscoveredAuthScheme {
   location?: "header" | "query" | "cookie";
   scheme?: string;
   flows?: Record<string, DiscoveredAuthSchemeOAuth2Flow>;
+  required?: boolean;
 }
 
 export interface DiscoveryWarning {

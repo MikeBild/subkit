@@ -10,8 +10,7 @@ import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { storedScopes } from "../credentials/authority-scopes.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import type { Executor } from "../db/client.ts";
-import { withTenantScope } from "../db/index.ts";
+import { type Executor, withTenantScope } from "../db/index.ts";
 import {
   catalogGroupOrder,
   type ListResult,
@@ -21,6 +20,10 @@ import {
 import { connectors, vaultItems } from "../db/schema/index.ts";
 import { BadRequestError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
+import {
+  carryStdioConfirmation,
+  withoutStdioServerManagedFields,
+} from "../mcp/client/stdio-identity.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { validateConnectorConfigOrThrow, withMcpConfigDefaults } from "./config-schemas.ts";
 import {
@@ -45,6 +48,7 @@ import {
 } from "./core/write-rejection.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { connectorCountsAgainstHealth } from "./health-ratio.ts";
+import { type LocalConnectorShape, localConnectorIssue } from "./local-connector-rules.ts";
 import { carryMcpTrustList } from "./mcp-tool-trust.ts";
 import { restoreMaskedConnectorSecrets, toPublicConnector } from "./public-view.ts";
 import { validateTemplateSignedJwtPolicy } from "./template-binding.ts";
@@ -88,6 +92,15 @@ function assertSftpAuthConfigConsistent(
   const first = sftpAuthConsistencyIssue(driver, auth_type, config);
   if (!first) return;
   throw new BadRequestError(first.message, { field: first.path, driver });
+}
+
+function assertLocalConnectorRules(
+  shape: LocalConnectorShape,
+  prior?: { config: unknown } | null,
+): void {
+  const first = localConnectorIssue(shape, prior);
+  if (!first) return;
+  throw new BadRequestError(first.message, { field: first.path, driver: shape.driver });
 }
 
 function assertSignedJwtAuthConfig(
@@ -205,7 +218,11 @@ export async function createConnectorOutcome(
     const auth_type = resolvedEffective.auth_type ?? "none";
     const effective = {
       ...resolvedEffective,
-      config: withMcpConfigDefaults(resolvedEffective.driver, auth_type, resolvedEffective.config),
+      config: withMcpConfigDefaults(
+        resolvedEffective.driver,
+        auth_type,
+        withoutStdioServerManagedFields(resolvedEffective.config),
+      ),
     };
     const slug = effective.slug ?? slugify(effective.name);
     const environment = effective.environment ?? "dev";
@@ -214,6 +231,13 @@ export async function createConnectorOutcome(
     assertMcpAuthConfigConsistent(effective.driver, auth_type, effective.config);
     assertSftpAuthConfigConsistent(effective.driver, auth_type, effective.config);
     assertSignedJwtAuthConfig(auth_type, effective.config);
+    assertLocalConnectorRules({
+      driver: effective.driver,
+      auth_type,
+      base_url: effective.base_url,
+      dsn: effective.dsn,
+      config: effective.config,
+    });
     const existingRows = await tx
       .select()
       .from(connectors)
@@ -238,10 +262,14 @@ export async function createConnectorOutcome(
         ),
       },
     );
-    const config = carryMcpTrustList(
-      effective.driver,
+    const config = carryStdioConfirmation(
       existing?.driver === effective.driver ? existing.config : null,
-      secrets.config,
+      carryMcpTrustList(
+        effective.driver,
+        existing?.driver === effective.driver ? existing.config : null,
+        secrets.config,
+      ),
+      connectorAuditActor(p).actor_id,
     );
     if (existing) {
       const updated = await tx
@@ -671,7 +699,7 @@ export async function updateConnectorOutcome(
     if (patch.base_url !== undefined) set.base_url = patch.base_url;
     if (patch.dsn !== undefined) set.dsn = patch.dsn;
     if (patch.auth_type !== undefined) set.auth_type = patch.auth_type;
-    if (patch.config !== undefined) set.config = patch.config;
+    if (patch.config !== undefined) set.config = withoutStdioServerManagedFields(patch.config);
     if (patch.operator_quirks !== undefined) set.operator_quirks = patch.operator_quirks;
     Object.assign(set, metadataChange(prior, metadataPatchOf(patch)));
     if (patch.clear_template_binding) {
@@ -743,11 +771,21 @@ export async function updateConnectorOutcome(
         : ((prior.template_snapshot as Record<string, unknown> | null) ?? null),
     });
     if (policyIssue) throw new BadRequestError(policyIssue.message, { field: policyIssue.field });
+    assertLocalConnectorRules(
+      {
+        driver: prior.driver as DriverName,
+        auth_type: (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
+        base_url: set.base_url !== undefined ? set.base_url : prior.base_url,
+        dsn: set.dsn !== undefined ? set.dsn : prior.dsn,
+        config: (set.config ?? prior.config ?? {}) as Record<string, unknown>,
+      },
+      { config: prior.config },
+    );
     if (set.config !== undefined) {
-      set.config = carryMcpTrustList(
-        prior.driver,
+      set.config = carryStdioConfirmation(
         prior.config,
-        set.config as Record<string, unknown>,
+        carryMcpTrustList(prior.driver, prior.config, set.config as Record<string, unknown>),
+        actorFields.actor_id,
       );
     }
     if (

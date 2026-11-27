@@ -232,7 +232,7 @@ describe("probeMcpConnector configuration refusals", () => {
     expect(res.detail?.split("; ")).toHaveLength(2);
   });
 
-  test("an sse transport is refused as not served with an upstream error code", async () => {
+  test("an sse transport is served like http and reports an unregistered session", async () => {
     const res = await probeMcpConnector({
       db: ctx.db,
       tenant_id: tenantId,
@@ -246,8 +246,8 @@ describe("probeMcpConnector configuration refusals", () => {
     });
     expect(res).toMatchObject({
       ok: false,
-      detail: "mcp transport 'sse' is not served — re-register this connector over streamable HTTP",
-      error_code: "unknown_upstream_error",
+      detail: "no MCP session is registered for this connector",
+      error_code: "remote_resource_not_found",
     });
     expectSaneLatency(res.latency_ms);
   });

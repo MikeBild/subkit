@@ -27,4 +27,5 @@ export {
 export * from "./client/registry.ts";
 export * from "./client/schema-drift.ts";
 export { sdkAuth } from "./client/sdk-auth.ts";
+export * from "./client/stdio-identity.ts";
 export { modeFlags, resolveMcpMode } from "./mode-resolver.ts";

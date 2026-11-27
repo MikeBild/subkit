@@ -85,6 +85,7 @@ export {
   inferGraphqlOperation,
   sqlIsSelect,
 } from "./side-effects.ts";
+export * from "./stdio-identity.ts";
 export type { UxGatingPermission } from "./ux-gating.ts";
 export { UX_GATING_PERMISSIONS } from "./ux-gating.ts";
 export type { ValidationIssue, ValidationResult } from "./validation-result.ts";

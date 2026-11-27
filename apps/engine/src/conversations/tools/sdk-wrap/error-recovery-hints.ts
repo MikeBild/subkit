@@ -9,6 +9,12 @@ import {
 } from "../error-codes.ts";
 
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  invalid_local_command:
+    "the local command could not be read. Ask the user for the exact command and its arguments, then retry start_connector_from_description with that command. Never guess a command.",
+  local_command_confirmation_not_writable:
+    "the confirmation of a local command is recorded only by the engine after a person allows it. Remove confirmed_* and command_set_by from the update and ask the person to allow the command instead.",
+  mcp_local_command_missing:
+    "this MCP draft has no local command yet. Ask the user which command starts the server, set it with update_connector_draft, then probe again.",
   recipe_inputs_missing:
     "the recipe needs installation values before it can be prepared. Read data.missing_inputs and ask the user for each listed value, then retry start_workflow_from_recipe with those values in inputs. Never invent values.",
   recipe_input_invalid:

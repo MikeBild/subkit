@@ -6,14 +6,22 @@ import {
   resolveEgressGuardMode,
   resolveTenantEgressContext,
 } from "./egress-guard.ts";
+import { localTlsOptions } from "./local-egress.ts";
 import { fetchPinnedOrigin } from "./pinned-fetch.ts";
+
+function withLocalTls(target: URL, init: RequestInit, context: EgressGuardContext): RequestInit {
+  if (context.local_mcp_granted !== true) return init;
+  const tls = localTlsOptions(target, context.local_mcp);
+  return tls ? ({ ...init, tls } as RequestInit) : init;
+}
 
 export function guardedFetch(context: EgressGuardContext, fetchImpl: typeof fetch): typeof fetch {
   return Object.assign(
     async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       if (input instanceof Request) {
-        if (resolveEgressGuardMode(await resolveTenantEgressContext(context)) === "permissive") {
-          return fetchImpl(input, init);
+        const resolved = await resolveTenantEgressContext(context);
+        if (resolveEgressGuardMode(resolved) === "permissive") {
+          return fetchImpl(input, withLocalTls(new URL(input.url), init ?? {}, resolved));
         }
         throw new EgressBlockedError("unsupported_request_input", new URL(input.url).hostname);
       }
@@ -31,7 +39,7 @@ export async function fetchWithEgressGuard(
 ): Promise<Response> {
   context = await resolveTenantEgressContext(context);
   if (resolveEgressGuardMode(context) === "permissive") {
-    return dependencies.fetchImpl(url, init);
+    return dependencies.fetchImpl(url, withLocalTls(new URL(url), init, context));
   }
   let target = new URL(url);
   const request = { ...init };
@@ -46,7 +54,13 @@ export async function fetchWithEgressGuard(
     const address = addresses.find((candidate) => candidate.family === 4) ?? addresses[0];
     if (!address) throw new EgressBlockedError("dns_resolution_failed", target.hostname);
     request.signal?.throwIfAborted();
-    const response = await fetchPinnedOrigin(target, address, request, dependencies.fetchImpl);
+    const response = await fetchPinnedOrigin(
+      target,
+      address,
+      request,
+      dependencies.fetchImpl,
+      context.local_mcp_granted === true ? localTlsOptions(target, context.local_mcp) : null,
+    );
     if (![301, 302, 303, 307, 308].includes(response.status) || init.redirect === "manual") {
       return response;
     }

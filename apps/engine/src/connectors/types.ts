@@ -104,8 +104,20 @@ const OAuthEnrichmentSchema = z
   })
   .strict();
 
+export const LocalTlsConfigSchema = z
+  .object({
+    ca_pem: z
+      .string()
+      .max(65_536)
+      .regex(/-----BEGIN CERTIFICATE-----/, "ca_pem must be a PEM certificate")
+      .optional(),
+    skip_verify: z.boolean().optional(),
+  })
+  .strict();
+
 export const HttpConnectorConfig = z
   .object({
+    tls: LocalTlsConfigSchema.optional(),
     static_headers: z.record(z.string(), z.string()).optional(),
     static_query: z.record(z.string(), z.string()).optional(),
     timeout_ms: z.number().positive().max(300_000).optional(),
@@ -123,6 +135,13 @@ export const HttpConnectorConfig = z
     signed_jwt: SignedJwtConfigSchema.optional(),
   })
   .strict();
+
+function mcpTransportOf(config: Record<string, unknown> | undefined): unknown {
+  const block = config?.mcp;
+  return block && typeof block === "object" && !Array.isArray(block)
+    ? (block as Record<string, unknown>).transport
+    : undefined;
+}
 
 export const CreateConnectorSchema = z
   .object({
@@ -142,11 +161,21 @@ export const CreateConnectorSchema = z
     category: CategorySchema.nullable().optional(),
   })
   .superRefine((v, ctx) => {
-    if (v.driver === "mcp" && !v.base_url) {
+    const stdio = v.driver === "mcp" && mcpTransportOf(v.config) === "stdio";
+    if (stdio && v.base_url) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["base_url"],
-        message: "mcp connectors require base_url — the remote server's streamable-HTTP endpoint",
+        message:
+          "a stdio MCP server has no address — leave base_url empty and set config.mcp.command",
+      });
+    }
+    if (v.driver === "mcp" && !stdio && !v.base_url) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["base_url"],
+        message:
+          'mcp connectors require base_url — the server\'s streamable-HTTP or SSE endpoint; for a local command set config.mcp.transport to "stdio"',
       });
     }
     if (v.auth_type === "signed_jwt") {

@@ -7,6 +7,7 @@ import { log } from "../../logging/index.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import { confirmationFieldIn, isStdioConfig } from "../local-command.ts";
 import { clearDraftCredential, getDraftCredential } from "../persistence/draft-credential-cache.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
@@ -24,6 +25,7 @@ const NON_SECRET_KEYS = new Set<string>([
   "issuer_url",
   "token_auth_method",
   "token_content_type",
+  "env_secret_names",
 ]);
 
 function containsCredentialShape(value: unknown, path: string, depth: number): string | null {
@@ -89,8 +91,83 @@ const inputSchema = z
         "Public signed_jwt settings belong in config.signed_jwt (algorithm, audience, issuer, subject, key_id, claims, ttl_seconds); never put private_key there. Driver options only (pagination, base_url overrides, static_headers, query_defaults, etc.). The template-derived `config.oauth` block is IMMUTABLE here EXCEPT for the public `client_id` field — write `{ config: { oauth: { client_id } } }` when a template (e.g. cognito_user_password, GitHub App) doesn't seed a default and the operator must supply one. Every other oauth key (token_endpoint, scopes, grant_type, client_secret, ...) is rejected — those are template-owned. For aws_sigv4 connectors, `config.aws_region` and `config.aws_service` are top-level config keys (template-seeded; writeable by the operator only when the template doesn't ship a default). To change auth shape, call `start_connector_from_description` with a different `auth_type`. To run an authorization-code flow on an already-saved oauth2 connector, call `authenticate_oauth`. Never put credentials in `config` (token, password, api_key, client_secret, ...) — collect them via `ask_user_form(sensitive: true)` and pass them through `save_connector_draft({credential})`.",
       ),
     docs: z.array(z.string()).optional(),
+    transport: z
+      .enum(["http", "sse", "stdio"])
+      .optional()
+      .describe(
+        "MCP only. http or sse need base_url; stdio starts a local command (command, args, env, env_secret_names, cwd) and has no base_url. A person must allow the command before the first probe and again after every change.",
+      ),
+    command: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "MCP stdio only: the program to start, absolute or found on PATH, e.g. docker or npx. Never a shell line.",
+      ),
+    args: z.array(z.string()).optional().describe("MCP stdio only: the program arguments."),
+    env: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        "MCP stdio only: non-secret environment variables. Secret values never go here: list their names in env_secret_names.",
+      ),
+    env_secret_names: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        "MCP stdio only: names of secret environment variables; the values are collected through the credential form.",
+      ),
+    cwd: z.string().min(1).optional().describe("MCP stdio only: the working folder."),
+    tls: z
+      .object({ ca_pem: z.string().optional(), skip_verify: z.boolean().optional() })
+      .optional()
+      .describe(
+        "Local https targets only (localhost, 127.0.0.1, [::1], host.docker.internal): a PEM CA certificate, or skip_verify to accept any certificate. Ignored for remote hosts.",
+      ),
   })
   .openapi("UpdateConnectorDraftToolInput");
+
+const LOCAL_FIELD_KEYS = [
+  "transport",
+  "command",
+  "args",
+  "env",
+  "env_secret_names",
+  "cwd",
+  "tls",
+] as const;
+
+type LocalFieldArgs = Pick<z.infer<typeof inputSchema>, (typeof LOCAL_FIELD_KEYS)[number]>;
+
+function hasLocalFields(args: LocalFieldArgs): boolean {
+  return LOCAL_FIELD_KEYS.some((key) => args[key] !== undefined);
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+export function mergeLocalFields(
+  driver: string | undefined,
+  config: Record<string, unknown>,
+  args: LocalFieldArgs,
+): Record<string, unknown> {
+  if (driver !== "mcp") {
+    return args.tls === undefined ? config : { ...config, tls: args.tls };
+  }
+  const mcp = { ...asObject(config.mcp) };
+  if (args.transport !== undefined) mcp.transport = args.transport;
+  if (args.command !== undefined) mcp.command = args.command;
+  if (args.args !== undefined) mcp.args = args.args;
+  if (args.env !== undefined) mcp.env = args.env;
+  if (args.env_secret_names !== undefined) mcp.env_secret_names = args.env_secret_names;
+  if (args.cwd !== undefined) mcp.cwd = args.cwd;
+  if (args.tls !== undefined) mcp.tls = args.tls;
+  if (mcp.transport === "stdio") delete mcp.tls;
+  return { ...config, mcp };
+}
 
 export const updateConnectorDraftTool: ConversationTool = {
   name: "update_connector_draft",
@@ -138,6 +215,16 @@ export const updateConnectorDraftTool: ConversationTool = {
       (args.config as Record<string, unknown>).oauth = {
         ...existingOauth,
         client_id: (oauthPatch as { client_id: string }).client_id,
+      };
+    }
+
+    const confirmationKey = confirmationFieldIn(args.config);
+    if (confirmationKey !== null) {
+      return {
+        ok: false,
+        error_code: "local_command_confirmation_not_writable",
+        message: `\`config.${confirmationKey}\` is set by the engine when a person allows the local command. It cannot be written here. Probe the draft: SubKit then asks the person to allow the command.`,
+        next_best_actions: ["probe_connector_draft"],
       };
     }
 
@@ -197,6 +284,18 @@ export const updateConnectorDraftTool: ConversationTool = {
       }
     }
 
+    if (args.env !== undefined) {
+      const envHit = containsCredentialShape({ env: args.env }, "mcp", 0);
+      if (envHit !== null) {
+        return {
+          ok: false,
+          error_code: "credential_must_use_form",
+          message: `\`${envHit}\` looks like a secret. Secret environment variables never go into env: list the variable name in env_secret_names, collect the value with ask_user_form(type: password, sensitive: true), then save_connector_draft({credential}).`,
+          next_best_actions: ["update_connector_draft", "ask_user_form"],
+        };
+      }
+    }
+
     const current = ctx.getDraft().connector ?? {};
 
     if (
@@ -206,12 +305,15 @@ export const updateConnectorDraftTool: ConversationTool = {
       current.auth_type !== "none"
     ) {
       const cached = getDraftCredential(ctx.conversation_id);
-      if (cached || current.saved_connector_id) {
+      const probeWasGreen = current.latest_probe?.ok === true;
+      const persistedWithUnknownProbe =
+        Boolean(current.saved_connector_id) && current.latest_probe == null;
+      if ((cached || current.saved_connector_id) && (probeWasGreen || persistedWithUnknownProbe)) {
         return {
           ok: false,
           error_code: "auth_type_downgrade_blocked",
           message:
-            `Cannot downgrade auth_type from "${current.auth_type}" to "none" — the draft already has a ${cached ? "cached" : "persisted"} credential. ` +
+            `Cannot downgrade auth_type from "${current.auth_type}" to "none" — the draft already has a ${cached ? "cached" : "persisted"} credential that ${probeWasGreen ? "passed a probe" : "belongs to the saved connector"}. ` +
             `Start a new draft via start_connector_from_description if you need a different auth model, or rotate the credential via ask_user_form + save_connector_draft.`,
           next_best_actions: [
             "start_connector_from_description",
@@ -223,23 +325,47 @@ export const updateConnectorDraftTool: ConversationTool = {
     }
 
     const patch = Object.fromEntries(
-      Object.entries(args).filter(([, value]) => value !== undefined),
+      Object.entries(args).filter(
+        ([key, value]) =>
+          value !== undefined && !(LOCAL_FIELD_KEYS as readonly string[]).includes(key),
+      ),
     ) as Partial<ConnectorDraftDocument>;
+    const nextDriver = args.driver ?? current.driver;
+    const baseConfig =
+      args.config ??
+      withMcpAuthKindFollowing(args.auth_type, {
+        driver: nextDriver,
+        config: current.config,
+      }) ??
+      current.config ??
+      {};
+    const nextConfig = hasLocalFields(args)
+      ? mergeLocalFields(nextDriver, baseConfig, args)
+      : baseConfig;
+    const becomesStdio = isStdioConfig(nextConfig);
     const next: ConnectorDraftDocument = {
       ...current,
       ...patch,
-      config:
-        args.config ??
-        withMcpAuthKindFollowing(args.auth_type, {
-          driver: args.driver ?? current.driver,
-          config: current.config,
-        }) ??
-        current.config ??
-        {},
+      config: nextConfig,
       docs: args.docs ?? current.docs ?? [],
       latest_probe: current.latest_probe ?? null,
       saved_connector_id: current.saved_connector_id ?? null,
     };
+    if (becomesStdio && args.base_url === undefined) delete next.base_url;
+    const secretEnvNames = (nextConfig.mcp as { env_secret_names?: unknown } | undefined)
+      ?.env_secret_names;
+    if (
+      becomesStdio &&
+      Array.isArray(secretEnvNames) &&
+      secretEnvNames.length > 0 &&
+      (next.auth_type ?? "none") === "none"
+    ) {
+      next.auth_type = "header";
+      next.config = {
+        ...nextConfig,
+        mcp: { ...(nextConfig.mcp as Record<string, unknown>), auth: { kind: "header" } },
+      };
+    }
     const templates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
     const validation = validateConnectorDraft(
       next,

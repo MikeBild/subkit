@@ -47,6 +47,10 @@ export const settingsHelpEn = {
     "The folder for files when the backend is filesystem. Set only through OBJECT_STORAGE_ROOT at startup; its parent folder must exist.",
   "settings.help.egress.mode":
     "Whether workflows may reach addresses inside your network: strict blocks private and local hosts, permissive allows them. Not set follows the environment.",
+  "settings.help.connectors.local_servers":
+    "Whether a connector may reach its own local address, such as localhost, 127.0.0.1, ::1 or host.docker.internal: allow lets it on self-hosted workspaces, deny blocks it. Hosted workspaces are always blocked.",
+  "settings.help.connectors.mcp.stdio":
+    "Whether the engine may start MCP servers as local commands: auto allows it only in the local workspace of SubKit Desktop, on allows it on this host, off blocks it. An engine in a container refuses on. Each command starts only after a person allows it.",
   "settings.help.llm.api_key":
     "Key for the primary provider. A key stored under the provider below takes the same role; one of the two is enough.",
   "settings.help.llm.context_1m":
@@ -218,6 +222,10 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Der Ordner für Dateien, wenn das Backend „filesystem“ ist. Wird nur beim Start über OBJECT_STORAGE_ROOT gesetzt; der übergeordnete Ordner muss existieren.",
   "settings.help.egress.mode":
     "Ob Workflows Adressen im eigenen Netz erreichen dürfen: „strict“ sperrt private und lokale Hosts, „permissive“ erlaubt sie. Nicht gesetzt: je nach Umgebung.",
+  "settings.help.connectors.local_servers":
+    "Ob ein Connector seine eigene lokale Adresse erreichen darf, etwa localhost, 127.0.0.1, ::1 oder host.docker.internal: „allow“ erlaubt das in selbst betriebenen Workspaces, „deny“ sperrt es. Gehostete Workspaces bleiben immer gesperrt.",
+  "settings.help.connectors.mcp.stdio":
+    "Ob die Engine MCP-Server als lokale Befehle starten darf: „auto“ erlaubt das nur im lokalen Arbeitsbereich von SubKit Desktop, „on“ auf diesem Host, „off“ sperrt es. Eine Engine im Container lehnt „on“ ab. Jeder Befehl startet erst, wenn eine Person ihn erlaubt.",
   "settings.help.llm.api_key":
     "Schlüssel für den Hauptanbieter. Ein weiter unten beim Anbieter hinterlegter Schlüssel erfüllt denselben Zweck; einer von beiden genügt.",
   "settings.help.llm.context_1m":

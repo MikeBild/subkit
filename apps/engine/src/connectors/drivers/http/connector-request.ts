@@ -1,6 +1,7 @@
 import type { DecryptedCredential } from "../../../credentials/types.ts";
 import type { Db } from "../../../db/client.ts";
 import { resolveSigV4Target } from "../../core/http-request.ts";
+import { connectorLocalScope } from "../../local-egress.ts";
 import type { ConnectorView } from "../../types.ts";
 import { executePlannedHttpRequest, FETCH_DEADLINE_MS } from "./dispatch.ts";
 import { buildRequestPlan, type ResolveConnectorRequestParams } from "./plan.ts";
@@ -69,9 +70,11 @@ export async function executeConnectorHttpRequest(params: {
 
   const beforeDispatch = params.before_dispatch;
   const signedJwt = plan.credential?.mode === "signed_jwt";
+  const localScope = connectorLocalScope(params.connector);
   const result = await executePlannedHttpRequest({
     exec: params.db,
     tenant_id: params.tenant_id,
+    ...(localScope ? { local_scope: localScope } : {}),
     method: params.method,
     url: plan.url,
     headers: plan.headers,

@@ -279,6 +279,59 @@ export const connectorEn = {
   "connectorDetail.tools.claimsHelp":
     "What the server claims about a tool decides nothing; the gate asks by what the call does.",
   "connectorDetail.tools.reload": "Read again",
+  "connectorLocal.command": "Command",
+  "connectorLocal.commandHelp": "A program name from PATH or an absolute path, such as docker.",
+  "connectorLocal.args": "Arguments",
+  "connectorLocal.argsHelp": "One argument per line, such as mcp, gateway and run.",
+  "connectorLocal.env": "Environment variables",
+  "connectorLocal.envHelp":
+    "Mark a value as secret and SubKit stores it encrypted; it never appears again.",
+  "connectorLocal.envName": "Name",
+  "connectorLocal.envValue": "Value",
+  "connectorLocal.envSecret": "Secret",
+  "connectorLocal.envAdd": "Add variable",
+  "connectorLocal.envRemove": "Remove variable {name}",
+  "connectorLocal.envUnnamed": "without name",
+  "connectorLocal.cwd": "Working folder (optional)",
+  "connectorLocal.cwdHelp": "An absolute path, such as /Users/me/project.",
+  "connectorLocal.commandMissing": "The command is missing.",
+  "connectorLocal.envNameInvalid":
+    "Start each variable name with a letter or _ and use only letters, digits and _.",
+  "connectorLocal.envNameTwice": "Each variable name can appear only once. Remove the duplicate.",
+  "connectorLocal.cwdInvalid":
+    "Enter the working folder as an absolute path, such as /Users/me/project.",
+  "connectorLocal.confirm.title": "Allow this command?",
+  "connectorLocal.confirm.body":
+    "SubKit starts this command on the computer the engine runs on, with the engine’s rights. Allow it only if you know and trust it.",
+  "connectorLocal.confirm.commandLabel": "Command line",
+  "connectorLocal.confirm.envNote": "Environment variables appear by name only.",
+  "connectorLocal.confirm.allow": "Allow and start command",
+  "connectorLocal.confirm.cancel": "Cancel",
+  "connectorLocal.confirm.done": "Command allowed. SubKit is reading its tools.",
+  "connectorLocal.banner.title": "Command not allowed yet",
+  "connectorLocal.banner.body":
+    "SubKit starts this local command only after a person allows it, and again after every change.",
+  "connectorLocal.banner.action": "Check and allow command",
+  "connectorLocal.error.unconfirmed":
+    "This local command is not allowed yet. Check it and choose “Allow and start command”.",
+  "connectorLocal.error.stdioDisabled":
+    "Local commands are switched off on this engine. An administrator can turn them on with the setting connectors.mcp.stdio.",
+  "connectorLocal.error.container":
+    "This engine runs in a container and cannot start local commands. Use SubKit Desktop or an engine on the host, or reach the server over http://host.docker.internal.",
+  "connectorLocal.error.selfConfirm":
+    "You added or changed this command, so another administrator needs to allow it. Ask them to open this connector and allow the command.",
+  "connectorLocal.error.permission":
+    "Allowing local commands needs its own permission. Ask an administrator to allow this command.",
+  "connectorLocal.error.failed": "The command could not be allowed. Try again in a moment.",
+  "connectorLocal.error.changed":
+    "The command changed after it was shown. Reload the page and check it again.",
+  "connectorLocal.error.capacity":
+    "Too many local commands are running on this engine. Try again in a moment, or ask an administrator to raise connectors.mcp.stdio_limits.max_processes.",
+  "connectorLocal.error.startFailed":
+    "The local command could not start. Check the command, its arguments and the working folder, then test again.",
+  "connectorLocal.error.notStdio": "This connector starts no local command. Reload the page.",
+  "connectorLocal.banner.askAdmin": "Ask an administrator to check and allow this command.",
+  "connectorLocal.approval.command": "Local command: {command}",
 } as const;
 
 export const connectorDe: Record<keyof typeof connectorEn, string> = {
@@ -568,4 +621,62 @@ export const connectorDe: Record<keyof typeof connectorEn, string> = {
   "connectorDetail.tools.claimsHelp":
     "Was der Server über ein Werkzeug sagt, entscheidet nichts; die Sperre fragt nach dem, was der Aufruf tut.",
   "connectorDetail.tools.reload": "Neu einlesen",
+  "connectorLocal.command": "Befehl",
+  "connectorLocal.commandHelp":
+    "Ein Programmname aus dem PATH oder ein absoluter Pfad, etwa docker.",
+  "connectorLocal.args": "Argumente",
+  "connectorLocal.argsHelp": "Ein Argument pro Zeile, etwa mcp, gateway und run.",
+  "connectorLocal.env": "Umgebungsvariablen",
+  "connectorLocal.envHelp":
+    "Markierst du einen Wert als geheim, speichert SubKit ihn verschlüsselt; er wird nie wieder angezeigt.",
+  "connectorLocal.envName": "Name",
+  "connectorLocal.envValue": "Wert",
+  "connectorLocal.envSecret": "Geheim",
+  "connectorLocal.envAdd": "Variable hinzufügen",
+  "connectorLocal.envRemove": "Variable {name} entfernen",
+  "connectorLocal.envUnnamed": "ohne Namen",
+  "connectorLocal.cwd": "Arbeitsordner (optional)",
+  "connectorLocal.cwdHelp": "Ein absoluter Pfad, etwa /Users/ich/projekt.",
+  "connectorLocal.commandMissing": "Der Befehl fehlt.",
+  "connectorLocal.envNameInvalid":
+    "Beginne jeden Variablennamen mit einem Buchstaben oder _ und nutze nur Buchstaben, Ziffern und _.",
+  "connectorLocal.envNameTwice":
+    "Jeder Variablenname darf nur einmal vorkommen. Entferne den doppelten.",
+  "connectorLocal.cwdInvalid":
+    "Gib den Arbeitsordner als absoluten Pfad ein, etwa /Users/ich/projekt.",
+  "connectorLocal.confirm.title": "Diesen Befehl erlauben?",
+  "connectorLocal.confirm.body":
+    "SubKit startet diesen Befehl auf dem Rechner, auf dem die Engine läuft, mit den Rechten der Engine. Erlaube ihn nur, wenn du ihn kennst und ihm vertraust.",
+  "connectorLocal.confirm.commandLabel": "Befehlszeile",
+  "connectorLocal.confirm.envNote": "Umgebungsvariablen stehen hier nur mit ihrem Namen.",
+  "connectorLocal.confirm.allow": "Befehl erlauben und starten",
+  "connectorLocal.confirm.cancel": "Abbrechen",
+  "connectorLocal.confirm.done": "Befehl erlaubt. SubKit liest jetzt seine Tools ein.",
+  "connectorLocal.banner.title": "Befehl noch nicht erlaubt",
+  "connectorLocal.banner.body":
+    "SubKit startet diesen lokalen Befehl erst, wenn eine Person ihn erlaubt, und nach jeder Änderung erneut.",
+  "connectorLocal.banner.action": "Befehl prüfen und erlauben",
+  "connectorLocal.error.unconfirmed":
+    "Dieser lokale Befehl ist noch nicht erlaubt. Prüfe ihn und wähle „Befehl erlauben und starten“.",
+  "connectorLocal.error.stdioDisabled":
+    "Lokale Befehle sind auf dieser Engine ausgeschaltet. Ein Administrator kann sie mit der Einstellung connectors.mcp.stdio einschalten.",
+  "connectorLocal.error.container":
+    "Diese Engine läuft in einem Container und kann keine lokalen Befehle starten. Nutze SubKit Desktop oder eine Engine auf dem Host, oder erreiche den Server über http://host.docker.internal.",
+  "connectorLocal.error.selfConfirm":
+    "Du hast diesen Befehl eingetragen oder geändert, deshalb muss ein anderer Administrator ihn erlauben. Bitte ihn, diesen Connector zu öffnen und den Befehl zu erlauben.",
+  "connectorLocal.error.permission":
+    "Lokale Befehle zu erlauben braucht ein eigenes Recht. Bitte einen Administrator, diesen Befehl zu erlauben.",
+  "connectorLocal.error.failed":
+    "Der Befehl ließ sich nicht erlauben. Versuche es gleich noch einmal.",
+  "connectorLocal.error.changed":
+    "Der Befehl hat sich geändert, seit er angezeigt wurde. Lade die Seite neu und prüfe ihn noch einmal.",
+  "connectorLocal.error.capacity":
+    "Auf dieser Engine laufen gerade zu viele lokale Befehle. Versuche es gleich noch einmal, oder bitte einen Administrator, connectors.mcp.stdio_limits.max_processes zu erhöhen.",
+  "connectorLocal.error.startFailed":
+    "Der lokale Befehl ließ sich nicht starten. Prüfe Befehl, Argumente und Arbeitsordner und teste dann erneut.",
+  "connectorLocal.error.notStdio":
+    "Dieser Connector startet keinen lokalen Befehl. Lade die Seite neu.",
+  "connectorLocal.banner.askAdmin":
+    "Bitte einen Administrator, diesen Befehl zu prüfen und zu erlauben.",
+  "connectorLocal.approval.command": "Lokaler Befehl: {command}",
 };

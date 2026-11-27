@@ -120,6 +120,8 @@ export function intentToolName(intent: CommitIntent): string {
       const tool = intent.payload.tool;
       return typeof tool === "string" && tool.length > 0 ? tool : "unknown_tool";
     }
+    case "confirm_local_command":
+      return "probe_connector_draft";
   }
 }
 

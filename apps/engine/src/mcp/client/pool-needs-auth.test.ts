@@ -187,7 +187,7 @@ describe("pool: oauth2 server with no public_base_url parks with a redirect-URI 
       .limit(1);
     expect(rows[0]!.health_state).toBe("degraded");
     const lastError = rows[0]!.last_error ?? "";
-    expect(lastError).toContain("no canonical OAuth redirect URI");
+    expect(lastError).toContain("no OAuth redirect URI yet");
     expect(lastError).toContain("server.public_base_url");
     expect(lastError).not.toContain("?");
   });

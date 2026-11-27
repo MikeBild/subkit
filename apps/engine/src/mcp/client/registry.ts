@@ -5,9 +5,19 @@ import { z } from "zod";
 import { recordConnectorMcpClientRegistered } from "../../audit/recorders/index.ts";
 import { EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { setConnectorHealth } from "../../connectors/health-state.ts";
-import type { Db, Executor } from "../../db/client.ts";
+import type { LocalTls } from "../../connectors/index.ts";
+import { classifyLocalTarget } from "../../connectors/local-egress.ts";
+import type { Db, Executor } from "../../db/index.ts";
 import { connectorMcpSessions, connectors } from "../../db/schema/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
+import { containerLoopbackHint } from "./container-hint.ts";
+import {
+  STDIO_IDENTITY_PREFIX,
+  type StdioCommandSpec,
+  stdioCommandHash,
+  stdioConfirmationFromConfig,
+  stdioSpecFromConfig,
+} from "./stdio-identity.ts";
 
 export const MCP_CREDENTIAL_ENVIRONMENT = "prod" as const;
 
@@ -24,6 +34,7 @@ export interface McpAuthConfig {
   client_id?: string;
   scope?: string;
   algorithm?: string;
+  redirect_uri?: string;
 }
 
 export const McpAuthConfigSchema = z
@@ -41,6 +52,7 @@ export const McpAuthConfigSchema = z
     client_id: z.string().optional(),
     scope: z.string().optional(),
     algorithm: z.string().optional(),
+    redirect_uri: z.string().url().optional(),
   })
   .strict();
 
@@ -54,6 +66,22 @@ export interface McpConnectorRow {
   auth: McpAuthConfig;
   environment: "dev" | "prod";
   enabled: boolean;
+  tls?: LocalTls;
+  stdio?: McpStdioRow;
+}
+
+export interface McpStdioRow extends StdioCommandSpec {
+  command_hash: string;
+  confirmed_command_hash?: string;
+}
+
+function parseLocalTls(raw: unknown): LocalTls | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const value = raw as { ca_pem?: unknown; skip_verify?: unknown };
+  const tls: LocalTls = {};
+  if (typeof value.ca_pem === "string" && value.ca_pem.length > 0) tls.ca_pem = value.ca_pem;
+  if (value.skip_verify === true) tls.skip_verify = true;
+  return Object.keys(tls).length > 0 ? tls : undefined;
 }
 
 const MCP_CONNECTOR_COLUMNS = {
@@ -68,7 +96,7 @@ const MCP_CONNECTOR_COLUMNS = {
   enabled: connectors.enabled,
 } as const;
 
-type McpConnectorColumns = {
+export type McpConnectorColumns = {
   [K in keyof typeof MCP_CONNECTOR_COLUMNS]: K extends "config"
     ? Record<string, unknown>
     : K extends "enabled"
@@ -78,23 +106,35 @@ type McpConnectorColumns = {
         : string;
 };
 
-function projectMcpConnector(row: McpConnectorColumns): McpConnectorRow | null {
-  if (row.driver !== "mcp" || !row.base_url) return null;
-  const block = (row.config as { mcp?: { transport?: unknown; auth?: unknown } }).mcp ?? {};
-  const transport =
-    block.transport === "sse" || block.transport === "stdio" || block.transport === "http"
-      ? block.transport
-      : "http";
+export function projectMcpConnector(row: McpConnectorColumns): McpConnectorRow | null {
+  if (row.driver !== "mcp") return null;
+  const block =
+    (row.config as { mcp?: { transport?: unknown; auth?: unknown; tls?: unknown } } | null)?.mcp ??
+    {};
+  const spec = block.transport === "stdio" ? stdioSpecFromConfig(row.config) : null;
+  if (!spec && !row.base_url) return null;
+  const tls = spec ? undefined : parseLocalTls(block.tls);
+  const transport = spec ? "stdio" : block.transport === "sse" ? "sse" : "http";
+  const confirmed = spec ? stdioConfirmationFromConfig(row.config).confirmed_command_hash : null;
+  const stdio: McpStdioRow | undefined = spec
+    ? {
+        ...spec,
+        command_hash: stdioCommandHash(spec),
+        ...(confirmed ? { confirmed_command_hash: confirmed } : {}),
+      }
+    : undefined;
   return {
     id: row.id,
     tenant_id: row.tenant_id,
     slug: row.slug,
     display_name: row.display_name,
     transport,
-    url: row.base_url,
+    url: stdio ? `${STDIO_IDENTITY_PREFIX}${stdio.command_hash}` : (row.base_url as string),
     auth: parseAuthConfig((block.auth as Record<string, unknown> | undefined) ?? null),
     environment: row.environment as "dev" | "prod",
     enabled: row.enabled,
+    ...(tls ? { tls } : {}),
+    ...(stdio ? { stdio } : {}),
   };
 }
 
@@ -169,7 +209,12 @@ export type McpPreflightErrorCode =
   | "credential_missing"
   | "credential_invalid"
   | "config_incomplete"
-  | "mcp_transport_unsupported";
+  | "mcp_transport_unsupported"
+  | "mcp_stdio_disabled"
+  | "mcp_stdio_unavailable_in_container"
+  | "mcp_stdio_capacity"
+  | "mcp_stdio_start_failed"
+  | "mcp_local_command_unconfirmed";
 
 type McpHandshakeErrorCode =
   | McpPreflightErrorCode
@@ -237,9 +282,10 @@ export function classifyMcpHandshakeFailure(err: unknown, endpoint_url: string):
       `The external MCP server at ${host} failed the handshake with a server error ${at}.`,
     );
   }
+  const hint = containerLoopbackHint(classifyLocalTarget(endpoint_url), endpoint_url, raw_error);
   return fault(
     "mcp_handshake_failed",
-    `The MCP handshake with ${host} did not complete. The upstream response is in the engine log for this connector.`,
+    `The MCP handshake with ${host} did not complete.${hint ? ` ${hint}.` : " The upstream response is in the engine log for this connector."}`,
   );
 }
 
@@ -250,6 +296,7 @@ function capped(sentence: string): string {
 }
 
 function endpointHostOf(url: string): string {
+  if (url.startsWith(STDIO_IDENTITY_PREFIX)) return "the local stdio command";
   try {
     return new URL(url).host;
   } catch {
@@ -405,6 +452,7 @@ export function parseAuthConfig(raw: Record<string, unknown> | null): McpAuthCon
   if (parsed.client_id !== undefined) out.client_id = parsed.client_id;
   if (parsed.scope !== undefined) out.scope = parsed.scope;
   if (parsed.algorithm !== undefined) out.algorithm = parsed.algorithm;
+  if (parsed.redirect_uri !== undefined) out.redirect_uri = parsed.redirect_uri;
   return out;
 }
 

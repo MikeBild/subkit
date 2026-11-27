@@ -3,7 +3,7 @@ import { Activity } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
-import { apiRequest } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
@@ -45,6 +45,11 @@ import {
 } from "../model/connector-strip";
 import { serviceHost, signInChipKey, templateFor } from "../model/connector-view-model";
 import {
+  commandLineOf,
+  localCommandUnconfirmed,
+  localConnectorErrorKey,
+} from "../model/create-connector-model";
+import {
   ConnectorAccounts,
   ConnectorCredentials,
   useConnectorCredential,
@@ -59,6 +64,7 @@ import {
 } from "./connector-detail";
 import { ConnectorDeleteDialog, ConnectorEditDialog } from "./connector-edit";
 import { ConnectionGraphic } from "./connector-graphic";
+import { CommandConfirmDialog, CommandUnconfirmedBanner } from "./local-command";
 
 type RecordValue = Record<string, unknown>;
 
@@ -143,6 +149,30 @@ export function ConnectorPage({
     probe.mutate();
     if (isMcp) inspect.mutate();
   };
+  const [confirmingCommand, setConfirmingCommand] = useState(false);
+  const canConfirmCommand = permissions.includes("connector:confirm_local_command");
+  const commandLine = isMcp ? commandLineOf(record.config) : null;
+  const inspectCode = inspect.error instanceof ApiError ? inspect.error.code : null;
+  const probeCode: string | null =
+    probe.error instanceof ApiError
+      ? probe.error.code
+      : probe.data && !probe.data.ok
+        ? (probe.data.error_code ?? null)
+        : null;
+  const commandUnconfirmed =
+    commandLine !== null &&
+    (localCommandUnconfirmed(record.config) ||
+      inspectCode === "mcp_local_command_unconfirmed" ||
+      probeCode === "mcp_local_command_unconfirmed");
+  const localProblemKey = localConnectorErrorKey(probeCode) ?? localConnectorErrorKey(inspectCode);
+  const commandNotice =
+    commandLine !== null && commandUnconfirmed ? (
+      <CommandUnconfirmedBanner
+        commandLine={commandLine}
+        canConfirm={canConfirmCommand}
+        onAllow={() => setConfirmingCommand(true)}
+      />
+    ) : null;
   const enable = useOptimisticAction({
     queryKey: ["catalog-detail", "connectors", id],
     mutationFn: () => apiCall("post", "/v1/connectors/{id}/enable", { path: { id } }),
@@ -249,7 +279,9 @@ export function ConnectorPage({
     if (strip.kind === "signInFailed" && failedSignIn !== null)
       return signInFailureLine(failedSignIn, t);
     if (strip.kind === "unreachable" && probe.data && !probe.data.ok)
-      return probe.data.detail ?? t("connectors.probeFailed");
+      return localProblemKey
+        ? t(localProblemKey)
+        : (probe.data.detail ?? t("connectors.probeFailed"));
     if (strip.kind === "limited") return text(record, "health_reason");
     if (strip.kind === "expired")
       return (
@@ -382,6 +414,7 @@ export function ConnectorPage({
             </CollapsibleSection>
           }
         >
+          {commandNotice}
           <ConnectionGraphic
             workspace={[session.tenant.display_name, environment].filter(Boolean).join(" · ")}
             service={service}
@@ -466,7 +499,9 @@ export function ConnectorPage({
                 connectorId={id}
                 record={record}
                 canWrite={canWrite}
-                canTest={canTest}
+                canTest={canTest && !commandUnconfirmed}
+                notice={commandNotice}
+                failedLine={localProblemKey ? t(localProblemKey) : null}
                 inspect={{
                   data: inspect.data ?? null,
                   readAt: toolsReadAt,
@@ -607,6 +642,20 @@ export function ConnectorPage({
             users={userNames}
           />
         </>
+      ) : null}
+      {commandLine !== null ? (
+        <CommandConfirmDialog
+          open={confirmingCommand}
+          onOpenChange={setConfirmingCommand}
+          connectorId={id}
+          config={record.config}
+          commandLine={commandLine}
+          onConfirmed={async () => {
+            toast.success(t("connectorLocal.confirm.done"));
+            await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
+            runTest();
+          }}
+        />
       ) : null}
     </div>
   );

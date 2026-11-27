@@ -52,7 +52,28 @@ function buildOAuthBlock(
   };
 }
 
-export function recognizeAuthFromSchemes(schemes: DiscoveredAuthScheme[]): RecognizedAuth | null {
+export interface OptionalAuthScheme {
+  name: string;
+  type: DiscoveredAuthScheme["type"];
+  location?: DiscoveredAuthScheme["location"];
+  scheme?: string;
+}
+
+export function optionalAuthSchemes(allSchemes: DiscoveredAuthScheme[]): OptionalAuthScheme[] {
+  return allSchemes
+    .filter((scheme) => scheme.required === false)
+    .map((scheme) => ({
+      name: scheme.name,
+      type: scheme.type,
+      ...(scheme.location ? { location: scheme.location } : {}),
+      ...(scheme.scheme ? { scheme: scheme.scheme } : {}),
+    }));
+}
+
+export function recognizeAuthFromSchemes(
+  allSchemes: DiscoveredAuthScheme[],
+): RecognizedAuth | null {
+  const schemes = allSchemes.filter((scheme) => scheme.required !== false);
   if (schemes.length === 0) return null;
 
   for (const scheme of schemes) {

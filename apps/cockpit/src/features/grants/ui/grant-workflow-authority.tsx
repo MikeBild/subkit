@@ -25,7 +25,11 @@ import {
   Section,
   Textarea,
 } from "@/components/cockpit/patterns";
-import { useConnectorNames, useConnectorServices } from "@/features/connectors";
+import {
+  useConnectorCommands,
+  useConnectorNames,
+  useConnectorServices,
+} from "@/features/connectors";
 import {
   automationQueryKeys,
   invalidateWorkflowAutomation,
@@ -166,6 +170,7 @@ export function GrantWorkflowAuthority({
   const session = useSession();
   const connectorNames = useConnectorNames(open);
   const connectorServices = useConnectorServices(open);
+  const connectorCommands = useConnectorCommands(open);
   const defaultEnvironment = useDefaultEnvironment();
   const [environment, setEnvironment] = useState<"dev" | "prod">(defaultEnvironment);
   const [limits, setLimits] = useState<ApprovalLimits>(() => approvalLimits(null, new Date()));
@@ -615,6 +620,7 @@ export function GrantWorkflowAuthority({
         preview: review,
         connectorNames,
         connectorServices,
+        connectorCommands,
         automation: {
           schedule: review.schedules.length > 0,
           webhook: context.webhooksActive,

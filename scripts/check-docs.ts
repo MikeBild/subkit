@@ -69,7 +69,9 @@ const PUBLIC_PRODUCT_HOSTS = [
   "chromewebstore.google.com",
 ];
 
-const ALLOWED_LOOPBACK = new Set(["127.0.0.1", "::1"]);
+const ALLOWED_LOOPBACK = new Set(["127.0.0.1", "::1", "0.0.0.0"]);
+
+const ALLOWED_INTERNAL_HOSTS = new Set(["host.docker.internal", "gateway.docker.internal"]);
 
 const PRIVATE_REPOSITORY_PATH =
   /^\/MikeBild\/subkit\/(?:wiki|issues|projects|milestones)(?:[/?#]|$)/i;
@@ -192,6 +194,7 @@ export function vendorHosts(templatesPath: string): RegExp[] {
 
 function allowedHost(host: string, path: string, vendors: RegExp[]): boolean {
   if (host === "localhost" || ALLOWED_LOOPBACK.has(host) || host === "[::1]") return true;
+  if (ALLOWED_INTERNAL_HOSTS.has(host)) return true;
   if (host === "example.com" || host.endsWith(".example.com") || host.endsWith(".test"))
     return true;
   if (PUBLIC_PRODUCT_HOSTS.some((p) => host === p || host.endsWith(`.${p}`))) return true;
@@ -218,7 +221,8 @@ function privacyFindings(artifact: Artifact, vendors: RegExp[]): Finding[] {
     for (const hit of matches(IPV6_CANDIDATE, text)) {
       if (isIP(hit) === 6 && !ALLOWED_LOOPBACK.has(hit)) add("ip", hit);
     }
-    for (const hit of matches(INTERNAL_HOST, text)) add("host", `internal host ${hit}`);
+    for (const hit of matches(INTERNAL_HOST, text))
+      if (!ALLOWED_INTERNAL_HOSTS.has(hit.toLowerCase())) add("host", `internal host ${hit}`);
     for (const hit of matches(KEY_FILE, text)) add("key-file", hit);
     for (const hit of matches(KEY_TEXT_FILE, text)) add("key-file", hit);
     for (const hit of matches(LOCAL_ONLY, text)) add("local-only", hit);

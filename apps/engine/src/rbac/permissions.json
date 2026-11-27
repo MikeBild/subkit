@@ -63,6 +63,11 @@
     "description": "Promote a connector and its credentials from DEV to PROD",
     "resource_type": "connector"
   },
+  {
+    "name": "connector:confirm_local_command",
+    "description": "Confirm the local command a stdio MCP connector starts on the engine host",
+    "resource_type": "connector"
+  },
 
   {
     "name": "vault:read",

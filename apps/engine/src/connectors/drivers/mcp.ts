@@ -1,8 +1,8 @@
-import type { AuditActorType } from "../../audit/types.ts";
-import type { CredentialUseSnapshot } from "../../credentials/index.ts";
-import type { DecryptedCredential } from "../../credentials/types.ts";
-import type { Db } from "../../db/client.ts";
+import type { AuditActorType } from "../../audit/index.ts";
+import type { CredentialUseSnapshot, DecryptedCredential } from "../../credentials/index.ts";
+import type { Db } from "../../db/index.ts";
 import { errorFields, logger } from "../../logging/index.ts";
+import { withContainerLoopbackHint } from "../../mcp/client/container-hint.ts";
 import type { RemoteToolDescriptor } from "../../mcp/client/manifest.ts";
 import {
   connectServerById,
@@ -10,13 +10,27 @@ import {
   invokeRemoteTool,
   probeTransientMcpServer,
 } from "../../mcp/client/pool.ts";
-import { type McpConnectorRow, parseAuthConfig } from "../../mcp/client/registry.ts";
+import {
+  type McpConnectorRow,
+  McpPreflightError,
+  projectMcpConnector,
+} from "../../mcp/client/registry.ts";
 import { MCP_WIRE_METHOD, type RemoteCall } from "../../mcp/client/remote-call.ts";
+import {
+  assertStdioAllowed,
+  assertStdioConfirmed,
+  stdioRowOf,
+} from "../../mcp/client/stdio-supervisor.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { McpConnectorConfigSchema } from "../config-schemas.ts";
 import type { EgressInput } from "../egress.ts";
+import { classifyLocalTarget } from "../local-egress.ts";
 import { CONNECTOR_SLUG_RE, type ConnectorView } from "../types.ts";
 import type { DriverProbeResult, ProbeErrorCode } from "./index.ts";
+
+function loopbackHinted(target: string, detail: string): string {
+  return withContainerLoopbackHint(classifyLocalTarget(target), target, detail);
+}
 
 const MCP_TOOL_PREFIX = "mcp_";
 const MCP_NAMESPACE_SEP = "__";
@@ -70,7 +84,7 @@ export function parseMcpToolName(name: string): { slug: string; remote_tool: str
 }
 
 interface McpDriverConfig {
-  transport: "http" | "sse";
+  transport: "http" | "sse" | "stdio";
   remote_tool_call_timeout_ms?: number;
 }
 
@@ -84,7 +98,9 @@ function parseMcpConnectorConfig(connector: ConnectorView): McpDriverConfig {
       ),
     });
   }
-  const block = (parsed.data as { mcp: { transport: "http" | "sse"; [k: string]: unknown } }).mcp;
+  const block = (
+    parsed.data as { mcp: { transport: McpDriverConfig["transport"]; [k: string]: unknown } }
+  ).mcp;
   const out: McpDriverConfig = { transport: block.transport };
   if (typeof block.remote_tool_call_timeout_ms === "number") {
     out.remote_tool_call_timeout_ms = block.remote_tool_call_timeout_ms;
@@ -107,6 +123,61 @@ function probeErrorFor(
   return "unknown_upstream_error";
 }
 
+const STDIO_PROBE_CODES = new Set<ProbeErrorCode>([
+  "mcp_stdio_disabled",
+  "mcp_stdio_unavailable_in_container",
+  "mcp_stdio_capacity",
+  "mcp_stdio_start_failed",
+  "mcp_local_command_unconfirmed",
+]);
+
+function stdioProbeCode(code: string | undefined): ProbeErrorCode | null {
+  return code && STDIO_PROBE_CODES.has(code as ProbeErrorCode) ? (code as ProbeErrorCode) : null;
+}
+
+function stdioDetailCode(detail: string | null): ProbeErrorCode | null {
+  if (!detail) return null;
+  if (/did not (start|answer the MCP handshake)/.test(detail)) return "mcp_stdio_start_failed";
+  if (/stdio MCP server\(s\), the limit/.test(detail)) return "mcp_stdio_capacity";
+  return null;
+}
+
+function transientMcpRow(tenant_id: string, connector: ConnectorView): McpConnectorRow {
+  const row = projectMcpConnector({
+    id: connector.id,
+    tenant_id,
+    slug: connector.slug,
+    display_name: connector.display_name,
+    driver: "mcp",
+    environment: connector.environment,
+    base_url: connector.base_url ?? "",
+    config: connector.config ?? {},
+    enabled: true,
+  });
+  if (!row) throw new Error(`connector ${connector.slug} is not an MCP connector`);
+  return row;
+}
+
+async function stdioProbeRefusal(
+  db: Db,
+  tenant_id: string,
+  connector: ConnectorView,
+): Promise<Omit<DriverProbeResult, "latency_ms"> | null> {
+  try {
+    const row = transientMcpRow(tenant_id, connector);
+    await assertStdioAllowed(tenant_id, db);
+    assertStdioConfirmed(stdioRowOf(row));
+    return null;
+  } catch (err) {
+    if (!(err instanceof McpPreflightError)) throw err;
+    return {
+      ok: false,
+      detail: err.message,
+      error_code: stdioProbeCode(err.error_code) ?? "unknown_upstream_error",
+    };
+  }
+}
+
 export interface McpProbeManifest {
   tools: RemoteToolDescriptor[];
   instructions: string | null;
@@ -127,20 +198,8 @@ export async function probeMcpConnector(p: {
 
   if (p.credential_override !== undefined) {
     try {
-      const cfg = parseMcpConnectorConfig(p.connector);
-      const rawAuth = (p.connector.config as { mcp?: { auth?: unknown } } | null | undefined)?.mcp
-        ?.auth;
-      const row: McpConnectorRow = {
-        id: p.connector.id,
-        tenant_id: p.tenant_id,
-        slug: p.connector.slug,
-        display_name: p.connector.display_name,
-        transport: cfg.transport,
-        url: p.connector.base_url ?? "",
-        auth: parseAuthConfig((rawAuth as Record<string, unknown> | undefined) ?? null),
-        environment: p.connector.environment,
-        enabled: true,
-      };
+      parseMcpConnectorConfig(p.connector);
+      const row = transientMcpRow(p.tenant_id, p.connector);
       const outcome = await probeTransientMcpServer({
         db: p.db,
         tenant_id: p.tenant_id,
@@ -158,8 +217,11 @@ export async function probeMcpConnector(p: {
         return {
           ok: false,
           latency_ms,
-          detail: outcome.detail,
-          error_code: preflightProbeCode ?? probeErrorFor("handshake_failed", outcome.detail),
+          detail: loopbackHinted(p.connector.base_url ?? "", outcome.detail),
+          error_code:
+            preflightProbeCode ??
+            stdioProbeCode(outcome.preflight_error_code) ??
+            probeErrorFor("handshake_failed", outcome.detail),
         };
       }
       return {
@@ -191,13 +253,9 @@ export async function probeMcpConnector(p: {
       error_code: "unknown_upstream_error",
     };
   }
-  if (transport !== "http") {
-    return {
-      ok: false,
-      latency_ms: Date.now() - start,
-      detail: `mcp transport '${transport}' is not served — re-register this connector over streamable HTTP`,
-      error_code: "unknown_upstream_error",
-    };
+  if (transport === "stdio") {
+    const refused = await stdioProbeRefusal(p.db, p.tenant_id, p.connector);
+    if (refused) return { ...refused, latency_ms: Date.now() - start };
   }
 
   try {
@@ -224,8 +282,9 @@ export async function probeMcpConnector(p: {
             ? "no MCP session is registered for this connector"
             : outcome.reason === "disabled"
               ? "this MCP server is disabled — enable it before probing"
-              : (outcome.detail ?? "handshake failed"),
-        error_code: probeErrorFor(outcome.reason, outcome.detail),
+              : loopbackHinted(p.connector.base_url ?? "", outcome.detail ?? "handshake failed"),
+        error_code:
+          stdioDetailCode(outcome.detail) ?? probeErrorFor(outcome.reason, outcome.detail),
       };
     }
     logger.debug({

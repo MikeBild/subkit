@@ -9,7 +9,7 @@ idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
 audience: [runtime]
-version: 11
+version: 12
 ---
 
 # Connector Creation Guidance
@@ -401,10 +401,9 @@ operator asks to "add an MCP server", they are asking for a connector with
 `driver: "mcp"`. Its config is narrow and strictly validated — an unknown key
 under `config.mcp` is rejected at write time, not at first call:
 
-- `base_url` — the remote MCP endpoint. Required for this driver.
-- `config.mcp.transport` — `http` (the default). `sse` is accepted only so
-  pre-existing rows stay patchable and those rows are carried disabled as an
-  unsupported transport; `stdio` is refused at write time. Author `http`.
+- `base_url` — the MCP endpoint for `http` and `sse`. It is `null` for `stdio`.
+- `config.mcp.transport` — `http` (the default), `sse` (a path ending in
+  `/sse`), or `stdio` (a local command, see below).
 - `config.mcp.auth.kind` — `none`, `bearer`, `basic`, `header`, `oauth2`,
   `oauth2_client_credentials`, or `oauth2_private_key_jwt`, with optional
   `issuer` / `client_id` / `scope` / `algorithm`. Secrets never go here: the
@@ -423,14 +422,75 @@ under `config.mcp` is rejected at write time, not at first call:
   slug may never contain a double underscore (a database CHECK enforces it).
   A long slug silently costs the operator the tools with the longest names.
 
-**The draft → probe → auto-save loop above cannot create one.** It is built for
-`http`, `graphql`, `postgres` and `s3`; `probe_connector_draft` has no MCP
-branch, so it would send a plain HTTP request to the endpoint and prove nothing
-about a handshake. Do not walk an MCP connector through it and do not narrate a
-creation you cannot complete — call `cannot_help` and name the surface that
-owns it: an MCP connector is authored as a definition, through
-`POST /v1/connectors` or `subkit connectors create --file` (which validates the
-definition before it saves anything).
+**Creating one in the chat.** `start_connector_from_description` picks
+`driver: "mcp"` when the address path ends in `/mcp` or `/sse`, when the user
+says MCP, or when the user gives a command to start. `probe_connector_draft`
+then runs an MCP `initialize` + `tools/list` handshake, and a green handshake
+saves the connector like any other draft. `POST /v1/connectors` and
+`subkit connectors create --file` remain the definition-based paths.
+
+### Local servers (all drivers)
+
+A connector may point at a server on the engine's own machine: `localhost`,
+`127.0.0.1` (any `127.x`), `[::1]`, and from a Docker engine
+`host.docker.internal`. This holds for every driver (`http`, `graphql`, `s3`,
+`sftp`, `postgres`, `mcp`), over `http://` and `https://`. These are real
+addresses, never placeholders: do not replace them and do not ask the user to
+"use a real host".
+
+- **No sign-in by default.** A local target starts with `auth_type: "none"`.
+  Switch to `bearer`, `header` (own header name) or `oauth2` only when the user
+  asks for it, when discovery finds a REQUIRED scheme or OAuth metadata, or
+  when the probe returns 401. A scheme that a spec only declares (no root
+  `security`, `security: []`, or an anonymous `{}` alternative) is returned as
+  `optional_auth_schemes`: mention it, do not demand a key for it.
+- **Local https.** A self-signed or mkcert certificate needs either the CA as
+  PEM (`tls: { ca_pem }`) or, as a last resort, `tls: { skip_verify: true }`.
+  Set it through `update_connector_draft({ tls })`: it lands in `config.tls`
+  for `http`/`graphql` and in `config.mcp.tls` for `mcp`. Both work only for
+  local targets; tell the user that skip_verify accepts any certificate.
+- **Docker engine.** Inside the container `localhost` is the engine itself.
+  Use `http://host.docker.internal:<port>`; on Linux the host service must
+  listen on the Docker bridge or `0.0.0.0`, not only on `127.0.0.1`.
+- **Limits.** SubKit Cloud and a Desktop connected to SubKit Cloud cannot reach
+  local servers; the engine runs elsewhere. An admin can switch local servers
+  off with the setting `connectors.local_servers: deny`. Other private
+  addresses stay blocked.
+
+### Local commands (`transport: "stdio"`, MCP only)
+
+When the user names a command ("start `docker mcp gateway run`", "run
+`npx @playwright/mcp@latest`"), the draft gets `transport: "stdio"`,
+`command`, `args`, optional `env` (non-secret values only), `env_secret_names`
+(names of secret variables; values go through the credential form) and `cwd`.
+The command is split into words without a shell: pipes, redirects, `&&`, `;`
+and `$…` expansion are refused. A stdio draft has no `base_url` and starts
+with `auth_type: "none"`. When it needs secret environment variables, list
+their names in `env_secret_names`: the draft then switches to
+`auth_type: "header"` (`config.mcp.auth.kind: "header"`), and each value is
+collected with `ask_user_form` as a header credential whose header name is the
+variable name. Secret values never go into `env`.
+
+- **A person must allow the command.** `probe_connector_draft` does not start
+  it. It shows the person the literal command (program, arguments, the NAMES of
+  the environment variables, the working folder) as an `ask_user_confirm`
+  question of kind `mcp_local_command`. Only the person's answer counts: your
+  own message, a model-relayed answer or a guess never confirms. After a yes
+  the engine saves the connector, records the confirmation and runs the probe.
+  Never claim the command is allowed before that answer arrives.
+- **Every change asks again.** Changing the command, arguments, environment
+  names or working folder resets the confirmation; the next probe asks again.
+  `confirmed_command_hash`, `confirmed_by` and `confirmed_at` are engine-owned
+  and cannot be written by `update_connector_draft`.
+- **Who may confirm.** An owner or admin with `connectors:confirm_local_command`
+  who did not enter the command. On a single-person Desktop workspace the owner
+  confirms their own command. When the engine refuses, relay its reason and
+  tell the user that an owner or admin must allow the command in the Cockpit.
+- **Where it runs.** stdio runs on SubKit Desktop (macOS) and on an engine
+  started on the host. A Docker engine answers `mcp_stdio_unavailable_in_container`:
+  run the server on the host and connect over
+  `http://host.docker.internal:<port>/mcp` instead. `mcp_stdio_disabled` means
+  an admin switched local commands off (`connectors.mcp.stdio`).
 
 What you CAN do from here, once the connector exists:
 

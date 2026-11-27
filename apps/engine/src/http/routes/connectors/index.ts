@@ -1,11 +1,12 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { callConnectorOperation } from "../../../api/operations/connector-call.ts";
 import {
   attachConnectorCredentialsOperation,
+  callConnectorOperation,
+  confirmLocalCommandOperation,
   getConnectorCredentialOperation,
-} from "../../../api/operations/connector-credentials.ts";
-import { testConnectorOperation } from "../../../api/operations/connector-probe.ts";
-import { toHonoRoute } from "../../../api/operations/hono.ts";
+  testConnectorOperation,
+  toHonoRoute,
+} from "../../../api/index.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerAuthoringRoutes } from "./authoring.ts";
@@ -26,6 +27,7 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
   registerCollectionRoutes(app);
   toHonoRoute(app, testConnectorOperation);
   registerPromotionRoutes(app);
+  toHonoRoute(app, confirmLocalCommandOperation);
   toHonoRoute(app, callConnectorOperation);
   registerOAuthRoutes(app);
   toHonoRoute(app, getConnectorCredentialOperation);

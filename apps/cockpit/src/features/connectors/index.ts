@@ -1,6 +1,7 @@
 export {
   type ConnectorRecord,
   connectorService,
+  useConnectorCommands,
   useConnectorNames,
   useConnectorRecords,
   useConnectorServices,

@@ -15,6 +15,7 @@ import {
 } from "./dispatch.ts";
 import { commitHeldWorkflowWrites } from "./held-writes-kind.ts";
 import { readString } from "./helpers.ts";
+import { confirmLocalCommandIntent } from "./local-command-kind.ts";
 import { runWorkflowIntent } from "./run-kind.ts";
 import { applyWorkflowPatch, saveConnectorDraft, saveWorkflowDraft } from "./save-kinds.ts";
 import { intentToolName } from "./synthetic.ts";
@@ -60,6 +61,8 @@ export async function dispatchCommitIntent(env: CommitEnv): Promise<CommitOutcom
         result: await grantRelayedToolCall(env, relayedTool, approvalId),
       };
     }
+    case "confirm_local_command":
+      return { toolName: "probe_connector_draft", result: await confirmLocalCommandIntent(env) };
     case "create_api_key":
       return {
         toolName: "create_api_key",

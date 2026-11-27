@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { mcpServerIdentityOf, stdioCommandHash } from "../mcp/client/stdio-identity.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import {
   assertMcpBoundary,
@@ -416,4 +417,41 @@ test("every refusal has a sentence that does not repeat an argument value", () =
     expect(text).not.toContain("s3cr3t");
   }
   expect(describeMcpBoundaryViolation({ kind: "boundary_invalid" })).toContain("could not be");
+});
+
+test("a stdio connector binds the boundary to its command identity", () => {
+  const spec = {
+    command: "docker",
+    args: ["mcp", "gateway", "run"],
+    env: { LOG_LEVEL: "info" },
+    env_secret_names: ["GITHUB_TOKEN"],
+  };
+  const connector = {
+    driver: "mcp",
+    base_url: null,
+    config: { mcp: { transport: "stdio", ...spec } },
+  };
+  const identity = mcpServerIdentityOf(connector);
+  expect(identity).toBe(`stdio:${stdioCommandHash(spec)}`);
+  const { boundary, refusal } = compileMcpBoundary(step(), identity);
+  expect(refusal).toBeUndefined();
+  expect(boundary?.server).toBe(identity as string);
+  expect(McpBoundarySchema.safeParse(boundary).success).toBe(true);
+  expect(mcpBoundary(step(), boundary?.server)).toEqual(boundary as NonNullable<typeof boundary>);
+  const changed = mcpServerIdentityOf({
+    ...connector,
+    config: { mcp: { transport: "stdio", ...spec, args: ["mcp", "gateway", "run", "--x"] } },
+  });
+  expect(changed).not.toBe(identity);
+  expect(compileMcpBoundary(step(), "stdio:not-a-hash").refusal).toBe("mcp_server_unresolved");
+});
+
+test("an http connector keeps its address as the boundary server", () => {
+  expect(
+    mcpServerIdentityOf({
+      driver: "mcp",
+      base_url: SERVER,
+      config: { mcp: { transport: "http" } },
+    }),
+  ).toBe(SERVER);
 });

@@ -45,3 +45,43 @@ describe("sign-in choice of an existing connector", () => {
     expect(html).toContain("As before");
   });
 });
+
+describe("a key for an MCP server", () => {
+  function keyFields(keyMode: "bearer" | "header", locale: "de" | "en" = "de") {
+    return render(
+      <ConnectorSignInFields
+        idPrefix="create"
+        testId="signin"
+        target="mcp"
+        signIn="key"
+        onSignIn={() => {}}
+        secret=""
+        onSecret={() => {}}
+        keepsKey={false}
+        keepsClientSecret={false}
+        oauth={EMPTY_OAUTH_CLIENT}
+        onOAuth={() => {}}
+        callbackUrl={null}
+        choice={false}
+        keyMode={keyMode}
+        onKeyMode={() => {}}
+        header=""
+        onHeader={() => {}}
+      />,
+      locale,
+    );
+  }
+
+  test("Bearer is the first choice and asks for no header name", () => {
+    const html = keyFields("bearer");
+    expect(html).toContain('data-testid="signin-key-mode-bearer"');
+    expect(html).toContain("Bearer-Token");
+    expect(html).not.toContain('id="create-header-name"');
+  });
+
+  test("a custom header asks for its name with a bound label", () => {
+    const html = keyFields("header", "en");
+    expect(html).toMatch(/<label[^>]*for="create-header-name"[^>]*>Header name</);
+    expect(html).toContain('id="create-header-name"');
+  });
+});

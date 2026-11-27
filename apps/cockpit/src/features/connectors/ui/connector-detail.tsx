@@ -424,6 +424,8 @@ export function ConnectorMcpTools({
   canTest,
   inspect,
   onInspect,
+  notice,
+  failedLine,
 }: {
   connectorId: string;
   record: RecordValue;
@@ -431,6 +433,8 @@ export function ConnectorMcpTools({
   canTest: boolean;
   inspect: { data: McpInspect | null; pending: boolean; failed: boolean; readAt?: string | null };
   onInspect: () => void;
+  notice?: ReactNode;
+  failedLine?: string | null;
 }) {
   const { t, locale } = useI18n();
   const client = useQueryClient();
@@ -562,10 +566,11 @@ export function ConnectorMcpTools({
       }
       technical={sessionFacts.length > 0 ? <FactList items={sessionFacts} /> : undefined}
     >
+      {notice}
       {inspect.failed ? (
         <DataState
           state="error"
-          line={t("connectorDetail.tools.inspectFailed")}
+          line={failedLine || t("connectorDetail.tools.inspectFailed")}
           testId="connector-mcp-inspect-failed"
         />
       ) : null}

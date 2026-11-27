@@ -1,3 +1,4 @@
+import { mcpBoundaryOf } from "@/features/grants/model/authority-mcp";
 import type { WorkflowAuthorityPreview } from "@/features/grants/model/workflow-authorities";
 import type { TranslationKey } from "@/lib/i18n";
 import { currentHost, type ServiceIdentity, serviceIdentity } from "@/lib/service-icons";
@@ -45,6 +46,7 @@ export interface ReviewRow {
   unbound: string[];
   open: boolean;
   source: Effect;
+  command?: string | null;
 }
 
 export interface ReviewModelCall {
@@ -194,10 +196,20 @@ function compareRows(left: ReviewRow, right: ReviewRow): number {
   );
 }
 
+function localCommandOf(
+  effect: Effect,
+  commands: ReadonlyMap<string, string> | undefined,
+): string | null {
+  const server = mcpBoundaryOf(effect)?.server;
+  if (!server?.startsWith("stdio:") || !effect.connector_id) return null;
+  return commands?.get(effect.connector_id) ?? null;
+}
+
 export function authorityReviewModel(input: {
   preview: AuthorityReviewPreview;
   connectorNames: ReadonlyMap<string, string>;
   connectorServices?: ReadonlyMap<string, ServiceIdentity>;
+  connectorCommands?: ReadonlyMap<string, string>;
   automation: { schedule: boolean; webhook: boolean };
   activation: boolean;
   carryOver: boolean;
@@ -263,6 +275,7 @@ export function authorityReviewModel(input: {
           : placeholders.flatMap((entry) => (entry.kind === "class" ? [entry.name] : [])),
       open: risk !== "read",
       source: effect,
+      command: localCommandOf(effect, input.connectorCommands),
     };
   });
   const grouped = new Map<string, ReviewRow[]>();

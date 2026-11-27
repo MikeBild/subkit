@@ -16,6 +16,8 @@ import { logger } from "../../logging/index.ts";
 import { truncateForLlm } from "../../tools/truncate.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state/index.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
+import { isStdioDraft } from "../local-command.ts";
+import { localCommandRefusalFor } from "../local-command-confirm.ts";
 import { proposeConnectorCapabilityCandidate } from "../persistence/connector-skill-candidate.ts";
 import { credentialModeMatchesAuthType } from "../persistence/credential-form-contract.ts";
 import {
@@ -31,6 +33,7 @@ import type { ConnectorDraftProbeSummary } from "../types.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { gateLocalCommandProbe } from "./local-command-gate.ts";
 import { resolveDraftProbeSecrets } from "./probe-draft-secrets.ts";
 import { pickProbeRecoveryActions as pickFromShared, probeStatusHint } from "./probe-recovery.ts";
 import { summarizeProbeBody } from "./probe-shape.ts";
@@ -104,6 +107,43 @@ export function computeProbeFingerprint(
       }),
     )
     .digest("hex");
+}
+
+const LOCAL_COMMAND_ERROR_CODES: ReadonlySet<string> = new Set([
+  "mcp_local_command_unconfirmed",
+  "mcp_stdio_disabled",
+  "mcp_stdio_unavailable_in_container",
+  "mcp_stdio_capacity",
+  "mcp_stdio_start_failed",
+]);
+
+function localCommandProbeGuidance(
+  errorCode: string | undefined,
+  detail: string | undefined,
+): Record<string, unknown> {
+  if (!errorCode || !LOCAL_COMMAND_ERROR_CODES.has(errorCode)) {
+    return { next_best_actions: ["inspect_connector_draft", "update_connector_draft"] };
+  }
+  const refusal = localCommandRefusalFor(errorCode, detail ?? errorCode) as {
+    message?: string;
+    next_best_actions?: string[];
+  };
+  return {
+    error_code: errorCode,
+    message: refusal.message,
+    next_best_actions: refusal.next_best_actions,
+  };
+}
+
+function withLocalCommandConfirmation(
+  config: Record<string, unknown>,
+  confirmation: Record<string, unknown>,
+): Record<string, unknown> {
+  const mcp =
+    config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp)
+      ? (config.mcp as Record<string, unknown>)
+      : {};
+  return { ...config, mcp: { ...mcp, ...confirmation } };
 }
 
 function isTransientProbeFailure(probe: ConnectorDraftProbeSummary): boolean {
@@ -223,8 +263,17 @@ export const probeConnectorDraftTool: ConversationTool = {
         }),
       };
     }
+    let localCommandConfirmation: Record<string, unknown> | null = null;
+    if (isStdioDraft(connector)) {
+      const gate = await gateLocalCommandProbe(ctx, connector, args);
+      if (gate.kind === "stop") return gate.result;
+      localCommandConfirmation = gate.confirmation;
+    }
     const secrets = await resolveDraftProbeSecrets(ctx.tenant_id, connector, ctx.db);
     if (!secrets.ok) return { ok: false, data: buildGateError(currentDraft, secrets.refusal) };
+    const probeConfig = localCommandConfirmation
+      ? withLocalCommandConfirmation(secrets.config, localCommandConfirmation)
+      : secrets.config;
     const draftView = {
       id: connector.saved_connector_id ?? `draft-${ctx.conversation_id}`,
       tenant_id: ctx.tenant_id,
@@ -236,7 +285,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       auth_type: connector.auth_type ?? "none",
       base_url: secrets.base_url,
       dsn: secrets.dsn,
-      config: secrets.config,
+      config: probeConfig,
       operator_quirks: {},
       template_slug: connector.template_slug ?? null,
       template_name: connector.template_name ?? null,
@@ -688,7 +737,7 @@ export const probeConnectorDraftTool: ConversationTool = {
             },
             latest_probe,
             detail: res.detail ?? null,
-            next_best_actions: ["inspect_connector_draft", "update_connector_draft"],
+            ...localCommandProbeGuidance(res.error_code, res.detail),
           }),
         };
       }

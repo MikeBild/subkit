@@ -269,6 +269,7 @@
     }
   },
   "connectors": {
+    "local_servers": "allow",
     "web_scraper": {
       "runtime": {
         "respect_robots": true,
@@ -300,7 +301,14 @@
     "mcp": {
       "per_server_manifest_byte_cap": 30000,
       "remote_tool_call_timeout_ms": 30000,
-      "tools_list_max_pages": 5
+      "tools_list_max_pages": 5,
+      "stdio": "auto",
+      "stdio_limits": {
+        "startup_timeout_ms": 30000,
+        "idle_timeout_ms": 300000,
+        "max_processes": 8,
+        "stderr_ring_bytes": 16384
+      }
     }
   },
   "products": {},

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiCall } from "@/api/call";
 import { useSession } from "@/app/session";
 import type { CredentialEvidence } from "@/features/connectors/model/connector-auth-state";
+import { commandLineOf } from "@/features/connectors/model/create-connector-model";
 import { currentHost, type ServiceIdentity, serviceIdentity } from "@/lib/service-icons";
 
 export function useConnectorNames(enabled = true): ReadonlyMap<string, string> {
@@ -26,7 +27,17 @@ export interface ConnectorRecord {
   auth_failed_at?: string | null;
   template_slug?: string | null;
   base_url?: string | null;
+  config?: unknown;
   credential?: CredentialEvidence;
+}
+
+export function useConnectorCommands(enabled = true): ReadonlyMap<string, string> {
+  return new Map(
+    useConnectorRecords(enabled).flatMap((item) => {
+      const line = item.driver === "mcp" ? commandLineOf(item.config) : null;
+      return line ? [[item.id, line] as const] : [];
+    }),
+  );
 }
 
 export function connectorService(

@@ -178,7 +178,13 @@ const inputSchema = z
   .object({
     question: z.string().min(1),
     kind: z
-      .enum(["save_workflow_draft", "external_write", "generic", "partial_diff_approval"])
+      .enum([
+        "save_workflow_draft",
+        "external_write",
+        "generic",
+        "partial_diff_approval",
+        "mcp_local_command",
+      ])
       .default("generic"),
     summary: z.string().optional(),
     diff: z.unknown().optional(),

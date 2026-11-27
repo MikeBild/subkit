@@ -1,3 +1,4 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { cn } from "@ui/lib/utils";
 import {
@@ -9,7 +10,9 @@ import {
   UserCheck,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useReducer, useRef } from "react";
+import { toast } from "sonner";
 import { apiCall } from "@/api/call";
+import { ApiError } from "@/api/client";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { createRefusal, slugify } from "@/components/cockpit/create-refusal";
@@ -42,6 +45,7 @@ import {
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { currentHost, serviceIdentity, templateIdentity } from "@/lib/service-icons";
+import { useConfirmLocalCommand } from "../hooks/confirm-local-command";
 import { credentialBody } from "../model/connector-detail-model";
 import { popularTemplates, serviceHost, signInChipKey } from "../model/connector-view-model";
 import {
@@ -55,15 +59,36 @@ import {
   type ConnectorSignIn,
   type ConnectorTarget,
   connectorCreateBody,
-  DEFAULT_SIGN_IN,
+  defaultSignIn,
+  draftCommandLine,
+  EMPTY_LOCAL_COMMAND,
   EMPTY_OAUTH_CLIENT,
+  EMPTY_TLS,
+  type KeyMode,
+  type LocalCommandFields,
+  localConnectorErrorKey,
+  type McpSource,
   manualConnectorProblem,
-  needsSecret,
+  manualCredentialBody,
+  manualSourceProblem,
   type OAuthClientFields,
+  offersHeaderName,
+  showsTls,
+  type TlsFields,
+  usesLocalCommand,
 } from "../model/create-connector-model";
 import { ConnectionGraphic } from "./connector-graphic";
 import { ConnectorSignInFields } from "./connector-sign-in-fields";
+import {
+  CommandConfirmBody,
+  confirmCommandFailure,
+  LocalCommandFieldset,
+  TlsFieldset,
+} from "./local-command";
 import { ServiceIcon } from "./service-icon";
+
+type CreatedConnector = Awaited<ReturnType<typeof createTemplateConnector>>;
+type CreateConnectorRequest = components["schemas"]["CreateConnectorBody"];
 
 const POPULAR_IN_WIZARD = 12;
 
@@ -78,7 +103,7 @@ export type ConnectorWizardStart =
   | { way: "template"; template?: string }
   | { way: "manual" };
 
-type Step = "how" | "service" | "signin" | "review";
+type Step = "how" | "service" | "signin" | "review" | "confirm";
 type Way = "template" | "manual";
 
 interface CreateFields {
@@ -89,10 +114,15 @@ interface CreateFields {
   secret: string;
   header: string;
   target: ConnectorTarget;
-  signIn: ConnectorSignIn;
+  source: McpSource;
+  signIn: ConnectorSignIn | null;
+  keyMode: KeyMode;
+  command: LocalCommandFields;
+  tls: TlsFields;
   name: string;
   description: string;
   oauth: OAuthClientFields;
+  created: CreatedConnector | null;
 }
 type CreateWizard = ConnectorWizard<CreateFields, Step, DialogError>;
 type CreateEvent = ConnectorWizardEvent<CreateFields, Step, DialogError>;
@@ -112,15 +142,20 @@ function freshCreateWizard(from: ConnectorWizardStart): CreateWizard {
       secret: "",
       header: "",
       target: "web",
-      signIn: DEFAULT_SIGN_IN,
+      source: "address",
+      signIn: null,
+      keyMode: "bearer",
+      command: EMPTY_LOCAL_COMMAND,
+      tls: EMPTY_TLS,
       name: "",
       description: "",
       oauth: EMPTY_OAUTH_CLIENT,
+      created: null,
     },
   };
 }
 
-const STEPS: readonly Step[] = ["how", "service", "signin", "review"];
+const STEPS: readonly Exclude<Step, "confirm">[] = ["how", "service", "signin", "review"];
 
 const STEP_KEYS = {
   how: "wizard.step.how",
@@ -155,7 +190,7 @@ function ConnectorProgress({ step }: { step: Step }) {
   return (
     <WizardProgress
       steps={STEPS.map((entry) => t(STEP_KEYS[entry]))}
-      current={STEPS.indexOf(step)}
+      current={STEPS.indexOf(step === "confirm" ? "review" : step)}
       testId="create-connector-progress"
     />
   );
@@ -248,8 +283,26 @@ export function CreateConnectorDialog({
   const finish = useConnectorFinish();
   const [wizard, dispatch] = useReducer(createWizardReducer, start, freshCreateWizard);
   const { step, error } = wizard;
-  const { way, chosen, query, address, secret, header, target, signIn, name, description, oauth } =
-    wizard.fields;
+  const {
+    way,
+    chosen,
+    query,
+    address,
+    secret,
+    header,
+    target,
+    source,
+    keyMode,
+    command,
+    tls,
+    name,
+    description,
+    oauth,
+    created,
+  } = wizard.fields;
+  const signIn = wizard.fields.signIn ?? defaultSignIn(target, source, address);
+  const local = usesLocalCommand(target, source);
+  const canConfirmCommand = session.permissions.includes("connector:confirm_local_command");
   const edit = <K extends keyof CreateFields>(key: K, value: FieldValue<CreateFields, K>) =>
     dispatch({ type: "edit", key, value } as CreateEvent);
   const set =
@@ -272,7 +325,10 @@ export function CreateConnectorDialog({
     prefilled.current = template.slug;
     edit("address", (current) => current || (template.base_url ?? ""));
   }, [template]);
-  const refuse = (failure: unknown) => createRefusal(failure, t("create.connector.taken"), t);
+  const refuse = (failure: unknown) => {
+    const key = failure instanceof ApiError ? localConnectorErrorKey(failure.code) : null;
+    return key ? t(key) : createRefusal(failure, t("create.connector.taken"), t);
+  };
   const reset = () => {
     prefilled.current = null;
     dispatch({ type: "reset", to: freshCreateWizard(start) });
@@ -307,32 +363,69 @@ export function CreateConnectorDialog({
     },
     onError: (failure) => fail(dialogFailure(refuse(failure), failure)),
   });
+  const credential = manualCredentialBody({
+    target,
+    source,
+    signIn,
+    keyMode,
+    header,
+    secret,
+    command,
+  });
+  const keyed = !local && credential !== null;
+  const done = async (connector: CreatedConnector) => {
+    onOpenChange(false);
+    reset();
+    await finish(connector, { keyed, tab: afterCreateTab(target) });
+  };
   const connectManual = useMutation({
     mutationFn: async () => {
+      const body = {
+        ...connectorCreateBody({
+          target,
+          signIn,
+          name,
+          slug: slugify(name),
+          address,
+          oauth,
+          source,
+          keyMode,
+          command,
+          tls,
+        }),
+        ...(description.trim() ? { description: description.trim() } : {}),
+      };
       const connector = await apiCall("post", "/v1/connectors", {
-        body: {
-          ...connectorCreateBody({ target, signIn, name, slug: slugify(name), address, oauth }),
-          ...(description.trim() ? { description: description.trim() } : {}),
-        },
+        body: body as CreateConnectorRequest,
       });
-      if (needsSecret(signIn))
+      if (credential)
         await apiCall("post", "/v1/connectors/{id}/credentials", {
           path: { id: connector.id },
-          body: { mode: "bearer", token: secret.trim() },
+          body: credential,
         });
-
       return connector;
     },
     onSuccess: async (connector) => {
-      onOpenChange(false);
-      reset();
-      await finish(connector, { keyed: needsSecret(signIn), tab: afterCreateTab(target) });
+      if (!local || !canConfirmCommand) return done(connector);
+      edit("created", connector);
+      goTo("confirm");
     },
     onError: (failure) => fail(dialogFailure(refuse(failure), failure)),
   });
-  const pending = connectTemplate.isPending || connectManual.isPending;
+  const allowCommand = useConfirmLocalCommand({
+    onSuccess: async () => {
+      toast.success(t("connectorLocal.confirm.done"));
+      if (created) await done(created);
+    },
+    onError: (failure) => fail(dialogFailure(confirmCommandFailure(failure, t), failure)),
+  });
+  const pending = connectTemplate.isPending || connectManual.isPending || allowCommand.isPending;
   const close = (next: boolean) => {
     if (pending) return;
+    if (!next && created) {
+      void done(created);
+      return;
+    }
     onOpenChange(next);
     if (!next) reset();
   };
@@ -345,6 +438,7 @@ export function CreateConnectorDialog({
   const templateProblem = (picked: ConnectorTemplate) =>
     templateConnectProblem({
       signIn: templateSignIn(picked),
+      target: picked.driver === "mcp" ? "mcp" : "web",
       needsAddress: templateNeedsAddress(picked),
       address,
       secret,
@@ -360,6 +454,10 @@ export function CreateConnectorDialog({
       secret,
       oauth,
       callbackUrl,
+      source,
+      keyMode,
+      header,
+      command,
     });
 
   const frame = (p: {
@@ -499,25 +597,54 @@ export function CreateConnectorDialog({
             value={description}
             onChange={set("description")}
           />
-          <TextField
-            id="create-connector-address"
-            type="url"
-            label={t("create.connector.address")}
-            placeholder={
-              target === "mcp" ? "https://mcp.example.com/mcp" : "https://api.example.com"
-            }
-            value={address}
-            onChange={set("address")}
-            mono
-          />
+          {target === "mcp" ? (
+            <ChoiceField<McpSource>
+              label={t("create.connector.source")}
+              value={source}
+              onChange={set("source")}
+              help={t("create.connector.sourceHelp")}
+              testId="create-connector-source"
+              options={[
+                { value: "address", label: t("create.connector.source.address") },
+                { value: "command", label: t("create.connector.source.command") },
+              ]}
+            />
+          ) : null}
+          {local ? (
+            <LocalCommandFieldset
+              idPrefix="create-connector"
+              value={command}
+              onChange={set("command")}
+            />
+          ) : (
+            <TextField
+              id="create-connector-address"
+              type="url"
+              label={t("create.connector.address")}
+              placeholder={
+                target === "mcp" ? "https://mcp.example.com/mcp" : "https://api.example.com"
+              }
+              value={address}
+              onChange={set("address")}
+              mono
+            />
+          )}
+          {showsTls(target, source, address) ? (
+            <TlsFieldset idPrefix="create-connector" value={tls} onChange={set("tls")} />
+          ) : null}
         </>
       ),
       submit: { label: t("wizard.next") },
       onSubmit: () => {
-        if (!slugify(name)) return fail(t("create.nameMissing"));
-        if (!/^https:\/\/\S+\.\S+/.test(address.trim()))
-          return fail(t("create.connector.addressInvalid"));
-        goTo("signin");
+        const problem = manualSourceProblem({
+          target,
+          source,
+          slug: slugify(name),
+          address,
+          command,
+        });
+        if (problem) return fail(t(problem));
+        goTo(local ? "review" : "signin");
       },
     });
 
@@ -639,7 +766,7 @@ export function CreateConnectorDialog({
             testId="create-connector-signin"
             target={target}
             signIn={signIn}
-            onSignIn={(next) => edit("signIn", next ?? DEFAULT_SIGN_IN)}
+            onSignIn={(next) => edit("signIn", next)}
             secret={secret}
             onSecret={set("secret")}
             keepsKey={false}
@@ -648,6 +775,14 @@ export function CreateConnectorDialog({
             onOAuth={set("oauth")}
             callbackUrl={callbackUrl}
             choice={false}
+            {...(offersHeaderName(target, signIn)
+              ? {
+                  keyMode,
+                  onKeyMode: set("keyMode"),
+                  header,
+                  onHeader: set("header"),
+                }
+              : {})}
           />
         </>
       ),
@@ -659,6 +794,22 @@ export function CreateConnectorDialog({
       },
     });
 
+  if (step === "confirm" && created)
+    return frame({
+      body: (
+        <>
+          <p className="text-sm font-medium">{t("connectorLocal.confirm.title")}</p>
+          <p className="text-sm text-muted-foreground">{t("connectorLocal.confirm.body")}</p>
+          <CommandConfirmBody line={draftCommandLine(command)} testId="create-connector-confirm" />
+        </>
+      ),
+      submit: { label: t("connectorLocal.confirm.allow"), pending: allowCommand.isPending },
+      onSubmit: () => {
+        fail(null);
+        allowCommand.mutate({ id: created.id, config: created.config });
+      },
+    });
+
   const serviceName = template ? template.name : name.trim();
   const reviewWay: TemplateSignIn = template ? templateSignIn(template) : signIn;
   const reviewAddress = template
@@ -667,7 +818,7 @@ export function CreateConnectorDialog({
       : template.base_url
     : address;
   return frame({
-    back: "signin",
+    back: !template && local ? "service" : "signin",
     body: (
       <>
         <ConnectionGraphic
@@ -678,13 +829,18 @@ export function CreateConnectorDialog({
               : serviceIdentity({ display_name: serviceName, base_url: address }, currentHost())
           }
           serviceName={serviceName}
-          serviceLine={serviceHost(reviewAddress ?? null)}
+          serviceLine={
+            !template && local ? command.command.trim() : serviceHost(reviewAddress ?? null)
+          }
           way={reviewWay}
           wayLabel={t(signInChipKey(template ? template.auth_type : MANUAL_AUTH[signIn]))}
           tone="info"
           stateLine={t("connectorWizard.review.state")}
           testId="create-connector-graphic"
         />
+        {!template && local ? (
+          <CommandConfirmBody line={draftCommandLine(command)} testId="create-connector-review" />
+        ) : null}
         <p className="text-sm" data-testid="create-connector-review-line">
           {t(
             reviewWay === "account"

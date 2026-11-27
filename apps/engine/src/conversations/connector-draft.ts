@@ -11,6 +11,7 @@ import {
   defaultTemplateAuthType,
   extractTemplatePlaceholders,
 } from "./connector-template-intelligence.ts";
+import { isStdioDraft, readLocalCommand } from "./local-command.ts";
 import type { ConnectorDraftDocument } from "./types.ts";
 
 interface ConnectorDraftValidation {
@@ -74,7 +75,16 @@ export function validateConnectorDraft(
     connector.driver === "sftp" ||
     connector.driver === "mcp"
   ) {
-    if (!connector.base_url) missing_fields.push("base_url");
+    if (isStdioDraft(connector)) {
+      if (connector.base_url) {
+        pushError(
+          errors,
+          "base_url",
+          "an MCP connector with transport stdio starts a local command and has no base_url; remove base_url or use transport http",
+        );
+      }
+      if (!readLocalCommand(connector.config)) missing_fields.push("config.mcp.command");
+    } else if (!connector.base_url) missing_fields.push("base_url");
     else {
       const placeholders = extractTemplatePlaceholders(connector.base_url);
       if (placeholders.length > 0) {
@@ -91,7 +101,7 @@ export function validateConnectorDraft(
           pushError(
             errors,
             "base_url",
-            "base_url looks like a placeholder (example.com / localhost / 127.0.0.1 / your-host). Ground from runtime context, the connector template, or ask the user — never invent a host.",
+            "base_url looks like a placeholder (example.com, your-host, <host>). Ground from runtime context, the connector template, or ask the user — never invent a host.",
           );
         }
       }

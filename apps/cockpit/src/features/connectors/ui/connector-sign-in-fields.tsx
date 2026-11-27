@@ -3,6 +3,7 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   type ConnectorSignIn,
   type ConnectorTarget,
+  type KeyMode,
   needsOAuthClient,
   type OAuthClientFields,
 } from "../model/create-connector-model";
@@ -24,6 +25,10 @@ export function ConnectorSignInFields({
   onOAuth,
   callbackUrl,
   choice = true,
+  keyMode,
+  onKeyMode,
+  header = "",
+  onHeader,
 }: {
   idPrefix: string;
   testId: string;
@@ -39,6 +44,10 @@ export function ConnectorSignInFields({
   onOAuth(oauth: OAuthClientFields): void;
   callbackUrl: string | null;
   choice?: boolean;
+  keyMode?: KeyMode;
+  onKeyMode?(mode: KeyMode): void;
+  header?: string;
+  onHeader?(header: string): void;
 }) {
   const { t } = useI18n();
   const field = (key: keyof OAuthClientFields) => (value: string) =>
@@ -62,6 +71,29 @@ export function ConnectorSignInFields({
             { value: "key", label: t("create.connector.signIn.key") },
             { value: "account", label: t("create.connector.signIn.account") },
           ]}
+        />
+      ) : null}
+      {signIn === "key" && keyMode && onKeyMode ? (
+        <ChoiceField<KeyMode>
+          label={t("create.connector.keyMode")}
+          value={keyMode}
+          onChange={onKeyMode}
+          testId={`${testId}-key-mode`}
+          options={[
+            { value: "bearer", label: t("create.connector.keyMode.bearer") },
+            { value: "header", label: t("create.connector.keyMode.header") },
+          ]}
+        />
+      ) : null}
+      {signIn === "key" && keyMode === "header" && onHeader ? (
+        <TextField
+          id={`${idPrefix}-header-name`}
+          label={t("create.connector.headerName")}
+          placeholder="X-API-Key"
+          value={header}
+          onChange={onHeader}
+          required
+          mono
         />
       ) : null}
       {signIn === "key" ? (

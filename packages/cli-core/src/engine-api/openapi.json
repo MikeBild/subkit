@@ -32108,6 +32108,94 @@
           "strategy"
         ]
       },
+      "ConfirmLocalCommandResponse": {
+        "type": "object",
+        "properties": {
+          "connector_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "command": {
+            "$ref": "#/components/schemas/LocalCommand"
+          },
+          "confirmed_by": {
+            "type": "string"
+          },
+          "confirmed_at": {
+            "type": "string"
+          },
+          "already_confirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "connector_id",
+          "command",
+          "confirmed_by",
+          "confirmed_at",
+          "already_confirmed"
+        ]
+      },
+      "LocalCommand": {
+        "type": "object",
+        "properties": {
+          "command_line": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "env_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "env_secret_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "command_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_line",
+          "command",
+          "args",
+          "env_names",
+          "env_secret_names",
+          "cwd",
+          "command_hash"
+        ]
+      },
+      "ConfirmLocalCommandBody": {
+        "type": "object",
+        "properties": {
+          "command_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The command_hash of the command shown to the person; a command changed since then is refused"
+          }
+        },
+        "required": [
+          "command_hash"
+        ]
+      },
       "ConnectorCallResponse": {
         "type": "object",
         "properties": {
@@ -32778,6 +32866,9 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/DiscoveredAuthSchemeOAuth2Flow"
             }
+          },
+          "required": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -71630,6 +71721,91 @@
           },
           "422": {
             "description": "Promotion is not safe for the connector state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/{id}/mcp/confirm-command": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Confirm the local command of a stdio MCP connector so the engine may start it",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmLocalCommandBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmed, or already confirmed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmLocalCommandResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person who entered or changed the command cannot confirm it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The command changed after it was shown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The connector starts no local command",
             "content": {
               "application/json": {
                 "schema": {

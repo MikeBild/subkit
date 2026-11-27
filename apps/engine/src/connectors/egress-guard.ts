@@ -5,6 +5,12 @@ import { getConfig } from "../config/loader.ts";
 import type { Executor } from "../db/client.ts";
 import { readEnv } from "../env.ts";
 import { logger } from "../logging/index.ts";
+import {
+  classifyLocalTarget,
+  type LocalMcpScope,
+  localTargetMatchesScope,
+  resolvedAddressFitsLocalClass,
+} from "./local-egress.ts";
 import { getRobotsVerification } from "./robots-cache.ts";
 
 export type EgressGuardMode = "strict" | "permissive";
@@ -25,22 +31,60 @@ export function _withEgressTenantOriginForTests<T>(
   return tenantOriginOverrides.run(reader, run);
 }
 
-export async function resolveTenantEgressContext(
-  context: EgressGuardContext,
-): Promise<EgressGuardContext> {
-  if (!context.tenant_id || resolveEgressGuardMode(context) === "strict") return context;
+async function readTenantOrigin(
+  tenantId: string,
+  exec: Executor,
+): Promise<"self_service" | "self_hosted"> {
   try {
     const readOrigin = tenantOriginOverrides.getStore();
     const origin = readOrigin
-      ? await readOrigin(context.tenant_id)
-      : (await (await import("../identity/service.ts")).getTenant(context.tenant_id, context.exec))
-          ?.origin;
+      ? await readOrigin(tenantId)
+      : (await (await import("../identity/service.ts")).getTenant(tenantId, exec))?.origin;
     if (!origin) throw new EgressBlockedError("tenant_context_unavailable", "");
-    return origin === "self_service" ? { ...context, mode: "strict" } : context;
+    return origin;
   } catch (error) {
     if (error instanceof EgressBlockedError) throw error;
     throw new EgressBlockedError("tenant_context_unavailable", "");
   }
+}
+
+function localServersAllowed(): boolean {
+  try {
+    return getConfig().connectors.local_servers !== "deny";
+  } catch (error) {
+    logger.debug({
+      module: "egress_guard",
+      action: "local_servers_setting_unavailable",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return true;
+  }
+}
+
+export async function resolveTenantEgressContext(
+  context: EgressGuardContext,
+): Promise<EgressGuardContext> {
+  if (context.local_mcp_granted !== undefined) return context;
+  if (context.local_mcp && context.tenant_id && localServersAllowed()) {
+    const origin = await readTenantOrigin(context.tenant_id, context.exec).catch(
+      (error: unknown) => {
+        logger.warn({
+          module: "egress_guard",
+          action: "local_target_origin_unavailable",
+          tenant_id: context.tenant_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      },
+    );
+    if (origin === "self_hosted") return { ...context, local_mcp_granted: true };
+  }
+  const resolved: EgressGuardContext = context.local_mcp
+    ? { ...context, local_mcp_granted: false }
+    : context;
+  if (!resolved.tenant_id || resolveEgressGuardMode(resolved) === "strict") return resolved;
+  const origin = await readTenantOrigin(resolved.tenant_id, resolved.exec);
+  return origin === "self_service" ? { ...resolved, mode: "strict" } : resolved;
 }
 
 export function _withEgressLookupForTests<T>(
@@ -54,7 +98,19 @@ export type EgressTenantScope =
   | { tenant_id: string; exec: Executor }
   | { tenant_id?: undefined; exec?: undefined };
 
-export type EgressGuardContext = EgressTenantScope & { mode?: EgressGuardMode };
+export type EgressGuardContext = EgressTenantScope & {
+  mode?: EgressGuardMode;
+  local_mcp?: LocalMcpScope;
+  local_mcp_granted?: boolean;
+};
+
+export function grantedLocalTarget(url: URL, ctx: EgressGuardContext): boolean {
+  return (
+    ctx.local_mcp_granted === true &&
+    ctx.local_mcp !== undefined &&
+    localTargetMatchesScope(url, ctx.local_mcp)
+  );
+}
 
 export class EgressBlockedError extends Error {
   readonly code = "egress_blocked";
@@ -177,6 +233,21 @@ export function assertEgressAllowed(url: URL | string, ctx: EgressGuardContext):
 
   const mode = resolveEgressGuardMode(ctx);
 
+  if (grantedLocalTarget(parsed, ctx)) {
+    logger.info({
+      module: "egress_guard",
+      action: "local_mcp_allowed",
+      host,
+      mode,
+      tenant_id: ctx.tenant_id ?? null,
+    });
+    return;
+  }
+
+  if (ctx.local_mcp_granted === true && classifyLocalTarget(parsed) !== null) {
+    throw new EgressBlockedError("local_target_outside_connector", host);
+  }
+
   if (mode === "permissive") {
     if (host === "localhost" || host === "0.0.0.0" || host === "::" || host === "::0") {
       logger.warn({
@@ -214,9 +285,32 @@ export async function resolveAllowedEgressAddresses(
   const parsed = typeof url === "string" ? new URL(url) : url;
   assertEgressAllowed(parsed, ctx);
 
+  const localClass = grantedLocalTarget(parsed, ctx) ? classifyLocalTarget(parsed) : null;
+
   if (resolveEgressGuardMode(ctx) === "permissive") return [];
 
   const host = stripBrackets(parsed.hostname.toLowerCase());
+  if (localClass !== null) {
+    if (isIP(host) !== 0) return [{ address: host, family: isIP(host) }];
+    const resolveLocal: EgressLookup =
+      deps.lookupImpl ??
+      lookupOverrides.getStore() ??
+      ((hostname, options) => lookup(hostname, options));
+    let localAddrs: Array<{ address: string; family: number }>;
+    try {
+      localAddrs = await resolveLocal(host, { all: true });
+    } catch {
+      throw new EgressBlockedError("dns_resolution_failed", host);
+    }
+    if (localAddrs.length === 0) throw new EgressBlockedError("dns_resolution_failed", host);
+    for (const { address, family } of localAddrs) {
+      if (isIP(address) === 0 || isIP(address) !== family)
+        throw new EgressBlockedError("dns_resolution_failed", host);
+      if (!resolvedAddressFitsLocalClass(address, localClass))
+        throw new EgressBlockedError("local_name_resolved_elsewhere", host);
+    }
+    return localAddrs;
+  }
   if (isIP(host) !== 0) return [{ address: host, family: isIP(host) }];
 
   const lookupImpl: EgressLookup =

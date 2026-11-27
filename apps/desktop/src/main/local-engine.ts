@@ -41,6 +41,7 @@ import {
   upgradePlan,
 } from "../shared/local/supervisor-model.ts";
 import { appLog } from "./app-log.ts";
+import { engineHostEnv, loginPath } from "./login-path.ts";
 
 export interface LocalEngineOptions {
   postgresDir: string;
@@ -52,6 +53,7 @@ export interface LocalEngineOptions {
   masterKey: string;
   preferredPort: number | null;
   engineEnv?: Record<string, string>;
+  resolvePath?: () => Promise<string>;
   onStatus?: (state: SupervisorState) => void;
   onPort?: (port: number, reassigned: boolean) => void;
   now?: () => number;
@@ -303,9 +305,10 @@ export class LocalEngine {
     const launchSecret = randomBytes(LAUNCH_SECRET_BYTES).toString("base64url");
     const preferred = stored.port ?? this.options.preferredPort;
     const log = await this.logStream("engine.log");
+    const hostEnv = engineHostEnv(await (this.options.resolvePath ?? loginPath)());
     const child = spawn(command, args, {
       env: {
-        PATH: process.env.PATH ?? "",
+        ...hostEnv,
         HOME: homedir(),
         NODE_ENV: "production",
         SUBKIT_DEPLOYMENT_MODE: "local_workspace",

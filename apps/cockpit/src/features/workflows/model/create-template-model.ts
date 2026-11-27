@@ -6,6 +6,7 @@ import {
   readStepDefinition,
   type StepKindSource,
 } from "@/features/workflows/model/workflow-steps";
+import { type AddressTarget, addressProblem } from "@/lib/connector-address";
 import type { TranslationKey } from "@/lib/i18n";
 import { templateIdentity } from "@/lib/service-icons";
 
@@ -379,7 +380,9 @@ export function solutionAddressProblem(
   needed: readonly SolutionConnector[],
   addresses: Readonly<Record<string, string>>,
 ): TranslationKey | null {
-  return needed.every((connector) => HTTPS.test((addresses[connector.placeholder] ?? "").trim()))
+  return needed.every(
+    (connector) => addressProblem(addresses[connector.placeholder] ?? "", "web") === null,
+  )
     ? null
     : "create.connector.addressInvalid";
 }
@@ -457,17 +460,19 @@ export function templateConnectorBody(
   };
 }
 
-const HTTPS = /^https:\/\/\S+\.\S+/;
-
 export function templateConnectProblem(p: {
   signIn: TemplateSignIn;
   needsAddress: boolean;
+  target?: AddressTarget;
   address: string;
   secret: string;
   header: string | null;
   callbackUrl: string | null;
 }): TranslationKey | null {
-  if (p.needsAddress && !HTTPS.test(p.address.trim())) return "create.connector.addressInvalid";
+  if (p.needsAddress) {
+    const problem = addressProblem(p.address, p.target ?? "web");
+    if (problem) return problem;
+  }
   if (p.signIn === "key" && !p.secret.trim()) return "create.connector.secretMissing";
   if (p.signIn === "key" && p.header !== null && !p.header.trim()) {
     return "create.template.headerMissing";

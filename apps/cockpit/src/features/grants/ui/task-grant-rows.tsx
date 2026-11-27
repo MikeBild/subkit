@@ -15,7 +15,11 @@ import { apiCall } from "@/api/call";
 import { absolute, workflowHref, workflowSectionHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { RowsSkeleton } from "@/components/cockpit/patterns";
-import { useConnectorNames, useConnectorServices } from "@/features/connectors";
+import {
+  useConnectorCommands,
+  useConnectorNames,
+  useConnectorServices,
+} from "@/features/connectors";
 import { authorityProblems } from "@/features/grants/model/authority-issues";
 import { authorityReviewModel } from "@/features/grants/model/authority-review-model";
 import type { TranslationKey } from "@/lib/i18n";
@@ -109,6 +113,7 @@ function WorkflowReviewRow({ row, index }: { row: WorkflowRow; index: number }) 
   const { t } = useI18n();
   const connectorNames = useConnectorNames();
   const connectorServices = useConnectorServices();
+  const connectorCommands = useConnectorCommands();
   const summary = useSummaryText(row);
   const name = row.name ?? t("taskGrant.workflow.unnamed");
   const head = (
@@ -129,6 +134,7 @@ function WorkflowReviewRow({ row, index }: { row: WorkflowRow; index: number }) 
     preview: { manifest: row.manifest, approval_carries_over: false, schedules: [] },
     connectorNames,
     connectorServices,
+    connectorCommands,
     automation: { schedule: false, webhook: false },
     activation: false,
     carryOver: false,

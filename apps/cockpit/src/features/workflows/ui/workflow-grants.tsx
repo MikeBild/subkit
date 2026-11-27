@@ -18,7 +18,11 @@ import {
   Timeline,
   type TimelineItem,
 } from "@/components/cockpit/patterns";
-import { useConnectorNames, useConnectorServices } from "@/features/connectors";
+import {
+  useConnectorCommands,
+  useConnectorNames,
+  useConnectorServices,
+} from "@/features/connectors";
 import {
   authorityValidity,
   automationQueryKeys,
@@ -62,12 +66,14 @@ function useAuthorityModel(
 ) {
   const connectorNames = useConnectorNames();
   const connectorServices = useConnectorServices();
+  const connectorCommands = useConnectorCommands();
   if (!preview) return null;
   const triggers = automation.state?.triggers ?? [];
   return authorityReviewModel({
     preview,
     connectorNames,
     connectorServices,
+    connectorCommands,
     automation: {
       schedule: triggers.some((trigger) => trigger.kind === "schedule"),
       webhook: triggers.some((trigger) => trigger.kind === "hook"),

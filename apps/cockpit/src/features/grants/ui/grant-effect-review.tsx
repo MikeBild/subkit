@@ -62,7 +62,9 @@ function RowDetails({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompare
   const request = effect.boundary ? presentRequestBoundary(effect.boundary, number) : null;
   const storage = effect.storage ? presentStorageScope(effect.storage, number) : null;
   const toolBoundary = mcpBoundaryOf(effect);
-  const tool = toolBoundary ? presentMcpBoundary(toolBoundary, toolPinsCompared) : null;
+  const tool = toolBoundary
+    ? presentMcpBoundary(toolBoundary, toolPinsCompared, row.command ?? null)
+    : null;
   const classSentence = (name: string, rule: string) => {
     const key = CLASS_KEYS[rule];
     return key ? t(key, { name }) : t("authority.boundary.unknownRule", { name, rule });
@@ -118,7 +120,19 @@ function RowDetails({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompare
           </>
         ) : tool ? (
           <>
-            <p className="break-all font-mono">{`${effect.operation} ${tool.target}`}</p>
+            {tool.command && toolBoundary ? (
+              <>
+                <p
+                  className="break-all font-mono"
+                  data-testid={`authority-effect-command-${row.step_id}`}
+                >
+                  {t("connectorLocal.approval.command", { command: tool.command })}
+                </p>
+                <p className="break-all font-mono">{`${effect.operation} ${toolBoundary.tool}`}</p>
+              </>
+            ) : (
+              <p className="break-all font-mono">{`${effect.operation} ${tool.target}`}</p>
+            )}
             <p>{t(tool.fixed)}</p>
             {tool.variables.length > 0 && (
               <ul className="flex flex-col gap-0.5">
