@@ -176,20 +176,21 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
 
       let credential_persisted = false;
       if (p.credential) {
-        await persistCredential({
+        const outcome = await persistCredential({
           tenant_id: ctx.tenant_id,
           connector_id: existing.id,
           environment: p.environment,
           actor_id: ctx.actor_id,
           credential: p.credential,
+          correlation_id: ctx.tool_call_id ?? ctx.conversation_id,
           connectorConfig: (existing.config ?? {}) as Record<string, unknown>,
           driver: existing.driver,
           db: ctx.db as Db,
         });
-        credential_persisted = true;
+        credential_persisted = outcome?.credential_persisted ?? true;
       }
       clearDraftCredential(ctx.conversation_id);
-      if (credential_persisted) {
+      if (credential_persisted && !(existing.driver === "mcp" && p.credential?.mode === "oauth2")) {
         const actor = connectorActorFromToolContext(ctx);
         await completeConnectorReauthorization(ctx.db as Db, {
           tenant_id: ctx.tenant_id,
@@ -477,17 +478,18 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
 
   let credential_persisted = false;
   if (credential) {
-    await persistCredential({
+    const outcome = await persistCredential({
       tenant_id: ctx.tenant_id,
       connector_id: saved.id,
       environment: p.environment,
       actor_id: ctx.actor_id,
       credential,
+      correlation_id: ctx.tool_call_id ?? ctx.conversation_id,
       connectorConfig: (saved.config ?? {}) as Record<string, unknown>,
       driver: saved.driver,
       db: ctx.db as Db,
     });
-    credential_persisted = true;
+    credential_persisted = outcome?.credential_persisted ?? true;
   }
   clearDraftCredential(ctx.conversation_id);
   const sign_in = signsInLater ? await awaitInteractiveSignIn(ctx, saved) : null;

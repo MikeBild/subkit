@@ -141,6 +141,74 @@ describe("request_connector_reauth + credential re-issue", () => {
     expect(reauthClearedRow).toBeDefined();
   });
 
+  test.each([undefined, "client-secret"])(
+    "MCP client setup preserves reauth and replays the persisted save (%s)",
+    async (client_secret) => {
+      const connectorId = await seedBasicConnector(
+        `mcp-client-reauth-${client_secret ? "confidential" : "public"}`,
+      );
+      await ctx.testDb.db
+        .update(connectors)
+        .set({
+          driver: "mcp",
+          circuit_state: "open",
+          circuit_failure_count: 5,
+          auth_type: "oauth2",
+          config: { mcp: { auth: { kind: "oauth2" } } },
+        })
+        .where(eq(connectors.id, connectorId));
+      await markConnectorNeedsReauth(ctx.testDb.db, ctx.tenant_id, connectorId, "token_expired");
+      const { toolCtx } = await makeToolCtx(connectorId);
+      await toolCtx.setDraft({
+        workflow: { name: "", steps: [] },
+        connector: { saved_connector_id: connectorId },
+      });
+      const save = () =>
+        saveConnectorAtomic({
+          ctx: toolCtx,
+          environment: "dev",
+          credential: {
+            mode: "oauth2",
+            client_id: "registered-client",
+            ...(client_secret ? { client_secret } : {}),
+          },
+        });
+      expect((await save()).ok).toBe(true);
+      const [after] = await ctx.testDb.db
+        .select()
+        .from(connectors)
+        .where(eq(connectors.id, connectorId));
+      expect(after?.needs_reauth).toBe(true);
+      expect(after?.auth_failed_reason).toBe("token_expired");
+      expect(after?.circuit_state).toBe("open");
+      expect(after?.circuit_failure_count).toBe(5);
+      await ctx.testDb.db
+        .update(connectors)
+        .set({ config: { mcp: { auth: { kind: "oauth2", client_id: "newer-client" } } } })
+        .where(eq(connectors.id, connectorId));
+      expect((await save()).ok).toBe(true);
+      const [replayed] = await ctx.testDb.db
+        .select()
+        .from(connectors)
+        .where(eq(connectors.id, connectorId));
+      expect(replayed?.config).toEqual({
+        mcp: { auth: { kind: "oauth2", client_id: "newer-client" } },
+      });
+      const receipts = await ctx.testDb.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.resource_id, connectorId),
+            eq(auditLog.action, "connector.mcp_client_saved"),
+          ),
+        );
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]?.trace_id).toBe(toolCtx.conversation_id);
+      expect(receipts[0]?.metadata).toEqual({ credential_persisted: true });
+    },
+  );
+
   test("wrong tenant cannot re-issue: connector not found for a different tenant", async () => {
     const connectorId = await seedBasicConnector("basic-reauth-cross-tenant");
 
