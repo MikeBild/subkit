@@ -449,6 +449,7 @@ export const AuditAction = {
 
   CONNECTOR_MCP_HANDSHAKE_OK: "connector.mcp_handshake_ok",
   CONNECTOR_MCP_MANIFEST_DRIFT: "connector.mcp_manifest_drift",
+  CONNECTOR_MCP_CLIENT_SAVED: "connector.mcp_client_saved",
   CONNECTOR_MCP_CLIENT_REGISTERED: "connector.mcp_client_registered",
   MCP_EXTERNAL_TOOL_INVOKED: "mcp_external_tool.invoked",
   MCP_EXTERNAL_TOOL_PALETTE_ASSEMBLY_FAILED: "mcp_external_tool.palette_assembly_failed",

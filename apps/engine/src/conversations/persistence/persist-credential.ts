@@ -2,9 +2,13 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { runCognitoUserPasswordGrant } from "../../credentials/oauth2/client.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import type { Db } from "../../db/client.ts";
-import { auditLog, connectors as connectorsTable } from "../../db/schema/index.ts";
-import { withTenantScope } from "../../db/tenant-scope.ts";
+import {
+  auditLog,
+  connectors as connectorsTable,
+  type Db,
+  withTenantScope,
+  writeAudit,
+} from "../../db/index.ts";
 import { logger } from "../../logging/index.ts";
 import type { AtomicCredentialInput } from "./save-connector.ts";
 
@@ -167,10 +171,23 @@ export async function persistCredential(p: {
       .digest("hex");
     const receiptId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
     const outcome = await withTenantScope(p.db, p.tenant_id, async (tx) => {
-      const [receipt] = await tx
-        .insert(auditLog)
-        .values({
+      await tx
+        .select({ id: connectorsTable.id })
+        .from(connectorsTable)
+        .where(
+          and(eq(connectorsTable.id, p.connector_id), eq(connectorsTable.tenant_id, p.tenant_id)),
+        )
+        .for("update");
+      const [stored] = await tx
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.id, receiptId), eq(auditLog.tenant_id, p.tenant_id)));
+      if (stored) return stored.metadata as { credential_persisted: true };
+      const metadata = { credential_persisted: true as const };
+      await writeAudit(
+        {
           id: receiptId,
+          ts: new Date(),
           tenant_id: p.tenant_id,
           actor_type: p.actor_id ? "user" : "system",
           actor_id: p.actor_id,
@@ -179,18 +196,15 @@ export async function persistCredential(p: {
           resource_id: p.connector_id,
           result: "success",
           trace_id: p.correlation_id,
-          metadata: { credential_persisted: true },
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (!receipt) {
-        const [stored] = await tx
-          .select()
-          .from(auditLog)
-          .where(and(eq(auditLog.id, receiptId), eq(auditLog.tenant_id, p.tenant_id)));
-        if (!stored) throw new Error("MCP credential save receipt missing");
-        return stored.metadata as { credential_persisted: true };
-      }
+          ip: null,
+          user_agent: null,
+          before: null,
+          after: null,
+          reason: null,
+          metadata,
+        },
+        tx,
+      );
       const nextConfig = withMcpOAuthClient(p.connectorConfig ?? {}, cred.client_id);
       await tx
         .update(connectorsTable)
@@ -217,7 +231,7 @@ export async function persistCredential(p: {
           tx,
         );
       }
-      return receipt.metadata as { credential_persisted: true };
+      return metadata;
     });
     logger.info({
       module: "conversation_persistence",

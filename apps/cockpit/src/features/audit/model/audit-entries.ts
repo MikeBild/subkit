@@ -379,6 +379,7 @@ export const ACTION_KEYS: Record<string, TranslationKey> = {
   "knowledge_source.ingested": "audit.action.knowledgeIngested",
   "knowledge_source.refreshed": "audit.action.knowledgeRefreshed",
   "knowledge_source.analyzed": "audit.action.knowledgeAnalyzed",
+  "connector.mcp_client_saved": "audit.action.connectorMcpClientSaved",
   "connector.created": "audit.action.connectorCreated",
   "connector.updated": "audit.action.connectorUpdated",
   "connector.deleted": "audit.action.connectorDeleted",

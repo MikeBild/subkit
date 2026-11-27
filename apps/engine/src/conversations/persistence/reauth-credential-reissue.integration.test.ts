@@ -142,7 +142,7 @@ describe("request_connector_reauth + credential re-issue", () => {
   });
 
   test.each([undefined, "client-secret"])(
-    "MCP client setup preserves reauth and replays the persisted save (%s)",
+    "MCP client setup preserves reauth and replays concurrent saves (%s)",
     async (client_secret) => {
       const connectorId = await seedBasicConnector(
         `mcp-client-reauth-${client_secret ? "confidential" : "public"}`,
@@ -173,7 +173,8 @@ describe("request_connector_reauth + credential re-issue", () => {
             ...(client_secret ? { client_secret } : {}),
           },
         });
-      expect((await save()).ok).toBe(true);
+      const results = await Promise.all([save(), save(), save()]);
+      expect(results.every((result) => result.ok)).toBe(true);
       const [after] = await ctx.testDb.db
         .select()
         .from(connectors)
