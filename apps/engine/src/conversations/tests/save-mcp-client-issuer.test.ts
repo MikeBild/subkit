@@ -224,3 +224,53 @@ describe("saveConnectorAtomic — pre-registered MCP client without issuer", () 
     expect(await savedRow("mcp-issuer-down")).toBeUndefined();
   });
 });
+
+test("issuer discovery preserves concurrent edits and credential receipt replays", async () => {
+  const draft = draftFor("mcp-issuer-concurrent", { kind: "oauth2" });
+  const [row] = await ctx.db
+    .insert(connectors)
+    .values({
+      tenant_id,
+      slug: "mcp-issuer-concurrent",
+      display_name: "MCP",
+      driver: "mcp",
+      environment: "prod",
+      auth_type: "oauth2",
+      base_url: draft.connector!.base_url,
+      config: draft.connector!.config,
+    })
+    .returning();
+  const { tool } = await seed({ ...draft, connector: { saved_connector_id: row!.id } });
+  const server = authorizationServer(row!.base_url!);
+  const currentConfig = {
+    custom: "concurrent edit",
+    mcp: { transport: "http", auth: { kind: "oauth2" } },
+  };
+  let edited = false;
+  const fetchFn = (async (...args: Parameters<typeof fetch>) => {
+    if (!edited) {
+      edited = true;
+      await ctx.db
+        .update(connectors)
+        .set({ config: currentConfig })
+        .where(eq(connectors.id, row!.id));
+    }
+    return server.fetchFn(...args);
+  }) as typeof fetch;
+  const save = () =>
+    withSelfHostedDriverFetchForTests(fetchFn, () =>
+      saveConnectorAtomic({
+        ctx: tool,
+        environment: "prod",
+        credential: { mode: "oauth2", client_id: "registered-client" },
+      }),
+    );
+  expect((await save()).ok).toBe(true);
+  expect((await savedRow("mcp-issuer-concurrent"))?.config).toEqual({
+    ...currentConfig,
+    mcp: { ...currentConfig.mcp, auth: { kind: "oauth2", client_id: "registered-client", issuer } },
+  });
+  await ctx.db.update(connectors).set({ config: currentConfig }).where(eq(connectors.id, row!.id));
+  expect((await save()).ok).toBe(true);
+  expect((await savedRow("mcp-issuer-concurrent"))?.config).toEqual(currentConfig);
+});

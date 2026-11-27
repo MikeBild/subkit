@@ -176,14 +176,17 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       }
 
       let credential_persisted = false;
+      let discoveredMcpIssuer: string | undefined;
       if (p.credential && existing.driver === "mcp" && existing.auth_type === "oauth2") {
         const bound = await bindMcpClientIssuer(ctx, {
           base_url: existing.base_url,
           config: (existing.config ?? {}) as Record<string, unknown>,
           credential: p.credential,
-          connector_id: existing.id,
         });
         if (!bound.ok) return bound.result;
+        if (bound.discovered) {
+          discoveredMcpIssuer = (bound.config.mcp as { auth: { issuer: string } }).auth.issuer;
+        }
       }
       if (p.credential) {
         const outcome = await persistCredential({
@@ -194,6 +197,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           credential: p.credential,
           correlation_id: ctx.tool_call_id ?? ctx.conversation_id,
           connectorConfig: (existing.config ?? {}) as Record<string, unknown>,
+          ...(discoveredMcpIssuer ? { discoveredMcpIssuer } : {}),
           driver: existing.driver,
           db: ctx.db as Db,
         });

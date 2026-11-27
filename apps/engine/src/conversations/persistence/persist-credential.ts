@@ -10,6 +10,7 @@ import {
   writeAudit,
 } from "../../db/index.ts";
 import { logger } from "../../logging/index.ts";
+import { withMcpIssuer } from "./mcp-client-issuer.ts";
 import type { AtomicCredentialInput } from "./save-connector.ts";
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -42,6 +43,7 @@ export async function persistCredential(p: {
   correlation_id: string;
   connectorConfig?: Record<string, unknown> | null;
   driver?: string;
+  discoveredMcpIssuer?: string;
   db: Db;
 }): Promise<undefined | { credential_persisted: true }> {
   const cred = p.credential;
@@ -205,7 +207,14 @@ export async function persistCredential(p: {
         },
         tx,
       );
-      const nextConfig = withMcpOAuthClient(asRecord(connector?.config), cred.client_id);
+      let nextConfig = withMcpOAuthClient(asRecord(connector?.config), cred.client_id);
+      const currentIssuer = mcpAuthBlock(nextConfig).issuer;
+      if (
+        p.discoveredMcpIssuer &&
+        !(typeof currentIssuer === "string" && currentIssuer.length > 0)
+      ) {
+        nextConfig = withMcpIssuer(nextConfig, p.discoveredMcpIssuer);
+      }
       await tx
         .update(connectorsTable)
         .set({ config: nextConfig })

@@ -1,5 +1,3 @@
-import { and, eq } from "drizzle-orm";
-import { connectors } from "../../db/index.ts";
 import { logger } from "../../logging/index.ts";
 import { discoverMcpOAuthIssuer } from "../../mcp/index.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
@@ -43,7 +41,6 @@ export async function bindMcpClientIssuer(
     base_url: string | null | undefined;
     config: Record<string, unknown>;
     credential: { mode: string; client_id?: string } | undefined;
-    connector_id?: string;
   },
 ): Promise<McpIssuerBinding> {
   if (!preRegisteredClientNeedsIssuer(p.config, p.credential))
@@ -82,12 +79,6 @@ export async function bindMcpClientIssuer(
     };
   }
   const config = withMcpIssuer(p.config, found.issuer);
-  if (p.connector_id) {
-    await ctx.db
-      .update(connectors)
-      .set({ config, updated_at: new Date() })
-      .where(and(eq(connectors.tenant_id, ctx.tenant_id), eq(connectors.id, p.connector_id)));
-  }
   logger.info({
     module: "conversation_persistence",
     action: "save_connector.mcp_issuer_discovered",
