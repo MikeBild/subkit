@@ -3383,7 +3383,7 @@ What applies then:
 - It affects the items that need an approval: a version waits for approval, a schedule waits for an approval, an approval or a standing permission ends soon or is missing.
 - These items no longer trigger a push for you. The other person gets it when they are an active member of the workspace and may give the approval themselves. If they may not, the push stays with you.
 - A prepared invitation carries the role **Member**. This role may approve.
-- The items stay in your **Needs you** list, with “Waiting for approval from …”. If the person may not give the approval, that line is missing and the item stays your decision.
+- The items stay in your **Needs you** list, with “Waiting for approval from …”. If the person may not give the approval, that line is missing and the item stays your decision. `GET /v1/attention` returns the same person in the field `waiting_on`.
 - If the person is not in the workspace yet, everything stays with you until they have joined.
 
 What you read below the choice:
@@ -3435,7 +3435,6 @@ SubKit builds the links from `server.public_base_url`. Without it, the cards car
 - **The choice applies to push, not to the desktop app.** SubKit Desktop reads the list directly and follows the quiet hours you set in the app. More in “SubKit Desktop”.
 - **The summary only names the count per kind.** The **Needs you** list shows which items they are.
 - **A person without the right to approve gets no notifications.** If the person named is an active member but may not give the approval, the push stays with you, and **Settings** › **Setup** warns you. Your **Needs you** list then does not name the person, and the item stays your decision. Name a person who may approve.
-- **The Cockpit does not show whom an item waits for.** The API returns the field `waiting_on` for it.
 - **Messages already sent cannot be taken back.** When you switch to working hours, it applies from the next check on.
 
 ### If something does not work

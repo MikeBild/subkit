@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { overviewDe, overviewEn } from "../../apps/cockpit/src/lib/i18n/overview.ts";
 import {
   settingsPersonalDe,
   settingsPersonalEn,
@@ -15,12 +16,24 @@ const sectionOf = (guide: string, heading: RegExp) =>
 const setupLinePrefix = (title: string) => title.split(":")[0]?.replace(/^\S+ /, "") ?? title;
 
 const locales = [
-  { locale: "en", setup: setupEn, settings: settingsPersonalEn, limits: /^Limits$/ },
-  { locale: "de", setup: setupDe, settings: settingsPersonalDe, limits: /^Grenzen$/ },
+  {
+    locale: "en",
+    setup: setupEn,
+    settings: settingsPersonalEn,
+    overview: overviewEn,
+    limits: /^Limits$/,
+  },
+  {
+    locale: "de",
+    setup: setupDe,
+    settings: settingsPersonalDe,
+    overview: overviewDe,
+    limits: /^Grenzen$/,
+  },
 ];
 
 describe("notifications guide matches the released Cockpit controls (#532)", () => {
-  for (const { locale, setup, settings, limits } of locales) {
+  for (const { locale, setup, settings, overview, limits } of locales) {
     const guide = readGuide(locale);
     const zoneSection = sectionOf(guide, new RegExp(setup["setup.zone"], "i"));
     const limitsSection = sectionOf(guide, limits);
@@ -37,6 +50,11 @@ describe("notifications guide matches the released Cockpit controls (#532)", () 
 
     test(`${locale}: limits no longer claim critical breakthrough is API-only`, () => {
       expect(limitsSection).not.toContain("critical_breakthrough");
+    });
+
+    test(`${locale}: limits do not claim the Cockpit hides the delegate (#956)`, () => {
+      expect(limitsSection).not.toContain("waiting_on");
+      expect(guide).toContain(overview["overview.waitingOn"].replace(" {name}", " …"));
     });
 
     test(`${locale}: names the real control labels`, () => {

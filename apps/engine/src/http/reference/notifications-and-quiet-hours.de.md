@@ -92,7 +92,7 @@ Was dann gilt:
 - Betroffen sind die Punkte, die eine Freigabe brauchen: eine Version wartet auf Freigabe, ein Zeitplan wartet auf eine Freigabe, eine Freigabe oder eine Dauererlaubnis endet bald oder fehlt.
 - Diese Punkte lösen bei dir keinen Push mehr aus. Die andere Person bekommt ihn, wenn sie aktives Mitglied des Arbeitsbereichs ist und die Freigabe selbst erteilen darf. Darf sie das nicht, bleibt der Push bei dir.
 - Eine vorbereitete Einladung trägt die Rolle **Mitglied**. Diese Rolle darf freigeben.
-- In deiner Liste **Braucht dich** stehen die Punkte weiterhin, mit „Wartet auf Freigabe von …“. Darf die Person die Freigabe nicht erteilen, fehlt dieser Satz, und der Punkt bleibt deine Entscheidung.
+- In deiner Liste **Braucht dich** stehen die Punkte weiterhin, mit „Wartet auf Freigabe von …“. Darf die Person die Freigabe nicht erteilen, fehlt dieser Satz, und der Punkt bleibt deine Entscheidung. `GET /v1/attention` liefert dieselbe Person im Feld `waiting_on`.
 - Ist die Person noch nicht im Arbeitsbereich, bleibt alles bei dir, bis sie beigetreten ist.
 
 Was du unter der Auswahl liest:
@@ -144,7 +144,6 @@ SubKit baut die Links aus `server.public_base_url`. Fehlt der Wert, tragen die K
 - **Die Wahl gilt für Push, nicht für die Desktop-App.** SubKit Desktop liest die Liste direkt und richtet sich nach den Ruhezeiten, die du in der App einstellst. Mehr in „SubKit Desktop“.
 - **Die Zusammenfassung nennt nur die Anzahl je Art.** Welche Punkte es sind, zeigt die Liste **Braucht dich**.
 - **Eine Person ohne das Recht freizugeben bekommt keine Hinweise.** Ist die genannte Person aktives Mitglied, darf aber die Freigabe nicht erteilen, bleibt der Push bei dir, und **Einstellungen** › **Einrichtung** warnt dich. Deine Liste **Braucht dich** nennt die Person dann nicht, und der Punkt bleibt deine Entscheidung. Nenne eine Person, die freigeben darf.
-- **Das Cockpit zeigt nicht an, auf wen ein Punkt wartet.** Die API liefert dafür das Feld `waiting_on`.
 - **Bereits versendete Nachrichten lassen sich nicht zurückholen.** Stellst du auf Arbeitszeiten um, gilt das ab der nächsten Prüfung.
 
 ### Wenn etwas nicht klappt
