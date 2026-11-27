@@ -17,6 +17,11 @@ import {
   transcriptionFailureOutcome,
 } from "../core/transcription-failure.ts";
 import {
+  priorTranscription,
+  reserveTranscription,
+  settleTranscription,
+} from "../persistence/transcription-ledger.ts";
+import {
   transcribeAudio,
   transcriptionKeyOwner,
   transcriptionModelName,
@@ -108,6 +113,29 @@ describe.skipIf(skip)("transcription spend", () => {
     );
     const rows = await testDb.db.select().from(llmUsage).where(eq(llmUsage.tenant_id, hosted));
     expect(rows.map((row) => row.result)).toEqual(["key_rejected"]);
+  });
+
+  test("a hosted workspace settles a long multi-line transcript and replays it", async () => {
+    const key = { tenant_id: hosted, client_request_id: "00000000-0000-4000-8000-000000000918" };
+    const transcript = `${"Please check the café report before noon. ".repeat(20)}\nSecond line.`;
+    expect(Buffer.byteLength(transcript)).toBeGreaterThan(512);
+    const model = "openai/gpt-4o-mini-transcribe";
+    const reserved = await reserveTranscription(
+      { ...key, model, estimate_seconds: 60, user_id: null, actor_type: "user" },
+      testDb.db,
+    );
+    expect(reserved).toEqual({ kind: "reserved" });
+    const settled = await settleTranscription(
+      { ...key, model, audio_seconds: 42, latency_ms: 900, transcript },
+      testDb.db,
+    );
+    expect(settled).toBe(true);
+    expect(await priorTranscription(key, testDb.db)).toEqual({
+      kind: "replay",
+      text: transcript,
+      model,
+      latency_ms: 900,
+    });
   });
 
   test("the spend limit gates cloud transcription like every other model call", async () => {

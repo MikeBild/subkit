@@ -134,6 +134,13 @@
       "when": 1795723245027,
       "tag": "0018_owned_resources_replay_output",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795749871868,
+      "tag": "0019_hosted_guard_transcript",
+      "breakpoints": true
     }
   ]
 }
