@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { detectFormat, parseCsv, parseLoginCsv } from "./csv-import.ts";
+import { CSV_IMPORT_MAX_ROWS, detectFormat, parseCsv, parseLoginCsv } from "./csv-import.ts";
 
 const NOW = new Date("2026-11-27T00:00:00Z");
 
@@ -92,6 +92,40 @@ describe("parseLoginCsv", () => {
     expect(parseLoginCsv("", undefined, NOW)).toEqual({ error: "the file is empty" });
     expect(parseLoginCsv("a,b\n1,2", undefined, NOW)).toMatchObject({
       error: expect.stringContaining("Chrome"),
+    });
+  });
+
+  test("a row without a title is named after its website, or after its row", () => {
+    const parsed = parseLoginCsv(
+      ["name,url,username,password", ",https://www.shop.example/login,ada,pw1", ",,bob,pw2"].join(
+        "\n",
+      ),
+      undefined,
+      NOW,
+    );
+    if ("error" in parsed) throw new Error(parsed.error);
+    expect(parsed.logins.map((login) => [login.name, login.origin])).toEqual([
+      ["shop-example", "https://www.shop.example"],
+      ["login-3", null],
+    ]);
+  });
+
+  test("a file above the row limit is refused before any row is read", () => {
+    const header = "name,url,username,password\n";
+    const atLimit = parseLoginCsv(
+      header + "Shop,,ada,pw\n".repeat(CSV_IMPORT_MAX_ROWS),
+      undefined,
+      NOW,
+    );
+    expect("error" in atLimit).toBe(false);
+    expect(
+      parseLoginCsv(header + "Shop,,ada,pw\n".repeat(CSV_IMPORT_MAX_ROWS + 1), undefined, NOW),
+    ).toEqual({ error: `the file has more than ${CSV_IMPORT_MAX_ROWS} rows` });
+  });
+
+  test("a chosen format needs its password column", () => {
+    expect(parseLoginCsv("name,url,username,password\nShop,,ada,pw", "bitwarden", NOW)).toEqual({
+      error: "the bitwarden export needs a login_password column",
     });
   });
 });

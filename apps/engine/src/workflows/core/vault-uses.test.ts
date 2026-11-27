@@ -51,3 +51,10 @@ test("a browser sign-in or pay step names its login or card for the approval", (
   expect(stepVaultUses({ path: "/browser.pay", body: { card: "4242" } })).toEqual(["card:4242"]);
   expect(stepVaultUses({ path: "/browser.fill", body: { vault_item: "me.shop" } })).toEqual([]);
 });
+
+test("a browser step without a named login or card asks for no vault use", () => {
+  expect(stepVaultUses({ path: "/browser.pay", body: { vault_item: "me.shop" } })).toEqual([]);
+  expect(stepVaultUses({ path: "/browser.sign_in", body: { vault_item: "" } })).toEqual([]);
+  expect(stepVaultUses({ path: "/browser.sign_in" })).toEqual([]);
+  expect(stepVaultUses({ path: 7, body: { vault_item: "me.shop" } })).toEqual([]);
+});

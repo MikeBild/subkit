@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import migrationSql from "../migrations/0010_tenant_row_security_force.sql" with { type: "text" };
 import ownedResourcesSql from "../migrations/0017_owned_resources.sql" with { type: "text" };
+import vaultUsesSql from "../migrations/0021_vault_uses.sql" with { type: "text" };
 import {
   decideScopeEntry,
   decideTenantRolePreflight,
@@ -85,11 +86,22 @@ describe("decideScopeEntry", () => {
 
 describe("row scope policy", () => {
   test("the migration files are exactly what the builder renders", () => {
-    const later = ["webhook_held_deliveries", "owned_resources"];
+    const later = [
+      "webhook_held_deliveries",
+      "owned_resources",
+      "vault_uses",
+      "vault_secret_tickets",
+      "vault_payments",
+    ];
     expect(migrationSql).toBe(
       renderRowScopeMigration(ROW_SCOPED_TABLES.filter((table) => !later.includes(table))),
     );
     expect(ownedResourcesSql.endsWith(renderRowScopeMigration(["owned_resources"]))).toBe(true);
+    for (const table of ["vault_uses", "vault_secret_tickets", "vault_payments"]) {
+      const [, , create, enable, force] = rowScopePolicyStatements([table]);
+      expect(vaultUsesSql).toContain(`${create}\n--> statement-breakpoint\n${enable}`);
+      expect(vaultUsesSql).toContain(`${enable}\n--> statement-breakpoint\n${force}`);
+    }
   });
 
   test("every row-scoped table drops the retired policy, gets one policy and is forced", () => {

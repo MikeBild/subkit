@@ -7,6 +7,7 @@ import { commandArgsOf, deviceToolSpec, isVaultTool } from "./catalog.ts";
 import type { DeviceStepRecord } from "./history.ts";
 import { personalBoundary } from "./palette.ts";
 import {
+  formatAmount,
   namedRefs,
   payFieldFrames,
   payPageFingerprintSource,
@@ -287,7 +288,34 @@ describe("the model sees no values in a vault result", () => {
     expect(data).toMatchObject({ filled: true, submitted: true, outcome: "submitted" });
   });
 
+  test("a refused fill without a snapshot keeps the reason and adds no page", () => {
+    const result = vaultResultOf({
+      filled: false,
+      submitted: false,
+      outcome: "refused",
+      reason: "the page asked for a different card",
+    });
+    if (!result) throw new Error("result");
+    const data = vaultToolData(result, "nothing was entered", []);
+    expect(data).toEqual({
+      filled: false,
+      submitted: false,
+      outcome: "refused",
+      note: "nothing was entered",
+      reason: "the page asked for a different card",
+    });
+    expect(data).not.toHaveProperty("snapshot");
+  });
+
   test("an unexpected device output is not a vault result", () => {
     expect(vaultResultOf({ filled: true, value: "x" })).toBeNull();
+  });
+});
+
+describe("the amount the person confirms reads in their language", () => {
+  test("minor units become the major amount in the locale's currency format", () => {
+    expect(formatAmount(1250, "EUR", "de")).toBe("12,50\u00a0€");
+    expect(formatAmount(123450, "EUR", "en")).toBe("€1,234.50");
+    expect(formatAmount(999, "USD", "en")).toBe("$9.99");
   });
 });

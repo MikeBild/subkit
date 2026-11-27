@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { metadataOf, normalizeOrigins, parseKindValue, secretsOf } from "./kinds.ts";
+import { metadataOf, normalizeOrigins, parseKindValue, plainOf, secretsOf } from "./kinds.ts";
 
 const NOW = new Date("2026-11-27T00:00:00Z");
 const NEXT_YEAR = 2027;
@@ -138,6 +138,11 @@ describe("bank account, identity, address, note", () => {
     ).toContain("country");
   });
 
+  test("a field the kind does not know is named in the refusal", () => {
+    expect(refusal("note", { text: "door code", pin: "1234" })).toBe("unknown field pin");
+    expect(refusal("secret", { token: "t", extra: 1, more: 2 })).toBe("unknown field extra, more");
+  });
+
   test("note needs text and unknown kinds have no value", () => {
     expect(ok("note", { text: "door code" })).toEqual({ kind: "note", text: "door code" });
     expect(refusal("connector", {})).toContain("no value");
@@ -172,6 +177,7 @@ describe("metadata", () => {
       metadataOf({ kind: "address", line1: "x", postal_code: "1", city: "Berlin", country: "DE" }),
     ).toEqual({ city: "Berlin", country: "DE" });
     expect(metadataOf({ kind: "note", text: "x" })).toEqual({});
+    expect(metadataOf({ kind: "secret", token: "t" })).toEqual({});
   });
 
   test("secrets to redact are the sensitive values", () => {
@@ -189,6 +195,25 @@ describe("metadata", () => {
       }),
     ).toEqual(["4111111111111111"]);
     expect(secretsOf({ kind: "identity", full_name: "A", document_number: "X1" })).toEqual(["X1"]);
+    expect(secretsOf({ kind: "login", username: "u", password: "p" })).toEqual(["p"]);
+    expect(secretsOf({ kind: "secret", token: "tok" })).toEqual(["tok"]);
+    expect(
+      secretsOf({ kind: "bank_account", iban: "DE89370400440532013000", holder: "A" }),
+    ).toEqual(["DE89370400440532013000"]);
+    expect(secretsOf({ kind: "identity", full_name: "A" })).toEqual([]);
+    expect(
+      secretsOf({ kind: "address", line1: "x", postal_code: "1", city: "Berlin", country: "DE" }),
+    ).toEqual([]);
+    expect(secretsOf({ kind: "note", text: "door code" })).toEqual([]);
+  });
+
+  test("the stored plain value is the value without its kind", () => {
+    expect(plainOf({ kind: "login", username: "u", password: "p", totp_seed: "S" })).toEqual({
+      username: "u",
+      password: "p",
+      totp_seed: "S",
+    });
+    expect(plainOf({ kind: "note", text: "door code" })).toEqual({ text: "door code" });
   });
 });
 
