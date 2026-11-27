@@ -56,4 +56,22 @@ describe("rewriteRetiredProbePath", () => {
     if (!first.changed) throw new Error("expected a rewrite");
     expect(rewriteRetiredProbePath("jira", first.config)).toEqual({ changed: false });
   });
+
+  test("only plain objects count as a config or a probe", () => {
+    const retired = probe("/rest/api/3/myself");
+    const callable = Object.assign(() => undefined, { probe_endpoint: retired });
+    expect(rewriteRetiredProbePath("jira", callable)).toEqual({ changed: false });
+    const listed = Object.assign([], { probe_endpoint: retired });
+    expect(rewriteRetiredProbePath("jira", listed)).toEqual({ changed: false });
+    const callableProbe = Object.assign(() => undefined, { path: "/rest/api/3/myself" });
+    expect(rewriteRetiredProbePath("jira", { probe_endpoint: callableProbe })).toEqual({
+      changed: false,
+    });
+    const listedProbe = Object.assign([], { path: "/rest/api/3/myself" });
+    expect(rewriteRetiredProbePath("jira", { probe_endpoint: listedProbe })).toEqual({
+      changed: false,
+    });
+    expect(rewriteRetiredProbePath("jira", "text")).toEqual({ changed: false });
+    expect(rewriteRetiredProbePath("jira", { probe_endpoint: "text" })).toEqual({ changed: false });
+  });
 });

@@ -20,4 +20,11 @@ describe("connector write rejection", () => {
     });
     expect(connectorWriteRejectionDetails(CONNECTOR_TEMPLATE_CONFLICT)).toBeUndefined();
   });
+
+  test("the template conflict names both fields", () => {
+    expect(CONNECTOR_TEMPLATE_CONFLICT).toEqual({
+      code: "connector_template_conflict",
+      message: "clear_template_binding cannot be combined with template_slug: send one of them",
+    });
+  });
 });

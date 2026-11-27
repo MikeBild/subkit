@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createPublicKey, generateKeyPairSync } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { type ParsedKey, utils } from "ssh2";
 import {
   classifyKeyParseFailure,
@@ -297,5 +297,152 @@ describe("sftpKeyMessage", () => {
     expect(sftpKeyMessage("sftp_key_item_missing", { item: "k", environment: "dev" })).toContain(
       "in dev",
     );
+  });
+});
+
+describe("sftp auth messages", () => {
+  test("a bad vault item name explains what a name is", () => {
+    const refused = SftpAuthConfigSchema.safeParse({ ...keyAuth, private_key_item: "me" });
+    expect(refused.success).toBe(false);
+    expect(
+      refused.error?.issues.map((entry) => ({ path: entry.path, message: entry.message })),
+    ).toEqual([
+      {
+        path: ["private_key_item"],
+        message: "must be the name of a workspace vault item, for example sftp-deploy-key",
+      },
+    ]);
+  });
+
+  test("the auth type issue names both ways to sign in", () => {
+    expect(sftpAuthTypeIssue("bearer")).toEqual({
+      path: "auth_type",
+      message:
+        "an sftp connector signs in with a username and password (auth_type 'basic') or with an SSH key from the vault (auth_type 'none' and config.auth.method 'private_key')",
+    });
+  });
+
+  test("a key connector with a stored credential and a keyless one are told apart", () => {
+    expect(sftpAuthConsistencyIssue("basic", { auth: keyAuth })).toEqual({
+      path: "auth_type",
+      message:
+        "an sftp connector that signs in with an SSH key from the vault stores no credential — use auth_type 'none'",
+    });
+    expect(sftpAuthConsistencyIssue("none", {})).toEqual({
+      path: "config.auth",
+      message:
+        "an sftp connector without a stored password signs in with an SSH key — set config.auth to { method: 'private_key', username, private_key_item }",
+    });
+  });
+});
+
+describe("normalizePrivateKeyText edges", () => {
+  test("a lone carriage return is a line break too", () => {
+    expect(normalizePrivateKeyText(block("RSA PRIVATE KEY").replace(/\n/g, "\r"))).toBe(
+      block("RSA PRIVATE KEY"),
+    );
+  });
+
+  test("line breaks in text that is no block become LF", () => {
+    expect(normalizePrivateKeyText("first\r\nsecond\rthird")).toBe("first\nsecond\nthird");
+    const encrypted =
+      "-----BEGIN RSA PRIVATE KEY-----\r\nProc-Type: 4,ENCRYPTED\r\n\r\nQUJD\r\n-----END RSA PRIVATE KEY-----\r\n";
+    expect(normalizePrivateKeyText(encrypted)).toBe(
+      "-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\n\nQUJD\n-----END RSA PRIVATE KEY-----\n",
+    );
+  });
+
+  test("text before or after the block leaves it untouched", () => {
+    const inner = block("RSA PRIVATE KEY").trim();
+    expect(normalizePrivateKeyText(`junk ${inner}`)).toBe(`junk ${inner}`);
+    expect(normalizePrivateKeyText(`${inner} trailing`)).toBe(`${inner} trailing`);
+  });
+});
+
+describe("privateKeyFormat edges", () => {
+  test("the header must open the text, leading whitespace aside", () => {
+    expect(privateKeyFormat(`junk ${block("RSA PRIVATE KEY")}`)).toBeNull();
+    expect(privateKeyFormat(`\n  ${block("RSA PRIVATE KEY")}`)).toBe("rsa");
+  });
+});
+
+describe("OpenSSH container written for an Ed25519 key", () => {
+  function reader(blob: Buffer) {
+    let at = 0;
+    const take = (length: number) => {
+      const out = blob.subarray(at, at + length);
+      at += length;
+      return out;
+    };
+    const u32 = () => take(4).readUInt32BE(0);
+    const text = () => take(u32());
+    return { take, u32, text, rest: () => blob.subarray(at) };
+  }
+
+  test("carries the public blob, matching check ints, an empty comment and 1..n padding", () => {
+    const pair = pkcs8("ed25519");
+    const converted = pkcs8ToSsh2Key(pair.privateKey, null);
+    if (!converted.ok) throw new Error(converted.reason);
+    const jwk = createPrivateKey(pair.privateKey).export({ format: "jwk" });
+    const seed = Buffer.from(jwk.d as string, "base64url");
+    const publicKey = Buffer.from(jwk.x as string, "base64url");
+    const lines = converted.key.split("\n");
+    expect(lines[0]).toBe("-----BEGIN OPENSSH PRIVATE KEY-----");
+    expect(lines.at(-2)).toBe("-----END OPENSSH PRIVATE KEY-----");
+    expect(lines.at(-1)).toBe("");
+    const blob = Buffer.from(lines.slice(1, -2).join(""), "base64");
+    const outer = reader(blob);
+    expect(outer.take(15).toString("latin1")).toBe("openssh-key-v1\0");
+    expect(outer.text().toString()).toBe("none");
+    expect(outer.text().toString()).toBe("none");
+    expect(outer.text().length).toBe(0);
+    expect(outer.u32()).toBe(1);
+    const publicBlob = outer.text();
+    const inner = reader(publicBlob);
+    expect(inner.text().toString()).toBe("ssh-ed25519");
+    expect(inner.text()).toEqual(publicKey);
+    expect(inner.rest().length).toBe(0);
+    const privateSection = outer.text();
+    expect(outer.rest().length).toBe(0);
+    expect(privateSection.length % 8).toBe(0);
+    const priv = reader(privateSection);
+    const check = createHash("sha256").update(publicBlob).digest().readUInt32BE(0);
+    expect(priv.u32()).toBe(check);
+    expect(priv.u32()).toBe(check);
+    expect(priv.text().toString()).toBe("ssh-ed25519");
+    expect(priv.text()).toEqual(publicKey);
+    expect(priv.text()).toEqual(Buffer.concat([seed, publicKey]));
+    expect(priv.text().length).toBe(0);
+    const padding = priv.rest();
+    expect([...padding]).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe("sftpKeyMessage wording", () => {
+  const facts = { item: "sftp-key", environment: "prod" };
+
+  test("every code says what is wrong and what to do", () => {
+    expect({
+      sftp_auth_invalid: sftpKeyMessage("sftp_auth_invalid", facts),
+      sftp_key_item_missing: sftpKeyMessage("sftp_key_item_missing", facts),
+      sftp_key_item_unreadable: sftpKeyMessage("sftp_key_item_unreadable", facts),
+      sftp_key_not_private_key: sftpKeyMessage("sftp_key_not_private_key", facts),
+      sftp_key_format_unsupported: sftpKeyMessage("sftp_key_format_unsupported", facts),
+      sftp_key_passphrase_required: sftpKeyMessage("sftp_key_passphrase_required", facts),
+      sftp_key_passphrase_wrong: sftpKeyMessage("sftp_key_passphrase_wrong", facts),
+      sftp_key_rejected: sftpKeyMessage("sftp_key_rejected", facts),
+    }).toEqual({
+      sftp_auth_invalid: "config.auth of this sftp connector is invalid; nothing was sent",
+      sftp_key_item_missing:
+        "no workspace vault secret named sftp-key in prod; store the key in the vault as a secret first",
+      sftp_key_item_unreadable: "vault item sftp-key can't be opened with the current key",
+      sftp_key_not_private_key: "vault item sftp-key does not hold an SSH private key",
+      sftp_key_format_unsupported:
+        "vault item sftp-key holds a key type SFTP sign-in does not support; store an Ed25519, RSA or ECDSA (P-256, P-384, P-521) key in OpenSSH, PEM or PKCS#8 format",
+      sftp_key_passphrase_required:
+        "the key in vault item sftp-key is encrypted; set config.auth.passphrase_item to the vault secret that holds its passphrase",
+      sftp_key_passphrase_wrong: "the passphrase does not open the key in vault item sftp-key",
+      sftp_key_rejected: "the server refused the SSH key from vault item sftp-key",
+    });
   });
 });

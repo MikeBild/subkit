@@ -373,3 +373,181 @@ describe("checkContractExchange", () => {
     ).toEqual([]);
   });
 });
+
+describe("checkContractExchange wording", () => {
+  const bearer = () => exchange("airtable");
+  const credential = (slug: string, fixture: ExchangeContract) =>
+    contractCredential(template(slug), fixture);
+
+  test("a differing URL and method name what was sent and what was expected", () => {
+    const fixture = bearer();
+    const first = exact(fixture).requests[0]!;
+    expect(
+      checkContractExchange(
+        template("airtable"),
+        fixture,
+        {
+          output: fixture.expect.output,
+          requests: [{ ...first, url: `${first.url}/other`, method: "post" }],
+        },
+        credential("airtable", fixture),
+      ),
+    ).toEqual([
+      { code: "url_mismatch", message: `sent ${first.url}/other, expected ${first.url}` },
+      { code: "method_mismatch", message: "sent post, expected GET" },
+    ]);
+  });
+
+  test("a missing auth header names the header the credential belongs in", () => {
+    const fixture = bearer();
+    const first = exact(fixture).requests[0]!;
+    const missing: ContractIssue = {
+      code: "auth_misplaced",
+      message: "the credential was not placed in the Authorization header",
+    };
+    expect(
+      checkContractExchange(
+        template("airtable"),
+        fixture,
+        { output: fixture.expect.output, requests: [{ ...first, headers: {} }] },
+        credential("airtable", fixture),
+      ),
+    ).toEqual([missing]);
+    const sqs = exchange("aws-sqs");
+    const sent = exact(sqs).requests[0]!;
+    expect(
+      checkContractExchange(
+        template("aws-sqs"),
+        sqs,
+        { output: sqs.expect.output, requests: [{ ...sent, headers: {} }] },
+        credential("aws-sqs", sqs),
+      ),
+    ).toEqual([missing]);
+  });
+
+  test("a leaked credential in the body is reported next to the body mismatch", () => {
+    const fixture = bearer();
+    const first = exact(fixture).requests[0]!;
+    expect(
+      checkContractExchange(
+        template("airtable"),
+        fixture,
+        {
+          output: fixture.expect.output,
+          requests: [{ ...first, body: `{"t":"${CONTRACT_SECRETS.token}"}` }],
+        },
+        credential("airtable", fixture),
+      ),
+    ).toEqual([
+      { code: "secret_leak", message: "the credential appears in the request body" },
+      {
+        code: "body_mismatch",
+        message: "a request body was sent but the fixture declares none",
+      },
+    ]);
+  });
+
+  test("a query credential is guarded in headers and body, not in the URL it belongs in", () => {
+    const fixture = exchange("browserless");
+    const first = exact(fixture).requests[0]!;
+    const run = (change: Partial<typeof first>) =>
+      checkContractExchange(
+        template("browserless"),
+        fixture,
+        { output: fixture.expect.output, requests: [{ ...first, ...change }] },
+        credential("browserless", fixture),
+      );
+    expect(run({ headers: { "x-copy": CONTRACT_SECRETS.token } })).toEqual([
+      { code: "secret_leak", message: "the credential appears in the x-copy header" },
+    ]);
+    expect(run({ body: CONTRACT_SECRETS.token })).toEqual([
+      { code: "secret_leak", message: "the credential appears in the request body" },
+      { code: "body_mismatch", message: "a request body was sent but the fixture declares none" },
+    ]);
+    expect(run({})).toEqual([]);
+  });
+
+  test("a body that is absent, null or empty is no body", () => {
+    const fixture = { ...bearer(), request: { ...bearer().request, method: "POST" as const } };
+    const first = { ...exact(fixture).requests[0]!, method: "POST" };
+    const run = (body: unknown, sent: string | null) =>
+      checkContractExchange(
+        template("airtable"),
+        { ...fixture, request: { ...fixture.request, ...(body === undefined ? {} : { body }) } },
+        { output: fixture.expect.output, requests: [{ ...first, body: sent }] },
+        credential("airtable", fixture),
+      );
+    const unexpected: ContractIssue = {
+      code: "body_mismatch",
+      message: "a request body was sent but the fixture declares none",
+    };
+    expect(run(undefined, "{}")).toEqual([unexpected]);
+    expect(run(null, "{}")).toEqual([unexpected]);
+    expect(run(null, "")).toEqual([]);
+    expect(run({ a: 1 }, '{"a":2}')).toEqual([
+      { code: "body_mismatch", message: "the request body differs from the fixture" },
+    ]);
+  });
+
+  test("a text body is compared as text even when it looks like JSON", () => {
+    const fixture = { ...bearer(), request: { ...bearer().request, method: "POST" as const } };
+    const first = { ...exact(fixture).requests[0]!, method: "POST" };
+    const run = (body: string, sent: string) =>
+      codes(
+        checkContractExchange(
+          template("airtable"),
+          { ...fixture, request: { ...fixture.request, body } },
+          { output: fixture.expect.output, requests: [{ ...first, body: sent }] },
+          credential("airtable", fixture),
+        ),
+      );
+    expect(run('{"a":1}', '{"a":1}')).toEqual([]);
+    expect(run("1", "1")).toEqual([]);
+    expect(run('{"a": 1}', '{"a":1}')).toEqual(["body_mismatch"]);
+  });
+});
+
+describe("structural JSON comparison", () => {
+  const fixture = () => ({
+    ...exchange("airtable"),
+    request: { ...exchange("airtable").request, method: "POST" as const },
+  });
+  const run = (body: unknown, sent: string) => {
+    const base = fixture();
+    const first = { ...exact(base).requests[0]!, method: "POST", body: sent };
+    return codes(
+      checkContractExchange(
+        template("airtable"),
+        { ...base, request: { ...base.request, body } },
+        { output: base.expect.output, requests: [first] },
+        contractCredential(template("airtable"), base),
+      ),
+    );
+  };
+
+  test("an array is not an object with index keys", () => {
+    expect(run({ a: [1] }, '{"a":{"0":1}}')).toEqual(["body_mismatch"]);
+    expect(run({ a: { 0: 1 } }, '{"a":[1]}')).toEqual(["body_mismatch"]);
+  });
+
+  test("array items are separated", () => {
+    expect(run({ a: [1, 2] }, '{"a":[12]}')).toEqual(["body_mismatch"]);
+    expect(run({ a: [12] }, '{"a":[1,2]}')).toEqual(["body_mismatch"]);
+    expect(run({ a: [1, 2] }, '{"a":[1,2]}')).toEqual([]);
+  });
+
+  test("keys are compared in sorted order whatever the order they arrive in", () => {
+    const ascending = { a: 1, b: 2, c: 3, d: 4, e: 5 };
+    const descending = { e: 5, d: 4, c: 3, b: 2, a: 1 };
+    expect(run(ascending, JSON.stringify(descending))).toEqual([]);
+    expect(run(descending, JSON.stringify(ascending))).toEqual([]);
+    expect(run({ c: 3, a: 1, e: 5, b: 2, d: 4 }, JSON.stringify(ascending))).toEqual([]);
+    expect(run(ascending, JSON.stringify({ c: 3, a: 1, e: 5, b: 2, d: 4 }))).toEqual([]);
+    expect(run({ x: { b: 1, a: 2 }, w: 0 }, '{"w":0,"x":{"a":2,"b":1}}')).toEqual([]);
+  });
+
+  test("a property that is undefined does not count", () => {
+    expect(run({ a: undefined, b: 1 }, '{"b":1}')).toEqual([]);
+    expect(run({ b: 1 }, '{"b":1}')).toEqual([]);
+  });
+});
