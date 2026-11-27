@@ -10,6 +10,8 @@ import {
   REFUSING_SINK,
 } from "./actions.ts";
 import type { AgentBrowserClient, AgentBrowserResult } from "./agent-browser.ts";
+import type { SecretTickets } from "./vault-actions.ts";
+import type { ScriptLedger } from "./vault-fill.ts";
 
 export const layout = browserLayout(
   "/data",
@@ -119,6 +121,8 @@ export function setup(
     sink?: DownloadSink;
     refusal?: string | null;
     download?: Uint8Array;
+    tickets?: SecretTickets;
+    scripts?: ScriptLedger;
   } = {},
 ) {
   const memory = memoryFiles(options.seed);
@@ -154,6 +158,8 @@ export function setup(
       teardowns.push(partition);
     },
     onStep: (step) => steps.push(step),
+    ...(options.tickets ? { tickets: options.tickets } : {}),
+    ...(options.scripts ? { scripts: options.scripts } : {}),
   });
   return { adapter, calls, rules, steps, teardowns, memory };
 }

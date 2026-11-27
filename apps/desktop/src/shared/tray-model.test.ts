@@ -100,6 +100,11 @@ describe("tray menu", () => {
       enabled: true,
     });
     expect(item(trayMenu({ ...base, connection: "offline" }), "needsYou").enabled).toBe(false);
+    const approval = { kind: "payment" as const, href: "/settings?area=vault", count: 2 };
+    expect(item(trayMenu({ ...base, approval }), "approval").label).toBe("Zahlung freigeben (2)");
+    expect(trayMenu({ ...base, approval, connection: "offline" }).length).toBe(
+      trayMenu({ ...base, connection: "offline" }).length,
+    );
   });
 
   test("a pause turns into resume and names the time banners come back", () => {

@@ -1,10 +1,15 @@
+import { VAULT_KIND_FIELDS } from "./vault-kinds.ts";
+
 export const VAULT_ITEM_NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 export const VAULT_PERSON_SEGMENT = "me";
 export const VAULT_PLACEHOLDER_ROOT = "secret";
-export const VAULT_FIELDS = ["token", "username", "password"] as const;
+export const VAULT_FIELDS = [
+  ...new Set(Object.values(VAULT_KIND_FIELDS).flat()),
+] as readonly (typeof VAULT_KIND_FIELDS)[keyof typeof VAULT_KIND_FIELDS][number][];
 
 export type VaultScope = "workspace" | "person";
 export type VaultField = (typeof VAULT_FIELDS)[number];
+export const CONNECTOR_STEP_FIELDS = ["token", "username", "password"] as const;
 
 export interface VaultHandle {
   readonly scope: VaultScope;

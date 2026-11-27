@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { CONVERSATION_REFERENCE_TYPES } from "@shared/conversation-reference.ts";
-import { LOCAL_CONFIRMATION_KIND, LocalConfirmationSchema } from "@shared/device/confirmation.ts";
+import { LOCAL_CONFIRMATION_KIND, LOCAL_CONFIRMATION_PROMPT } from "@shared/device/confirmation.ts";
 import type { ConversationTurnOutcome } from "../../../conversations/public/authoring.ts";
 import {
   PlaybookViewSchema,
@@ -241,9 +241,7 @@ export const ConversationDetailSchema = z
                   .optional(),
                 subjects: z.array(z.string()).optional(),
                 transfer_bytes: z.number().int().positive().optional(),
-                device: LocalConfirmationSchema.optional().describe(
-                  "The device, capability, redacted target and deadline of a local step that asks (kind local_confirmation).",
-                ),
+                ...LOCAL_CONFIRMATION_PROMPT,
                 kind: z
                   .enum([...CONFIRM_PROMPT_KINDS, LOCAL_CONFIRMATION_KIND])
                   .optional()

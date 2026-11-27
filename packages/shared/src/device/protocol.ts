@@ -22,6 +22,8 @@ export const DEVICE_COMMAND_KINDS = [
   "browser.snapshot",
   "browser.screenshot",
   "browser.handover",
+  "browser.sign_in",
+  "browser.pay",
   "computer.apps",
   "computer.open",
   "computer.snapshot",

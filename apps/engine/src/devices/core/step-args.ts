@@ -23,6 +23,8 @@ export const LOCAL_STEP_KINDS = [
   "browser.extract",
   "browser.screenshot",
   "browser.download",
+  "browser.sign_in",
+  "browser.pay",
   "computer.apps",
   "computer.snapshot",
   "computer.screenshot",
@@ -59,7 +61,10 @@ export interface StepArgsPlan {
   args: Record<string, unknown>;
   element: ElementTarget | null;
   app_id: string | null;
+  fields?: Readonly<Record<string, ElementTarget>>;
 }
+
+export const VAULT_STEP_KINDS: ReadonlySet<string> = new Set(["browser.sign_in", "browser.pay"]);
 
 export type StepArgsResult =
   | { ok: true; plan: StepArgsPlan }
@@ -148,6 +153,51 @@ const DownloadBody = z
   .object({ element, folder_id: folderId, name: z.string().min(1).max(255) })
   .strict();
 
+const origin = z.string().min(1).max(2048);
+const SIGN_IN_FIELDS = ["username", "password", "code", "submit"] as const;
+const PAY_FIELDS = ["number", "exp", "exp_month", "exp_year", "holder", "cvv", "submit"] as const;
+const VAULT_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  "browser.sign_in": SIGN_IN_FIELDS,
+  "browser.pay": PAY_FIELDS,
+};
+const SignInBody = z
+  .object({
+    origin,
+    vault_item: z.string().min(1).max(200),
+    kind: z.enum(["password", "totp"]).optional(),
+    username: element.optional(),
+    password: element.optional(),
+    code: element.optional(),
+    submit: element.optional(),
+  })
+  .strict()
+  .refine((body) => SIGN_IN_FIELDS.some((field) => body[field] !== undefined), {
+    message: "name at least one of username, password, code or submit",
+  });
+const PayBody = z
+  .object({
+    origin,
+    card: z.string().min(1).max(200),
+    amount_minor: z.number().int().min(1).max(100_000_000),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    number: element,
+    exp: element.optional(),
+    exp_month: element.optional(),
+    exp_year: element.optional(),
+    holder: element.optional(),
+    cvv: element.optional(),
+    submit: element,
+  })
+  .strict();
+
+function vaultFields(kind: string, body: Body): Record<string, ElementTarget> {
+  return Object.fromEntries(
+    (VAULT_FIELDS[kind] ?? []).flatMap((field) =>
+      body[field] === undefined ? [] : [[field, body[field] as ElementTarget]],
+    ),
+  );
+}
+
 const AppBody = z.object({ app_id: appId }).strict();
 const AppElementBody = AppBody.extend({ element }).strict();
 const BODIES: Record<LocalStepKind, z.ZodType> = {
@@ -166,6 +216,8 @@ const BODIES: Record<LocalStepKind, z.ZodType> = {
   "browser.wait": WaitBody,
   "browser.extract": ExtractBody,
   "browser.download": DownloadBody,
+  "browser.sign_in": SignInBody,
+  "browser.pay": PayBody,
   "computer.apps": Empty,
   "computer.snapshot": AppBody,
   "computer.screenshot": AppBody,
@@ -232,7 +284,11 @@ function filesArgs(kind: LocalStepKind, body: Body): Record<string, unknown> {
   }
 }
 
-function browserArgs(body: Body): Record<string, unknown> {
+function browserArgs(kind: LocalStepKind, body: Body): Record<string, unknown> {
+  if (VAULT_STEP_KINDS.has(kind)) {
+    const fields = VAULT_FIELDS[kind] ?? [];
+    return Object.fromEntries(Object.entries(body).filter(([key]) => !fields.includes(key)));
+  }
   const { element: _element, ...rest } = body;
   if (body.action === "scroll") return { ...rest, pixels: body.pixels ?? 600 };
   if (body.for === "load") return { ...rest, state: body.state ?? "load" };
@@ -263,8 +319,9 @@ function coverage(kind: LocalStepKind, body: Body, boundary: DeviceSubBoundary):
   if (capability === "browser") {
     if (!boundary.sites || boundary.sites.length === 0)
       return "This workflow's approval names no website for this device.";
-    if (typeof body.url === "string") {
-      const origin = URL.parse(body.url)?.origin;
+    const named = typeof body.url === "string" ? body.url : body.origin;
+    if (typeof named === "string") {
+      const origin = URL.parse(named)?.origin;
       if (!boundary.sites.some((site) => site.origin === origin))
         return "This website is not part of this workflow's approval.";
     }
@@ -310,7 +367,7 @@ export function parseLocalStep(input: Omit<StepArgsInput, "boundary">): ParsedLo
     capability === "files"
       ? filesArgs(kind, body)
       : capability === "browser"
-        ? { ...browserArgs(body), partition: input.partition }
+        ? { ...browserArgs(kind, body), partition: input.partition }
         : computerArgs(body);
   return {
     ok: true,
@@ -320,6 +377,7 @@ export function parseLocalStep(input: Omit<StepArgsInput, "boundary">): ParsedLo
       args,
       element: (body.element as ElementTarget | undefined) ?? null,
       app_id: typeof body.app_id === "string" ? body.app_id : null,
+      ...(VAULT_STEP_KINDS.has(kind) ? { fields: vaultFields(kind, body) } : {}),
     },
   };
 }

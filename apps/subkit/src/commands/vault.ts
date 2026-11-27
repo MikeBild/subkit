@@ -1,8 +1,18 @@
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
 import type { CredentialBody } from "../engine-client/connectors.ts";
-import type { VaultItem } from "../engine-client/vault.ts";
+import type { VaultItem, VaultItemCreate } from "../engine-client/vault.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+import {
+  type EntryPrompts,
+  isEntryKind,
+  loginBody,
+  maskedSummary,
+  originsArg,
+  promptStructuredValue,
+  structuredValueFromJson,
+  terminalPrompts,
+} from "./vault-entries.ts";
 import {
   defaultCredentialMode,
   parseVaultEnvironment,
@@ -208,6 +218,7 @@ export function vaultRows(items: readonly VaultItem[]) {
     environment: item.environment,
     version: item.version,
     connector: item.connector?.slug ?? "",
+    summary: maskedSummary(item),
     last_used_at: item.last_used_at ?? "",
   }));
 }
@@ -220,6 +231,7 @@ const VAULT_COLUMNS = [
   "environment",
   "version",
   "connector",
+  "summary",
   "last_used_at",
 ];
 
@@ -227,7 +239,11 @@ const listCommand = defineCommand({
   meta: { name: "list", description: "List vault items: names and metadata, never values" },
   args: {
     scope: { type: "string", description: "workspace | person" },
-    kind: { type: "string", description: "connector | secret | login | template_client" },
+    kind: {
+      type: "string",
+      description:
+        "connector | secret | login | template_client | card | bank_account | identity | address | note",
+    },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
@@ -267,6 +283,8 @@ const showCommand = defineCommand({
         process.stdout.write(
           `${item.name}  ${item.kind}  ${item.scope}  ${item.environment}  v${item.version}\n`,
         );
+        const summary = maskedSummary(item);
+        if (summary) process.stdout.write(`${summary}\n`);
         if (item.kind === "secret" || item.kind === "login") {
           process.stdout.write(`handle: ${handle}\n`);
         }
@@ -279,17 +297,63 @@ const showCommand = defineCommand({
   },
 });
 
+export async function entryBody(
+  kind: string,
+  args: { username?: string | undefined; origins?: string | undefined; totp?: boolean | undefined },
+  stdin: NodeJS.ReadStream = process.stdin,
+  prompts: EntryPrompts = terminalPrompts(),
+): Promise<Partial<VaultItemCreate>> {
+  if (kind === "secret") {
+    return { token: stdin.isTTY ? await prompts.hidden("Value:") : await readSecretValue(stdin) };
+  }
+  if (kind === "login") {
+    if (!args.username) throw new Error("a login needs --username");
+    const origins = originsArg(args.origins);
+    if (stdin.isTTY) {
+      const password = await prompts.hidden("Password:");
+      if (!password) throw new Error("the password is empty");
+      const totp_seed = args.totp
+        ? await prompts.hidden("One-time code key or otpauth:// link:")
+        : "";
+      return loginBody(password, args.username, { totp_seed, origins });
+    }
+    const [password = "", totp_seed] = (await readSecretValue(stdin)).split(/\r?\n/);
+    return loginBody(password, args.username, {
+      totp_seed: args.totp ? totp_seed : undefined,
+      origins,
+    });
+  }
+  if (args.origins) throw new Error("only a login takes --origins");
+  return {
+    value: stdin.isTTY
+      ? await promptStructuredValue(kind, prompts)
+      : structuredValueFromJson(await readSecretValue(stdin)),
+  };
+}
+
 const addCommand = defineCommand({
   meta: {
     name: "add",
     description:
-      "Add a secret or a login. The token or password is read from stdin or a hidden prompt, never from arguments.",
+      "Add a secret, login, card, bank account, identity, address or note. Values are read from hidden prompts or stdin, never from arguments: a secret's token; a login's password (and with --totp the one-time code key on a second line); for the other kinds one JSON object. Cards, bank accounts and identities are always personal; a card never takes its security code.",
   },
   args: {
     name: { type: "positional", required: true, description: "Handle name, e.g. crm-token" },
-    kind: { type: "string", default: "secret", description: "secret | login" },
+    kind: {
+      type: "string",
+      default: "secret",
+      description: "secret | login | card | bank_account | identity | address | note",
+    },
     username: { type: "string", description: "login: the username" },
-    scope: { type: "string", default: "workspace", description: "workspace | person" },
+    origins: {
+      type: "string",
+      description: "login: the websites it may sign in to, e.g. https://shop.example",
+    },
+    totp: { type: "boolean", description: "login: also ask for the one-time code key" },
+    scope: {
+      type: "string",
+      description: "workspace | person (default: person for card, bank_account, identity)",
+    },
     env: { type: "string", default: "prod", description: "dev | prod" },
     description: { type: "string", description: "What the item is for" },
     json: { type: "boolean", description: "JSON output" },
@@ -299,21 +363,34 @@ const addCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const kind = String(args.kind);
-        if (kind !== "secret" && kind !== "login") throw new Error("--kind is secret or login");
-        if (kind === "login" && !args.username) throw new Error("a login needs --username");
-        const value = await readSecretValue();
+        if (!isEntryKind(kind)) {
+          throw new Error("--kind is secret, login, card, bank_account, identity, address or note");
+        }
+        const personalOnly = kind === "card" || kind === "bank_account" || kind === "identity";
+        const scope = args.scope ? String(args.scope) : personalOnly ? "person" : "workspace";
+        if (personalOnly && scope !== "person") {
+          throw new Error(`a ${kind} is personal; leave out --scope or use --scope person`);
+        }
+        const body = await entryBody(kind, {
+          username: args.username,
+          origins: args.origins,
+          totp: Boolean(args.totp),
+        });
         const item = await client.createVaultItem({
           kind,
           name: String(args.name),
-          scope: String(args.scope) as "workspace" | "person",
+          scope: scope as "workspace" | "person",
           environment: String(args.env) as "dev" | "prod",
           ...(args.description ? { description: String(args.description) } : {}),
-          ...(kind === "secret"
-            ? { token: value }
-            : { username: String(args.username), password: value }),
+          ...body,
         });
         if (args.json) process.stdout.write(`${JSON.stringify(item)}\n`);
-        else process.stdout.write(`✓ ${item.name} saved (version ${item.version})\n`);
+        else {
+          const summary = maskedSummary(item);
+          process.stdout.write(
+            `✓ ${item.name} saved (version ${item.version})${summary ? `  ${summary}` : ""}\n`,
+          );
+        }
       },
       { json: Boolean(args.json) },
     );
@@ -323,7 +400,8 @@ const addCommand = defineCommand({
 const rotateCommand = defineCommand({
   meta: {
     name: "rotate",
-    description: "Replace the value of a secret or login. The new value is read from stdin.",
+    description:
+      "Replace the value of a vault item. A secret's token or a login's password comes from stdin; a card, bank account, identity, address or note takes all its fields again from hidden prompts or one JSON object on stdin.",
   },
   args: {
     id: { type: "positional", required: true, description: "Vault item id" },
@@ -336,6 +414,15 @@ const rotateCommand = defineCommand({
     const client = makeClient();
     return withCommandErrors(async () => {
       const item = await client.getVaultItem(String(args.id));
+      if (item.kind !== "secret" && item.kind !== "login" && isEntryKind(item.kind)) {
+        const body = await entryBody(item.kind, {});
+        const updated = await client.updateVaultItem(
+          item.id,
+          body.value === undefined ? {} : { value: body.value },
+        );
+        process.stdout.write(`✓ ${updated.name} rotated to version ${updated.version}\n`);
+        return;
+      }
       const value = await readSecretValue();
       const updated = await client.updateVaultItem(
         item.id,
@@ -409,7 +496,7 @@ export const vaultCommand = defineCommand({
   meta: {
     name: "vault",
     description:
-      "The vault (Tresor): secrets, logins and connector credentials. Workflows name an item as \u0024{secret.<name>}; values never reach the model.",
+      "The vault (Tresor): secrets, logins, cards, bank accounts, identities, addresses, notes and connector credentials. Workflows name an item as \u0024{secret.<name>}; values never reach the model.",
   },
   subCommands: {
     list: listCommand,

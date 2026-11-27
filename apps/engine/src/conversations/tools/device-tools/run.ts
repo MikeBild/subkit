@@ -5,20 +5,26 @@ import type { Db } from "../../../db/client.ts";
 import { dispatchedOutcome, parseCommandArgs } from "../../../devices/core/command-args.ts";
 import { conversationCommandId } from "../../../devices/core/command-id.ts";
 import { localAgenticRefusal } from "../../../devices/core/run-source.ts";
-import { sendDeviceCommand } from "../../../devices/dispatch.ts";
 import { activeAllowances } from "../../../devices/registry.ts";
 import { languageFor } from "../../../identity/index.ts";
 import {
   browserPartition,
   commandArgsOf,
   type DeviceToolSpec,
+  isVaultTool,
 } from "../../core/device-tools/catalog.ts";
 import {
   bindingHash,
   confirmationQuestion,
   confirmationTarget,
 } from "../../core/device-tools/confirm.ts";
-import { filledBy, resolveRef, sameElement, stepRecord } from "../../core/device-tools/history.ts";
+import {
+  filledBy,
+  resolveRef,
+  sameElement,
+  stepRecord,
+  uncertainSignatures,
+} from "../../core/device-tools/history.ts";
 import {
   eligibleDevices,
   personalBoundary,
@@ -28,6 +34,7 @@ import {
   turnRunSource,
 } from "../../core/device-tools/palette.ts";
 import {
+  changedUnknown,
   type DeviceToolOutput,
   deviceToolOutput,
   stoppedOutput,
@@ -52,21 +59,18 @@ import {
   recordPersonCover,
   taskCoverJob,
 } from "../../instruction-cover/gate.ts";
+import { deviceSignature } from "../../instruction-cover/job.ts";
 import { interactivePersonRefusal } from "../../instruction-cover/session.ts";
 import { requestLocalConfirmation } from "../../local-confirmation.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
 import { taskRunMarkerOf } from "../sdk-wrap/task-run-guard.ts";
+import { send, toolResult } from "./send.ts";
+import { dispatchVaultPending, executeVaultTool } from "./vault.ts";
 
 const DEVICE_ID = z.string().uuid().optional().describe("Only when several devices can do this.");
 
 export function deviceToolInput(spec: DeviceToolSpec) {
   return spec.input.extend({ device_id: DEVICE_ID });
-}
-
-function toolResult(output: DeviceToolOutput): ToolResult {
-  return output.ok
-    ? { ok: true, data: output.data }
-    : { ok: false, error_code: output.error_code, message: output.message, data: output.data };
 }
 
 interface Turn {
@@ -129,38 +133,6 @@ function text(input: Record<string, unknown>, key: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
-async function send(
-  db: Db,
-  p: {
-    readonly tenant_id: string;
-    readonly tool_call_id: string;
-    readonly pending: PendingDeviceCommand;
-    readonly command_id: string;
-    readonly kind: DeviceCommandKind;
-    readonly args: Record<string, unknown>;
-    readonly signal: AbortSignal;
-  },
-) {
-  const { pending } = p;
-  return await sendDeviceCommand(
-    { db, signal: p.signal },
-    {
-      command_id: p.command_id,
-      tenant_id: p.tenant_id,
-      device_id: pending.device_id,
-      execution_id: null,
-      task_run_id: pending.owner.kind === "task_run" ? pending.owner.id : null,
-      conversation_id: pending.owner.kind === "conversation" ? pending.owner.id : null,
-      step_id: pending.tool,
-      authority_id: null,
-      manifest_digest: null,
-      kind: p.kind,
-      args: p.args,
-      source: pending.source,
-    },
-  );
-}
-
 export async function dispatchPending(
   db: Db,
   p: {
@@ -174,6 +146,7 @@ export async function dispatchPending(
   const { pending } = p;
   if (localAgenticRefusal(pending.source) !== null)
     return stoppedOutput("not_started_by_person", localAgenticRefusal(pending.source));
+  if (pending.vault) return await dispatchVaultPending(db, p);
   if (p.recheck && pending.ref !== null && pending.tool.startsWith("browser_")) {
     const checked = await send(db, {
       ...p,
@@ -206,7 +179,7 @@ export async function dispatchPending(
       db,
       p.tenant_id,
       p.tool_call_id,
-      stepRecord(pending, done, p.tool_call_id),
+      stepRecord(pending, done, p.tool_call_id, changedUnknown(output)),
     );
   }
   return output;
@@ -265,6 +238,33 @@ export async function executeDeviceTool(
     since: job.started_at,
     except_call: tool_call_id,
   });
+  if (isVaultTool(spec.name)) {
+    const owner =
+      turn.task_run_id !== null
+        ? { kind: "task_run" as const, id: turn.task_run_id }
+        : { kind: "conversation" as const, id: ctx.conversation_id };
+    return await executeVaultTool(db, {
+      spec,
+      ctx,
+      input,
+      device_id,
+      source,
+      partition: browserPartition(
+        turn.task_id !== null
+          ? { kind: "task", id: turn.task_id }
+          : { kind: "chat", id: ctx.conversation_id },
+      ),
+      owner,
+      tool_call_id,
+      task_run_id: turn.task_run_id,
+      task_id: turn.task_id,
+      request: covering.request,
+      job,
+      message_id: covering.message_id,
+      steps,
+      now,
+    });
+  }
   const resolved = resolveRef(spec, input, steps);
   if ("ok" in resolved) return toolResult(resolved);
   const assembled = assembleDeviceStep({
@@ -309,10 +309,13 @@ export async function executeDeviceTool(
     element: resolved.element,
     partition: spec.capability === "browser" ? partition : null,
     filled,
+    ...(assembled.step.phase === "commit"
+      ? { step_signature: deviceSignature(assembled.step) }
+      : {}),
   };
   const decision = decideDeviceTool({
     request: covering.request,
-    job,
+    job: { ...job, uncertain_signatures: uncertainSignatures(steps) },
     assembled,
     ask_before_writing: ctx.ask_before_writing === true,
     now,

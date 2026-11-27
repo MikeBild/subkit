@@ -23,6 +23,7 @@ import {
   localStepArgs,
   parseLocalStep,
   type StepArgsPlan,
+  VAULT_STEP_KINDS,
   windowFor,
 } from "../../../../devices/core/step-args.ts";
 import { deviceStepError, deviceStepOutput } from "../../../../devices/core/step-output.ts";
@@ -43,6 +44,7 @@ import {
   type RequestStepDriver,
   requireConnector,
 } from "./context.ts";
+import { payStep, signInStep, type VaultSession } from "./local-vault.ts";
 
 type LocalDriverKind = keyof typeof LOCAL_DRIVER_CAPABILITY;
 
@@ -268,6 +270,19 @@ async function executeLocal(driver: LocalDriverKind, d: RequestDispatch): Promis
     pin: pin ? { authority_id: pin.authority_id, manifest_digest: pin.manifest_digest } : null,
     next: 0,
   };
+  if (VAULT_STEP_KINDS.has(planned.plan.kind)) {
+    const vault: VaultSession = Object.assign(session, {
+      device_owner: session.source?.device_owner ?? null,
+    });
+    const viaSession = async (kind: DeviceCommandKind, args: Record<string, unknown>) => {
+      const sent = await send(session, kind, args);
+      return sent.ok ? { ok: true as const, output: sent.output } : sent;
+    };
+    const fields = planned.plan.fields ?? {};
+    return planned.plan.kind === "browser.pay"
+      ? await payStep(vault, viaSession, planned.plan.args, fields)
+      : await signInStep(vault, viaSession, planned.plan.args, fields);
+  }
   const prepared = await finalArgs(session, planned.plan);
   if (!prepared.ok) return prepared.step;
   if (!parseCommandArgs(planned.plan.kind, prepared.args).ok)

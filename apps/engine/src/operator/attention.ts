@@ -33,6 +33,7 @@ import {
   taskAttentionScope,
 } from "./task-attention.ts";
 import { registerTenantStateCache } from "./tenant-state.ts";
+import { withVaultPaymentAttention } from "./vault-payment-attention.ts";
 
 export {
   ATTENTION_REASONS,
@@ -232,7 +233,10 @@ export async function buildAttention(
   const paired = await withPairApprovals(db, principal, waited, facts.pair_requests, now).catch(
     () => waited,
   );
-  const projectedItems = withDeviceAttention(principal, paired, facts);
+  const devices = withDeviceAttention(principal, paired, facts);
+  const projectedItems = await withVaultPaymentAttention(db, principal, devices, now).catch(
+    () => devices,
+  );
   const snoozes =
     principal.kind === "user" && projectedItems.length > 0
       ? await activeSnoozes(db, { tenant_id: tenantId, user_id: principal.id }, now).catch(() => [])

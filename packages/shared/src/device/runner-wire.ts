@@ -14,6 +14,7 @@ export const RUNNER_ROUTE_PATHS = {
   uploadChunk: `${RUNNER_ROUTE_PREFIX}uploads/{id}/chunks/{n}`,
   uploadCommit: `${RUNNER_ROUTE_PREFIX}uploads/{id}/commit`,
   upload: `${RUNNER_ROUTE_PREFIX}uploads/{id}`,
+  secretTicket: `${RUNNER_ROUTE_PREFIX}secret-tickets/{id}/claim`,
 } as const;
 
 const withId = (path: string, id: string) => path.replace("{id}", encodeURIComponent(id));
@@ -26,4 +27,5 @@ export const RUNNER_ROUTES = {
   claim: (id: string) => withId(RUNNER_ROUTE_PATHS.claim, id),
   progress: (id: string) => withId(RUNNER_ROUTE_PATHS.progress, id),
   result: (id: string) => withId(RUNNER_ROUTE_PATHS.result, id),
+  secretTicket: (id: string) => withId(RUNNER_ROUTE_PATHS.secretTicket, id),
 } as const;

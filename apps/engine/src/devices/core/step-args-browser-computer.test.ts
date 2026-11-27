@@ -282,7 +282,7 @@ describe("computer bodies", () => {
   });
 
   test("every runnable kind has a body and an argument schema", () => {
-    expect(LOCAL_STEP_KINDS).toHaveLength(25);
+    expect(LOCAL_STEP_KINDS).toHaveLength(27);
     for (const kind of LOCAL_STEP_KINDS)
       expect(parseCommandArgs(kind, { nonsense: true }).ok).toBe(false);
   });

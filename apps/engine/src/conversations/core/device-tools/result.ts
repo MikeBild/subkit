@@ -71,6 +71,14 @@ export function successData(tool: string, output: unknown, call_id: string): Bag
 
 const CHANGED_UNKNOWN = new Set(["device_lost_during_write", "delivery_uncertain"]);
 
+export function changedUnknownCode(code: unknown): boolean {
+  return typeof code === "string" && CHANGED_UNKNOWN.has(code);
+}
+
+export function changedUnknown(output: DeviceToolOutput): boolean {
+  return !output.ok && changedUnknownCode(output.error_code);
+}
+
 export const CHECK_FIRST =
   "The input may have reached the page or app. Read the page or app (snapshot or extract) before you repeat this step; never repeat it blindly.";
 
@@ -112,6 +120,20 @@ const STOP_MESSAGES: Readonly<Record<string, string>> = {
   outside_device_boundary: "This is outside what the device allows.",
   other_job: "This step belongs to another request.",
   job_expired: "The request this step belonged to has ended.",
+  origin_not_secure: "SubKit uses vault items only on https pages (or on this computer).",
+  origin_mismatch:
+    "The origin you named is not the origin of the snapshot. Compare the exact origin of the page; a look-alike address is a different website.",
+  origin_not_bound:
+    "This login is not saved for this website. Check the exact origin; ask the person whether the login belongs to this site, and let them add the website to the login in the vault.",
+  vault_item_not_found:
+    "There is no such vault item you may use. Ask the person to save it in the vault through a private form; never ask for the value in the chat.",
+  vault_item_forbidden: "You may not use this vault item.",
+  vault_item_changed: "The vault item changed since it was approved. Ask again.",
+  totp_missing: "This login has no one-time code key. Hand the browser to the person for the code.",
+  already_used:
+    "This was already submitted once, or its outcome is uncertain. Never submit again: take a snapshot and check the page.",
+  payment_not_approved:
+    "The payment was not approved with the card's security code, so nothing was paid.",
 };
 
 export function stoppedOutput(code: string, detail: string | null = null): DeviceToolFailure {

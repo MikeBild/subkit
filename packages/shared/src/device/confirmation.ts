@@ -15,6 +15,18 @@ export const LocalConfirmationSchema = z
   .strict();
 export type LocalConfirmation = z.infer<typeof LocalConfirmationSchema>;
 
+export const LOCAL_CONFIRMATION_PROMPT = {
+  device: LocalConfirmationSchema.optional().describe(
+    "The device, capability, redacted target and deadline of a local step that asks (kind local_confirmation).",
+  ),
+  payment_id: z
+    .uuid()
+    .optional()
+    .describe(
+      "Set when the local step pays with a card: approve the payment with POST /v1/vault/payments/{payment_id}/approve (CVV) instead of confirming here. Confirming without an approved payment pays nothing.",
+    ),
+} as const;
+
 const CarrierSchema = z.looseObject({ device: LocalConfirmationSchema });
 
 export function localConfirmationOf(value: unknown): LocalConfirmation | null {

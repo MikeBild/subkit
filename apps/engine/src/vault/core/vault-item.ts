@@ -5,11 +5,18 @@ import {
   type VaultScope,
   vaultItemNameFrom,
 } from "@shared/vault-handle.ts";
+import {
+  isVaultEntryKind,
+  type VaultEntryKind,
+  type VaultEntryValue,
+  type VaultKind,
+} from "@shared/vault-kinds.ts";
+import { secretsOf } from "./kinds.ts";
 
-export type VaultItemKind = "connector" | "secret" | "login" | "template_client";
-export type VaultEntryKind = "secret" | "login";
+export type VaultItemKind = VaultKind;
+export type { VaultEntryKind };
 export type VaultEnvironment = "dev" | "prod";
-export type VaultAction = "read" | "write" | "rotate" | "delete" | "reveal";
+export type VaultAction = "read" | "write" | "rotate" | "delete" | "reveal" | "use";
 
 export const VAULT_PERMISSION: Readonly<Record<VaultAction, string>> = {
   read: "vault:read",
@@ -17,6 +24,7 @@ export const VAULT_PERMISSION: Readonly<Record<VaultAction, string>> = {
   rotate: "vault:rotate",
   delete: "vault:delete",
   reveal: "vault:reveal",
+  use: "vault:use",
 };
 
 export interface VaultViewer {
@@ -29,9 +37,7 @@ export interface VaultItemFacts {
   readonly owner_user_id: string | null;
 }
 
-export type VaultValue =
-  | { readonly kind: "secret"; readonly token: string }
-  | { readonly kind: "login"; readonly username: string; readonly password: string };
+export type VaultValue = VaultEntryValue;
 
 const CONNECTOR_NAME_BASE = 54;
 
@@ -54,7 +60,7 @@ export function vaultScopeOf(item: Pick<VaultItemFacts, "owner_user_id">): Vault
 }
 
 export function isEditableKind(kind: VaultItemKind): kind is VaultEntryKind {
-  return kind === "secret" || kind === "login";
+  return isVaultEntryKind(kind);
 }
 
 export function vaultAccess(
@@ -71,7 +77,7 @@ export function vaultAccess(
 }
 
 export function vaultValueOf(
-  kind: VaultEntryKind,
+  kind: "secret" | "login",
   input: {
     token?: string | undefined;
     username?: string | undefined;
@@ -90,10 +96,11 @@ export interface VaultLoginPatch {
   readonly kind: "login_patch";
   readonly username?: string;
   readonly password?: string;
+  readonly totp_seed?: string | null;
 }
 
 export function vaultRotationOf(
-  kind: VaultEntryKind,
+  kind: "secret" | "login",
   input: {
     token?: string | undefined;
     username?: string | undefined;
@@ -117,21 +124,25 @@ export function mergedLoginValue(
   stored: Readonly<Record<string, string>>,
   patch: VaultLoginPatch,
 ): VaultValue | string {
-  return vaultValueOf("login", {
+  const merged = vaultValueOf("login", {
     username: patch.username ?? stored.username,
     password: patch.password ?? stored.password,
   });
+  const totp_seed = patch.totp_seed === undefined ? stored.totp_seed : patch.totp_seed;
+  if (typeof merged === "string" || merged.kind !== "login" || !totp_seed) return merged;
+  return { ...merged, totp_seed };
 }
 
 export function vaultFieldValue(value: VaultValue, field: VaultField | null): string | null {
   if (value.kind === "secret") return field === null || field === "token" ? value.token : null;
+  if (value.kind !== "login") return null;
   if (field === "username") return value.username;
   if (field === "password") return value.password;
   return null;
 }
 
 export function vaultSecretsOf(value: VaultValue): string[] {
-  return value.kind === "secret" ? [value.token] : [value.password];
+  return secretsOf(value);
 }
 
 export function handleMatches(

@@ -1,5 +1,6 @@
 import authFlows from "./seeds/auth-flows.md" with { type: "text" };
 import browserPageScrapeQuirks from "./seeds/browser-page-scrape-quirks.md" with { type: "text" };
+import browserTasks from "./seeds/browser-tasks.md" with { type: "text" };
 import codingAgentSetup from "./seeds/coding-agent-setup.md" with { type: "text" };
 import connectorCreationGuidance from "./seeds/connector-creation-guidance.md" with {
   type: "text",
@@ -80,6 +81,7 @@ interface EmbeddedSeedFile {
 export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "auth-flows.md", content: authFlows },
   { file: "browser-page-scrape-quirks.md", content: browserPageScrapeQuirks },
+  { file: "browser-tasks.md", content: browserTasks },
   { file: "coding-agent-setup.md", content: codingAgentSetup },
   { file: "connector-creation-guidance.md", content: connectorCreationGuidance },
   { file: "data-handling.md", content: dataHandling },

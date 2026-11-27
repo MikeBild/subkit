@@ -603,7 +603,9 @@ async function fetchCredential(ctx: ResolverContext, connectorId: string) {
       )
       .limit(1),
   );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row || row.mode === "structured") return null;
+  return { ...row, mode: row.mode };
 }
 
 async function fetchCredentialFields(ctx: ResolverContext, connectorId: string): Promise<string[]> {

@@ -41,6 +41,8 @@ describe("device tool catalog", () => {
       ["browser_wait", "browser.wait", null],
       ["browser_extract", "browser.extract", "browser"],
       ["browser_screenshot", "browser.screenshot", null],
+      ["browser_sign_in", "browser.sign_in", null],
+      ["browser_pay", "browser.pay", null],
       ["browser_handover", "browser.handover", null],
       ["computer_handover", "computer.handover", null],
       ["computer_apps", "computer.apps", null],

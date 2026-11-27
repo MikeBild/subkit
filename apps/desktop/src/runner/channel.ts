@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { SecretTicketClaimSchema } from "@shared/device/browser.ts";
 import {
   type DeviceCommand,
   DeviceCommandSchema,
@@ -43,6 +44,7 @@ export interface RunnerChannel {
   putChunk(uploadId: string, n: number, bytes: Uint8Array): Promise<void>;
   commitUpload(uploadId: string, body: UploadCommit): Promise<unknown>;
   abortUpload(uploadId: string): Promise<void>;
+  claimSecretTicket(ticketId: string): Promise<Map<string, string> | null>;
 }
 
 export interface HttpChannelOptions {
@@ -148,6 +150,23 @@ export function createHttpChannel(options: HttpChannelOptions): RunnerChannel {
     },
     async abortUpload(uploadId) {
       await send("DELETE", RUNNER_UPLOAD_ROUTES.abort(uploadId), null);
+    },
+    async claimSecretTicket(ticketId) {
+      const response = await send("POST", RUNNER_ROUTES.secretTicket(ticketId), null);
+      if ([404, 409, 410].includes(response.status)) return null;
+      if (!response.ok)
+        throw new ChannelError(response.status, `The server answered ${response.status}.`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      try {
+        const parsed = SecretTicketClaimSchema.safeParse(
+          JSON.parse(new TextDecoder().decode(bytes)),
+        );
+        return parsed.success ? new Map(Object.entries(parsed.data.values)) : null;
+      } catch {
+        return null;
+      } finally {
+        bytes.fill(0);
+      }
     },
     async stream(onEvent, signal) {
       const response = await options.fetch(url(RUNNER_ROUTES.stream), {

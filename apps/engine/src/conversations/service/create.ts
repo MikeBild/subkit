@@ -18,6 +18,7 @@ import { createEmptyDraftDocument, withFocusedExecution } from "../authoring-sta
 import type { ConversationVisibility } from "../core/access.ts";
 import { normalizeTaskRunMarker } from "../core/draft.ts";
 import type { ConversationSurface } from "../lifecycle-view.ts";
+import { withholdPaymentData } from "../payment-data-guard.ts";
 import { appendMessage } from "../persistence/index.ts";
 import { type ConversationReference, dedupeReferences } from "../references.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
@@ -302,7 +303,7 @@ export async function createConversation(
       conversation_id: row.id,
       ...(p.principal !== undefined ? { principal: p.principal } : {}),
     });
-    initialMessage = rewrite.text;
+    initialMessage = withholdPaymentData(rewrite.text).text;
     const persistedReferences = references.length > 0 ? references : null;
     const initialText = initialMessage;
     initialMessageId = await retryTransient(

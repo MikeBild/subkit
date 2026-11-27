@@ -1,4 +1,5 @@
 export * from "./connections/index.ts";
+export { deserializePlain } from "./credential-value.ts";
 export * from "./oauth2/client.ts";
 export * from "./oauth2/local-origin.ts";
 export * from "./oauth2/redirect-uri.ts";

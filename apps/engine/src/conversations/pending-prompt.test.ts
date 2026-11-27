@@ -72,3 +72,36 @@ test("projects the provider URL only for a pending OAuth completion", () => {
   ).toBeUndefined();
   expect(pendingPrompt({ question: " " })).toEqual({});
 });
+
+test("a card payment confirmation carries its payment id for the approval panel", () => {
+  const device = {
+    device_id: "dev-1",
+    capability: "browser",
+    target: "pay · https://shop.example.com · €12.34 · Visa •••• 4242",
+    deadline_at: "2030-01-01T00:00:00.000Z",
+    command_id: null,
+    binding_hash: null,
+  };
+  const payment_id = "6f1c2b9e-4a7d-4c1e-9b3a-2d5e8f7a1c04";
+  const pay = pendingPrompt(
+    {
+      kind: "local_confirmation",
+      question: "Should SubKit do this on your device?",
+      target: { tool: "browser_pay", args: { origin: "https://shop.example.com", payment_id } },
+      device,
+    },
+    "ask_user_confirm",
+  );
+  expect(pay.prompt?.payment_id).toBe(payment_id);
+  const signIn = pendingPrompt(
+    {
+      kind: "local_confirmation",
+      question: "Should SubKit do this on your device?",
+      target: { tool: "browser_sign_in", args: { origin: "https://shop.example.com" } },
+      device,
+    },
+    "ask_user_confirm",
+  );
+  expect(signIn.prompt?.payment_id).toBeUndefined();
+  expect(signIn.prompt?.device?.device_id).toBe("dev-1");
+});

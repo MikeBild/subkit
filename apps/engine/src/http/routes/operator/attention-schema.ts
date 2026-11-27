@@ -127,6 +127,20 @@ const AttentionItem = z
       .describe(
         "Present on an item that needs an approval when the viewer named someone else as their approver: the item waits for that person, who is notified instead of the viewer.",
       ),
+    vault: z
+      .object({
+        kind: z.enum(["payment", "sign_in"]),
+        id: z.string(),
+        origin: z.string(),
+        conversation_id: z.string().nullable(),
+        amount_minor: z.number().int().optional(),
+        currency: z.string().optional(),
+        card: z.object({ brand: z.string(), last4: z.string() }).optional(),
+      })
+      .optional()
+      .describe(
+        "Present on a pending payment or sign-in with the vault: id is the payment id or the tool call id. amount_minor is in the currency's minor unit; card shows only brand and last 4 digits.",
+      ),
     actions: z.array(AttentionAction),
   })
   .openapi("AttentionItem");

@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { SecretTicketClaimSchema } from "@shared/device/browser.ts";
 import {
   DeviceCommandSchema,
   DeviceResultSchema,
@@ -37,6 +38,7 @@ import {
 } from "../../devices/index.ts";
 import { scheduleScreenshotExpiry } from "../../devices/screenshot-retention.ts";
 import { workspaceLanguage } from "../../identity/index.ts";
+import { claimSecretTicket } from "../../vault/index.ts";
 import type { AppEnv } from "../openapi.ts";
 import { streamShutdownSignal } from "../stream-shutdown.ts";
 import { streamTenantSSE } from "../tenant-stream.ts";
@@ -341,6 +343,42 @@ const uploadAbortRoute = createRoute({
   },
 });
 
+const TicketParam = z.object({
+  id: z
+    .string()
+    .uuid()
+    .openapi({ param: { name: "id", in: "path" } }),
+});
+
+const secretTicketRoute = createRoute({
+  method: "post",
+  path: RUNNER_ROUTE_PATHS.secretTicket,
+  tags: ["device-runner"],
+  summary: "Take the vault values for one sign-in or payment command, once",
+  description:
+    "A ticket belongs to one device and one command and lives 60 s. It is handed out once, only while its command is claimed by this device; afterwards and after expiry it answers 410. Keep the values in memory only for this command and overwrite them when it ends.",
+  request: { params: TicketParam },
+  responses: {
+    200: {
+      description: "The values for this one command",
+      content: { "application/json": { schema: SecretTicketClaimSchema } },
+    },
+    ...runnerFailures,
+    404: {
+      description: "No such ticket for this device",
+      content: { "application/json": { schema: Failure } },
+    },
+    409: {
+      description: "The ticket's command is not claimed by this device right now",
+      content: { "application/json": { schema: Failure } },
+    },
+    410: {
+      description: "The ticket was already taken or expired",
+      content: { "application/json": { schema: Failure } },
+    },
+  },
+});
+
 async function runnerOf(
   db: Db,
   principal: ResolvedPrincipal | undefined,
@@ -389,6 +427,24 @@ export function registerDeviceRunnerRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     if (!claimed.ok) return c.json({ code: claimed.code }, claimed.status);
     return c.json(claimed.command, 200, { "cache-control": "no-store" });
+  });
+
+  app.openapi(secretTicketRoute, async (c) => {
+    const runner = await runnerOf(c.get("db"), c.get("principal"));
+    if (!runner) return c.json(NOT_A_RUNNER, 403);
+    const claimed = await claimSecretTicket(
+      c.get("db"),
+      {
+        tenant_id: runner.tenant_id,
+        device_id: runner.device_id,
+        ticket_id: c.req.valid("param").id,
+      },
+      new Date(),
+    );
+    if (!claimed.ok) return c.json({ code: claimed.code }, claimed.status);
+    return c.json({ values: claimed.values, expires_at: claimed.expires_at.toISOString() }, 200, {
+      "cache-control": "no-store",
+    });
   });
 
   app.openapi(progressRoute, async (c) => {

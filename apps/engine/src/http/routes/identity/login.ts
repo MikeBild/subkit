@@ -176,6 +176,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!redirectTo) return browserStateError(c, 400, "invalid_state");
     const target = new URL(c.req.url);
     target.searchParams.set("redirect_to", redirectTo);
+    if (loginState.reauth === true) target.searchParams.set("reauth", "1");
     const handler = oidcProvider(selected, c.get("db"), installationId);
     const cookie = c.req.header("cookie");
     return (

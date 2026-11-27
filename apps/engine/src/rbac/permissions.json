@@ -94,6 +94,11 @@
     "description": "Reveal the value of a workspace vault item",
     "resource_type": "vault"
   },
+  {
+    "name": "vault:use",
+    "description": "Use a workspace login in a browser task without seeing its value",
+    "resource_type": "vault"
+  },
 
   { "name": "skill:read", "description": "Read skills", "resource_type": "skill" },
   { "name": "skill:write", "description": "Create or update skills", "resource_type": "skill" },

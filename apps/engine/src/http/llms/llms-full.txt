@@ -4220,6 +4220,93 @@ Channel threads started before this change become shared with their next message
 | A conversation link answers “not found” | The conversation is private to someone else, or it was deleted. | Ask the owner to share it. |
 | “Only the owner writes in this conversation.” | The conversation is shared, but it is not yours. | Fork it to continue on your own. |
 | **Share with the team** is missing in the menu | The conversation is not yours, or it belongs to a task run. | Ask the owner, or fork it. |
+## Sign in and pay in the browser with the vault
+
+This chapter is for everyone who lets SubKit work in the browser on their Mac, in a chat, a task or a workflow.
+Afterwards you can store a login and a card for the browser, approve a sign-in or a payment, and know what the AI sees and what SubKit does not promise.
+
+You need SubKit Desktop with the browser turned on, see [SubKit Desktop](setup.md#subkit-desktop).
+
+### How it works
+
+The AI decides what to do on a page, but it never handles a password, a card number or a code:
+
+1. The AI opens the page and reads it as a list of fields and buttons.
+2. For a sign-in it calls `browser_sign_in` with the **name** of a login from your vault, for a payment `browser_pay` with the **name** or the last four digits of a card.
+3. SubKit checks the request and asks you.
+4. After your approval the engine hands the values to SubKit Desktop once, for this one use. SubKit Desktop fills in the fields on your Mac and submits the form.
+5. The AI gets back only whether the fields were filled and how the form went, with a page view in which the filled values are hidden.
+
+Plain typing into password, one-time code and card fields stays blocked. Only these two steps can fill them.
+
+### Prepare the vault
+
+1. Open **Settings › Vault** in the Cockpit.
+2. **For signing in:** add a **Login** with username and password. Add each website it belongs to under **Allowed websites**, for example `https://members.example.com`. If the site asks for a one-time code from an authenticator app, paste the key or the `otpauth://` link from the site's setup page into **One-time code key**. SubKit Desktop then creates the code itself.
+3. **For paying:** add a **Payment card** with number, expiry date and name. The CVV is not part of it. Cards are always “Only me”.
+
+Logins from Chrome, 1Password or Bitwarden can be imported, see [Reference: the vault](setup.md#reference-the-vault).
+
+### Sign in
+
+Write in a chat, for example: “Sign in to members.example.com with my ledger login and download the November invoice.”
+
+- SubKit compares the website exactly with the login's origins. `www.example.com` and `example.com` count as the same site. `examp1e.com` or `example.com.login-check.net` do not. On a site that only looks similar, SubKit refuses to sign in.
+- SubKit asks you before every sign-in: the question names the website and the login. If your own message already names the site and the sign-in, as in the example, that counts as your approval.
+- If the vault has no matching login, the AI does not ask for the password in the chat. It asks you to add the login in the vault, or a task pauses with a private form in which you enter it.
+- A second factor that SubKit cannot handle, such as a push approval on your phone, a passkey or a captcha, goes back to you: the AI hands the browser over and continues once you hand it back.
+
+### Pay
+
+Write, for example: “Order the 1 kg coffee beans at shop.example.com and pay with my Visa.”
+
+1. The AI fills in the order up to the payment form and calls `browser_pay` with the card, the amount and the currency.
+2. **Approve payment** appears in the Cockpit and in SubKit Desktop with the shop, the amount and the card (brand and last four digits).
+3. You check the details and enter the **CVV**. It goes to SubKit Desktop only for this payment and is never stored.
+4. SubKit Desktop fills in the card fields on the shop's own page and submits the form.
+
+Every payment asks again, also in tasks and approved workflows. Only you can approve a payment with your card. An approval is valid once, for 15 minutes, for exactly this shop, this page, this card and this amount. If SubKit Desktop can read the total on the page and it differs, it refuses to pay.
+
+### Submitted is not paid
+
+The result of a payment is “submitted”, never “paid”. Whether the shop accepted the payment shows on its confirmation page or in its email. The AI reads the page and reports what it says.
+
+If the outcome is uncertain, for example because the connection broke during submit, SubKit does not repeat the payment, and neither does the AI. Check the shop or your bank before you start a new payment.
+
+### What the AI sees
+
+| What | The AI sees |
+| --- | --- |
+| Login | name, websites, the first two characters of the username, whether a one-time code key is stored |
+| Card | name, brand, last four digits, expiry |
+| Filled fields | only that they were filled; the page view and screenshots hide the values |
+| Your chat | a card number, IBAN, CVV or one-time code you type is replaced by `***REDACTED:…***` before the AI reads it |
+| Payment approval | that it is pending, approved or rejected, never the CVV |
+
+Text on a web page is data for the AI, never an instruction. If a page asks to pay, to enter card details or to sign in somewhere else, the AI does not follow it. This is how SubKit protects you against prompt injection.
+
+### Security model and limits
+
+- **Values per use.** Each sign-in or payment is a single use with its own record. The values travel encrypted to the paired device, can be collected only once within 60 seconds and are deleted afterwards. They never appear in the device command, the run, the result or the log.
+- **Checks on the device.** SubKit Desktop fills a field only if the field's real frame belongs to the approved origin, the page has not changed since the AI read it and no script of the AI ran on the page since it loaded.
+- **Card fields from a payment provider.** Many shops show the card fields in a frame of a payment provider such as Stripe or Adyen, loaded from the provider's own address. SubKit Desktop cannot yet reliably check the real origin of such a frame, so it refuses to fill card fields there. The AI then hands the browser over to you: you enter the card details yourself and hand the browser back.
+- **Audit.** Every use is in the item's activity and in the audit trail: website, purpose, task or run, and outcome. Payment requests, approvals, rejections and expiries are recorded as well.
+- **Your device.** SubKit Desktop fills in the values on your Mac. Anyone who controls your Mac while a use runs can see the filled page.
+- **No CVV, no PCI DSS.** SubKit never stores a CVV and is not certified under PCI DSS. Store only your own cards for your own purchases.
+- **No spending limit of its own.** How much may be paid is decided by you in each approval and by the rules of your tasks.
+
+### Troubleshooting
+
+| What happens | Why | What you can do |
+| --- | --- | --- |
+| SubKit refuses to sign in | The page's origin is not one of the login's origins. | Check the address. If it is right, add the origin to the login in the vault. |
+| The AI asks you to add a login | The vault has no login for this site that you may use. | Add the login with the site's origin, then continue. |
+| No payment approval appears | The card is not yours, or the approval expired after 15 minutes. | Use your own card and start the payment again. |
+| SubKit Desktop refuses to fill the card fields | The card fields sit in a payment provider's frame. | Enter the card details yourself when the AI hands the browser over to you. |
+| SubKit Desktop refuses to pay | The shop shows a different total than the one you approved, or the page changed. | Check the cart, then let the AI request a new approval. |
+| The result is “submitted” | The form went out, the shop has not confirmed it yet. | Check the confirmation page, your email or your bank. |
+| The result is “uncertain” | The submit may have reached the shop. | Do not pay again until you have checked the shop or your bank. |
+| The one-time code is rejected | The key is wrong or your Mac's clock is off. | Store the key again from the site's setup page and check the time setting of your Mac. |
 ## Cockpit branding
 
 Branding makes the signed-in Cockpit show your logo and a matching color palette instead of the SubKit look. You need it when your team should recognize the Cockpit as its own tool. Afterwards everyone signed in to your workspace sees the same look; login, email and other clients stay with SubKit.
@@ -4856,7 +4943,7 @@ Both are in the Cockpit under **Settings** and apply to the whole engine, withou
 
 | Setting | Shown in the Cockpit as | Default | Effect |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `13.3.1`. |
+| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `13.4.0`. |
 | `server.desktop_dev_callback` | **Accept desktop development builds** | `false` | Also accepts `subkit-dev://callback` as a target. Outside `NODE_ENV=production` this applies without the setting. |
 
 This is how you raise the minimum version:
@@ -4873,7 +4960,7 @@ The app and the engine both enforce the minimum version. The app checks the publ
 | Confirmation page, when shown and when submitted | The same page with `426`. No code is issued. |
 | `POST /v1/identity/desktop-session` | `426` with the code `desktop_app_outdated`. The sign-in code is not consumed. The app shows “This version of the app is too old for this server. …” |
 
-A pre-release such as `13.3.1-beta.1` counts as older than `13.3.1`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
+A pre-release such as `13.4.0-beta.1` counts as older than `13.4.0`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
 
 Leave `server.desktop_dev_callback` switched off in production. Development builds are called “SubKit Dev”, use the scheme `subkit-dev://` and are meant only for developing the app.
 
@@ -5261,7 +5348,7 @@ Query parameters of `GET /v1/identity/desktop-login/start`:
 | `device_id` | A UUID the app creates once per server profile. |
 | `device_label` | 1 to 64 characters without control characters. |
 | `redirect_uri` | Optional: `subkit://callback` or, where accepted, `subkit-dev://callback`. |
-| `app_version` | The version of the app such as `13.3.1`, also with a pre-release tag such as `13.3.1-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
+| `app_version` | The version of the app such as `13.4.0`, also with a pre-release tag such as `13.4.0-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
 
 Body of `POST /v1/identity/desktop-session`: `code` (43 characters), `code_verifier` (43 to 128 characters), `app_version` and optionally `state`. The answer is `200` with `installation_id`, `cockpit_path` and `created`, and it sets the session cookie.
 
@@ -5342,7 +5429,7 @@ An action that ran in chat without a question is written as `tool_policy.confirm
 
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | Version such as `13.3.1` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
+| `server.desktop_min_version` | Version such as `13.4.0` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
 | `server.desktop_dev_callback` | `true` or `false` | `false` | Also accept `subkit-dev://callback` as a sign-in target, for development builds. |
 
 Both also appear in the generated settings reference. The thresholds for schedules, rules and notices are fixed and have no setting: backoff from 3 failures, pause at 5, history for 90 days, rules for 90 days with 20 runs a day, before an approval ends a notice in the overview 7 days before, with push also on devices, and a notification through channels and rules 3 days before.
@@ -5863,19 +5950,30 @@ A screenshot is redacted on the device: password fields and fields marked as sen
 Every error comes with a remedy in `guidance`.
 ## Reference: the vault
 
-The vault is the one place for every secret in your workspace: API keys, logins and the credentials of your connectors.
-A workflow names an item only by its handle. SubKit fills in the value when an approved run executes the step. The AI never sees it.
+The vault is the one place for every secret in your workspace: API keys, logins with one-time codes, payment cards, bank accounts, identity documents, addresses, secure notes and the credentials of your connectors.
+A workflow or a browser task names an item only by its handle. SubKit fills in the value when an approved run executes the step or when you approve the sign-in or payment. The AI never sees it.
 
 ### What the vault holds
 
 | Kind | For | Fields |
 | --- | --- | --- |
 | Secret | an API key or token that several workflows need | `token` |
-| Login | a username and a password | `username`, `password` |
+| Login | a username and a password, optionally a one-time code key (TOTP) and the websites it belongs to | `username`, `password`, `totp_seed` |
+| Card | a payment card, never its CVV | `number`, `exp_month`, `exp_year`, `holder` |
+| Bank account | an account for transfers and direct debits | `iban`, `bic`, `holder` |
+| Identity | an ID document or personal data | `full_name`, `birth_date`, `document_type`, `document_number`, `nationality` |
+| Address | a postal address with phone and email | `name`, `line1`, `line2`, `postal_code`, `city`, `region`, `country`, `phone`, `email` |
+| Secure note | a private text | `text` |
 | Connector credential | a connector's credential, created when you connect it | depends on the sign-in type |
 | Template client | the OAuth client of a connector template | `client_id`, `client_secret` |
 
-You add and change secrets and logins in the vault. You change connector credentials and template clients on the connector. The vault shows them and lets you reveal or delete them.
+You add and change secrets, logins, cards, bank accounts, identities, addresses and notes in the vault. You change connector credentials and template clients on the connector. The vault shows them and lets you reveal or delete them.
+
+SubKit checks the values when you save them:
+
+- **Card:** the number must pass the Luhn check, and the expiry date must lie in the future. SubKit recognizes the brand itself.
+- **Bank account:** the IBAN must have a valid checksum, and a BIC must have the right format.
+- **Login:** the one-time code key is a base32 key or an `otpauth://` link with 6 digits, 30 seconds and SHA1. Each website is an origin like `https://members.example.com`. Plain `http` is accepted only for addresses on your own device.
 
 Every item has a name of lowercase letters, digits, `-` and `_`, for example `crm-token`. The name is also the handle. It applies per environment: `crm-token` in test and `crm-token` in production are two items.
 
@@ -5886,6 +5984,8 @@ Every item has a name of lowercase letters, digits, `-` and `_`, for example `cr
 | Workspace | everyone with `vault:read`, metadata only | in every approved run of the workspace |
 | Only me | only you | only in runs you start |
 | This device | only SubKit Desktop on this device | never in workflows; it stays on the device |
+
+Cards, bank accounts and identities are always “Only me”. SubKit refuses them in the workspace scope, and nobody else can use them, not even an admin.
 
 SubKit Desktop creates device items itself, for example the key the device uses to identify itself to the server. They are encrypted in the operating system's secure storage and never leave the device.
 
@@ -5921,9 +6021,22 @@ These rules always apply:
 - **The same rules everywhere.** A handle in the query, a form field or the body is resolved, redacted and approved exactly like one in a header. A query value may hold fixed text around a handle but no other placeholder; the approval checks that the key is sent, not its value, so a rotation needs no new approval.
 - **A missing item fails the step** with `placeholder_unresolved`, and nothing is sent.
 
+Only secrets and logins can be used in workflow requests. Cards, bank accounts, identities, addresses and notes have no handle for requests. Logins and cards are used in the browser, see [Sign in and pay in the browser with the vault](setup.md#sign-in-and-pay-in-the-browser-with-the-vault).
+
 ### What the AI and the records see
 
-The AI, chat, MCP and the subkit CLI get the name, kind, scope, environment, version and last use, never the value.
+The AI, chat, MCP and the subkit CLI get the name, kind, scope, environment, version and last use, never the value. For the new kinds they also get a masked summary:
+
+| Kind | What is shown |
+| --- | --- |
+| Login | the first two characters of the username, whether a one-time code key is stored, the websites |
+| Card | brand, last four digits and expiry, for example “Visa •••• 4242, 12/2030” |
+| Bank account | the last four characters of the IBAN and the country |
+| Identity | a short label |
+| Address | city and country |
+| Secure note | nothing but the name |
+
+A card number, IBAN, CVV or one-time code that you type into a chat is withheld before the AI reads the message. The chat then shows `***REDACTED:card***`, `iban`, `cvv` or `otp` in its place.
 A run's result, error message, log and audit trail do not contain the value. SubKit replaces it, also URL- or JSON-encoded, with `***redacted***`.
 
 ### Rotation
@@ -5934,6 +6047,7 @@ You rotate the engine's master key (`MASTER_KEY`) with the rewrap maintenance, a
 ### Reveal and activity
 
 **Reveal** shows you the value for a short time, and `subkit vault reveal <id> --yes` prints it in the terminal. Every reveal is in the audit trail.
+For a card or a bank account you must also have signed in within the last 5 minutes. Otherwise SubKit asks you to sign in again first. A card never has a CVV to reveal, because SubKit never stores it.
 An item's activity shows when it was created, used, revealed, rotated or deleted. A use names its run and step.
 
 ### Permissions
@@ -5945,6 +6059,7 @@ An item's activity shows when it was created, used, revealed, rotated or deleted
 | `vault:rotate` | admin | replacing values |
 | `vault:delete` | admin | deleting items |
 | `vault:reveal` | admin | revealing the values of workspace items |
+| `vault:use` | member | using workspace logins in the browser |
 
 You always manage your own “Only me” items, even without these permissions.
 
@@ -5954,6 +6069,16 @@ You always manage your own “Only me” items, even without these permissions.
 - **subkit:** `subkit vault list`, `show`, `add`, `rotate`, `reveal`, `refresh`, `rm`, `attach` and `connector`. `add` and `rotate` read the value from stdin or a hidden prompt, never from arguments.
 - **MCP:** `list_vault_items` and `get_vault_item` return metadata only.
 - **HTTP:** `/v1/vault`, see the HTTP API.
+
+### Import
+
+You can import logins, including their one-time code keys and websites, from a CSV export of Chrome, 1Password or Bitwarden: **Settings › Vault › Import CSV** in the Cockpit. SubKit first shows a preview of what it found; then you import the new entries. Entries whose name already exists are skipped. Cards and other kinds are not imported.
+
+### Limits
+
+- **No CVV.** SubKit never stores a card's security code. You enter it in the payment approval each time you pay.
+- **No PCI DSS certification.** SubKit is not certified under PCI DSS and makes no such claim. Store cards only for your own payments in the browser, never cards of your customers.
+- The vault protects values with AES-GCM and the engine's `MASTER_KEY`. Anyone who holds the database and the `MASTER_KEY` can open them.
 
 ### Backup and moving
 
@@ -6348,7 +6473,7 @@ The `requires` column names the permission that shows a command in
 | `subkit tenants` | — | List tenants you belong to or switch the active one | — |
 | `subkit update` | — | Update the subkit CLI to the latest release, or to the version of your engine | — |
 | `subkit users` | `identity:read` | Manage identity users | `create`, `delete`, `get`, `invite`, `list`, `patch` |
-| `subkit vault` | — | The vault (Tresor): secrets, logins and connector credentials. Workflows name an item as ${secret.<name>}; values never reach the model. | `add`, `attach`, `connector`, `list`, `refresh`, `reveal`, `rm`, `rotate`, `show` |
+| `subkit vault` | — | The vault (Tresor): secrets, logins, cards, bank accounts, identities, addresses, notes and connector credentials. Workflows name an item as ${secret.<name>}; values never reach the model. | `add`, `attach`, `connector`, `list`, `refresh`, `reveal`, `rm`, `rotate`, `show` |
 | `subkit workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `patch`, `preview`, `restore`, `run`, `update`, `validate` |
 
 ## Commands and arguments
@@ -8457,16 +8582,18 @@ Update a user's role (admin only)
 
 ### `subkit vault`
 
-The vault (Tresor): secrets, logins and connector credentials. Workflows name an item as ${secret.<name>}; values never reach the model.
+The vault (Tresor): secrets, logins, cards, bank accounts, identities, addresses, notes and connector credentials. Workflows name an item as ${secret.<name>}; values never reach the model.
 
 #### `subkit vault add`
 
-Add a secret or a login. The token or password is read from stdin or a hidden prompt, never from arguments.
+Add a secret, login, card, bank account, identity, address or note. Values are read from hidden prompts or stdin, never from arguments: a secret's token; a login's password (and with --totp the one-time code key on a second line); for the other kinds one JSON object. Cards, bank accounts and identities are always personal; a card never takes its security code.
 
 - `<name>` (positional, required) — Handle name, e.g. crm-token
-- `--kind` (string, default: secret) — secret | login
+- `--kind` (string, default: secret) — secret | login | card | bank_account | identity | address | note
 - `--username` (string) — login: the username
-- `--scope` (string, default: workspace) — workspace | person
+- `--origins` (string) — login: the websites it may sign in to, e.g. https://shop.example
+- `--totp` — login: also ask for the one-time code key
+- `--scope` (string) — workspace | person (default: person for card, bank_account, identity)
 - `--env` (string, default: prod) — dev | prod
 - `--description` (string) — What the item is for
 - `--json` — JSON output
@@ -8497,7 +8624,7 @@ List the vault items of one connector
 List vault items: names and metadata, never values
 
 - `--scope` (string) — workspace | person
-- `--kind` (string) — connector | secret | login | template_client
+- `--kind` (string) — connector | secret | login | template_client | card | bank_account | identity | address | note
 - `--json` — JSON output
 
 #### `subkit vault refresh`
@@ -8522,7 +8649,7 @@ Delete a vault item and its value
 
 #### `subkit vault rotate`
 
-Replace the value of a secret or login. The new value is read from stdin.
+Replace the value of a vault item. A secret's token or a login's password comes from stdin; a card, bank account, identity, address or note takes all its fields again from hidden prompts or one JSON object on stdin.
 
 - `<id>` (positional, required) — Vault item id
 - `--username` (string) — login: a new username (keeps the current one when omitted)

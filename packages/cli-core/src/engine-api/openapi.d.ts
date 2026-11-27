@@ -7522,6 +7522,8 @@ export interface paths {
             parameters: {
                 query?: {
                     return_to?: string;
+                    /** @description 1 ends the current browser session and asks the identity provider for a fresh sign-in. Used before actions that need a sign-in younger than 5 minutes, such as revealing a card. */
+                    reauth?: "1";
                 };
                 header?: never;
                 path?: never;
@@ -8583,7 +8585,7 @@ export interface paths {
                             authority_id: string | null;
                             manifest_digest: string | null;
                             /** @enum {string} */
-                            kind: "files.list" | "files.read_text" | "files.import" | "files.write" | "files.mkdir" | "files.move" | "files.trash" | "browser.open" | "browser.wait" | "browser.extract" | "browser.fill" | "browser.press" | "browser.download" | "browser.pdf" | "browser.snapshot" | "browser.screenshot" | "browser.handover" | "computer.apps" | "computer.open" | "computer.snapshot" | "computer.find" | "computer.screenshot" | "computer.press" | "computer.focus" | "computer.select" | "computer.set_value" | "computer.type" | "computer.key" | "computer.scroll" | "computer.handover";
+                            kind: "files.list" | "files.read_text" | "files.import" | "files.write" | "files.mkdir" | "files.move" | "files.trash" | "browser.open" | "browser.wait" | "browser.extract" | "browser.fill" | "browser.press" | "browser.download" | "browser.pdf" | "browser.snapshot" | "browser.screenshot" | "browser.handover" | "browser.sign_in" | "browser.pay" | "computer.apps" | "computer.open" | "computer.snapshot" | "computer.find" | "computer.screenshot" | "computer.press" | "computer.focus" | "computer.select" | "computer.set_value" | "computer.type" | "computer.key" | "computer.scroll" | "computer.handover";
                             args?: unknown;
                             /** Format: date-time */
                             deadline_at: string;
@@ -8624,6 +8626,98 @@ export interface paths {
                 };
                 /** @description The command cannot be taken: already claimed, closed, past its deadline or from a stopped generation */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceRunnerFailure"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/device-runner/secret-tickets/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take the vault values for one sign-in or payment command, once
+         * @description A ticket belongs to one device and one command and lives 60 s. It is handed out once, only while its command is claimed by this device; afterwards and after expiry it answers 410. Keep the values in memory only for this command and overwrite them when it ends.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The values for this one command */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            values: {
+                                [key: string]: string;
+                            };
+                            /** Format: date-time */
+                            expires_at: string;
+                        };
+                    };
+                };
+                /** @description Runner credential missing or invalid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceRunnerFailure"];
+                    };
+                };
+                /** @description Not a runner credential, or the device was revoked */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceRunnerFailure"];
+                    };
+                };
+                /** @description No such ticket for this device */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceRunnerFailure"];
+                    };
+                };
+                /** @description The ticket's command is not claimed by this device right now */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceRunnerFailure"];
+                    };
+                };
+                /** @description The ticket was already taken or expired */
+                410: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -16183,6 +16277,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vault/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List your own payment requests: shop, amount and card brand and last 4 digits only */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "pending" | "approved" | "consumed" | "expired" | "rejected";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VaultPaymentListResponse"];
+                    };
+                };
+                /** @description Only a person signed in themselves sees their payments */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vault/payments/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve one payment with the card's security code; the code is never stored and goes to the device once, within 60 seconds */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VaultPaymentApproveBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VaultPaymentDecision"];
+                    };
+                };
+                /** @description The security code has 3 or 4 digits */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Only the card owner approves */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Already decided, or the card changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Expired */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vault/payments/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject one payment request; nothing is paid */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VaultPaymentDecision"];
+                    };
+                };
+                /** @description Only the card owner rejects */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Already decided */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Expired */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/vault": {
         parameters: {
             query?: never;
@@ -16195,7 +16497,7 @@ export interface paths {
             parameters: {
                 query?: {
                     scope?: "workspace" | "person";
-                    kind?: "connector" | "secret" | "login" | "template_client";
+                    kind?: "connector" | "secret" | "login" | "template_client" | "card" | "bank_account" | "identity" | "address" | "note";
                 };
                 header?: never;
                 path?: never;
@@ -16215,7 +16517,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Add a secret or a login to the vault */
+        /** Add a secret, login, card, bank account, identity, address or note to the vault; cards, bank accounts and identities are personal only */
         post: {
             parameters: {
                 query?: never;
@@ -16258,6 +16560,64 @@ export interface paths {
                 };
                 /** @description Name taken */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vault/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import logins from a Chrome, 1Password or Bitwarden CSV export, with one-time code keys; dry_run (the default) only shows what would happen */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VaultImport"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VaultImportResult"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -16441,7 +16801,7 @@ export interface paths {
                         "application/json": components["schemas"]["VaultItemReveal"];
                     };
                 };
-                /** @description Forbidden */
+                /** @description Forbidden, or a card or bank account needs a sign-in younger than 5 minutes (details.reason reauthentication_required) */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -37855,6 +38215,38 @@ export interface components {
             oauth2_expires_at: string | null;
             updated_at: string;
         };
+        VaultPaymentListResponse: {
+            items: components["schemas"]["VaultPayment"][];
+        };
+        VaultPayment: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "pending" | "approved" | "consumed" | "expired" | "rejected";
+            origin: string;
+            amount_minor: number;
+            currency: string;
+            card: {
+                brand: string;
+                last4: string;
+            };
+            expires_at: string;
+            created_at: string;
+            conversation_id: string | null;
+            task_run_id: string | null;
+        };
+        VaultPaymentDecision: {
+            payment: components["schemas"]["VaultPayment"];
+            /** @description The paused chat step this payment belongs to. Answer it right away with POST /v1/conversations/{conversation_id}/tool-calls/{tool_call_id}/respond and output {confirmed: true} after an approval or {confirmed: false} after a rejection; the device ticket lives 60 seconds. Null for a workflow run, which continues by itself. */
+            resume: {
+                conversation_id: string;
+                tool_call_id: string;
+            } | null;
+        };
+        VaultPaymentApproveBody: {
+            /** @description The card's security code. It is never stored; it goes to the device once. */
+            cvv: string;
+        };
         VaultItemListResponse: {
             items: components["schemas"]["VaultItem"][];
         };
@@ -37863,7 +38255,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            kind: "connector" | "secret" | "login" | "template_client";
+            kind: "connector" | "secret" | "login" | "template_client" | "card" | "bank_account" | "identity" | "address" | "note";
             /** @enum {string} */
             scope: "workspace" | "person";
             /** @enum {string} */
@@ -37878,14 +38270,29 @@ export interface components {
             } | null;
             template_slug: string | null;
             fields: string[];
+            metadata: components["schemas"]["VaultItemMetadata"];
+            origins: string[];
             created_at: string;
             updated_at: string;
             rotated_at: string | null;
             last_used_at: string | null;
         };
+        /** @description Public metadata of the item, safe to show and to give to models: login username_hint and has_totp, card brand, last4 and expiry, bank account iban_last4 and country, identity label_hint, address city and country */
+        VaultItemMetadata: {
+            username_hint?: string;
+            has_totp?: boolean;
+            brand?: string;
+            last4?: string;
+            exp_month?: number;
+            exp_year?: number;
+            iban_last4?: string;
+            country?: string;
+            label_hint?: string;
+            city?: string;
+        };
         VaultItemCreate: {
             /** @enum {string} */
-            kind: "secret" | "login";
+            kind: "secret" | "login" | "card" | "bank_account" | "identity" | "address" | "note";
             name: string;
             /**
              * @default workspace
@@ -37903,6 +38310,50 @@ export interface components {
             username?: string;
             /** @description Secret value. Never returned. */
             password?: string;
+            /** @description login: the one-time code key as a base32 seed or an otpauth:// link; null removes it. Never returned. */
+            totp_seed?: string | null;
+            /** @description login: the websites (https origins) this login may be used on */
+            origins?: string[];
+            /** @description card, bank_account, identity, address or note: the structured value. A card never takes its security code. Never returned. */
+            value?: {
+                [key: string]: string | number;
+            };
+        };
+        VaultImportResult: {
+            dry_run: boolean;
+            /** @enum {string} */
+            format: "chrome" | "1password" | "bitwarden";
+            rows: {
+                row: number;
+                name: string;
+                /** @enum {string} */
+                status: "create" | "created" | "exists" | "invalid";
+                origin: string | null;
+                username_hint: string | null;
+                has_totp: boolean;
+                reason: string | null;
+            }[];
+            created: number;
+            skipped: number;
+            invalid: number;
+        };
+        VaultImport: {
+            /** @description The exported CSV file as text */
+            csv: string;
+            /** @enum {string} */
+            format?: "chrome" | "1password" | "bitwarden";
+            /**
+             * @default person
+             * @enum {string}
+             */
+            scope?: "workspace" | "person";
+            /**
+             * @default prod
+             * @enum {string}
+             */
+            environment?: "dev" | "prod";
+            /** @default true */
+            dry_run?: boolean;
         };
         VaultItemUpdate: {
             description?: string | null;
@@ -37911,6 +38362,14 @@ export interface components {
             username?: string;
             /** @description Secret value. Never returned. */
             password?: string;
+            /** @description login: the one-time code key as a base32 seed or an otpauth:// link; null removes it. Never returned. */
+            totp_seed?: string | null;
+            /** @description login: the websites (https origins) this login may be used on */
+            origins?: string[];
+            /** @description card, bank_account, identity, address or note: the structured value. A card never takes its security code. Never returned. */
+            value?: {
+                [key: string]: string | number;
+            };
         };
         VaultItemReveal: {
             /** Format: uuid */
@@ -39912,6 +40371,11 @@ export interface components {
                             binding_hash: string | null;
                         };
                         /**
+                         * Format: uuid
+                         * @description Set when the local step pays with a card: approve the payment with POST /v1/vault/payments/{payment_id}/approve (CVV) instead of confirming here. Confirming without an approved payment pays nothing.
+                         */
+                        payment_id?: string;
+                        /**
                          * @description Confirm kind of an ask_user_confirm question, as in the live prompt; drives the confirm card.
                          * @enum {string}
                          */
@@ -41176,7 +41640,7 @@ export interface components {
                 environment?: "dev" | "prod";
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_expired" | "execution_authority_exhausted" | "execution_authority_revoked" | "execution_authority_changed" | "input_required" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "schedule_auto_paused" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "spend_warning" | "spend_limit_reached" | "spend_limit_unset" | "ai_access_missing" | "model_tools_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable" | "pair_approval_requested" | "device_offline_waiting" | "local_confirmation_needed" | "device_permission_missing" | "device_handover_waiting" | "knowledge_review_due" | "folder_changed";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_expired" | "execution_authority_exhausted" | "execution_authority_revoked" | "execution_authority_changed" | "input_required" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "schedule_auto_paused" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "spend_warning" | "spend_limit_reached" | "spend_limit_unset" | "ai_access_missing" | "model_tools_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable" | "pair_approval_requested" | "device_offline_waiting" | "local_confirmation_needed" | "device_permission_missing" | "device_handover_waiting" | "knowledge_review_due" | "folder_changed" | "payment_approval_needed" | "sign_in_confirmation_needed";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
@@ -41233,6 +41697,20 @@ export interface components {
                 /** Format: uuid */
                 user_id: string;
                 name: string;
+            };
+            /** @description Present on a pending payment or sign-in with the vault: id is the payment id or the tool call id. amount_minor is in the currency's minor unit; card shows only brand and last 4 digits. */
+            vault?: {
+                /** @enum {string} */
+                kind: "payment" | "sign_in";
+                id: string;
+                origin: string;
+                conversation_id: string | null;
+                amount_minor?: number;
+                currency?: string;
+                card?: {
+                    brand: string;
+                    last4: string;
+                };
             };
             actions: components["schemas"]["AttentionAction"][];
         };

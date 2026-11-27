@@ -99,11 +99,13 @@ export const FIELD_SCAN_SCRIPT = `JSON.stringify((() => {
         const box = el.getBoundingClientRect();
         if (inner) visit(inner, dx + box.x + el.clientLeft, dy + box.y + el.clientTop, depth + 1);
       }
-      if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") continue;
+      const vault = el.hasAttribute("data-subkit-vault");
+      if (!vault && el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") continue;
       const r = el.getBoundingClientRect();
       fields.push({
         type: (el.getAttribute("type") || "").toLowerCase(),
         autocomplete: (el.getAttribute("autocomplete") || "").toLowerCase(),
+        vault,
         focused: el === focused,
         x: dx + r.x, y: dy + r.y, width: r.width, height: r.height,
       });
@@ -116,6 +118,7 @@ export const FIELD_SCAN_SCRIPT = `JSON.stringify((() => {
 const FieldSchema = z.object({
   type: z.string(),
   autocomplete: z.string(),
+  vault: z.boolean().default(false),
   focused: z.boolean(),
   x: z.number(),
   y: z.number(),
@@ -156,10 +159,15 @@ export function parseFieldScan(data: unknown): FieldScan {
     const secure = fields.filter((field) =>
       isCredentialField({ input_type: field.type, autocomplete: field.autocomplete }),
     );
+    const masked = fields.filter(
+      (field) =>
+        field.vault ||
+        isCredentialField({ input_type: field.type, autocomplete: field.autocomplete }),
+    );
     return {
       ok: true,
       secure_focus: focus_unknown || secure.some((field) => field.focused),
-      rects: secure
+      rects: masked
         .filter((field) => field.width > 0 && field.height > 0)
         .map((field) => ({
           x: (field.x - REDACTION_PADDING) * dpr,

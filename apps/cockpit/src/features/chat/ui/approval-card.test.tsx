@@ -280,6 +280,18 @@ test("a device step names the device, what it uses and its single target", () =>
   expect(cell(en, "device")).toBe("Your device");
 });
 
+test("a card payment step asks to approve the payment instead of a plain confirm", () => {
+  const paying: ChatApproval = {
+    ...onDevice,
+    expiresAt: "2030-01-01T00:00:00Z",
+    paymentId: "6f1c2b9e-4a7d-4c1e-9b3a-2d5e8f7a1c04",
+  };
+  const en = render(paying, "en");
+  expect(en).toContain(translate("en", "vault.payment.approve"));
+  expect(en).not.toContain(`>${translate("en", "chat.approval.approve")}<`);
+  expect(render(paying, "de")).toContain(translate("de", "vault.payment.approve"));
+});
+
 test("a device step past its deadline says nothing was sent and offers no answer", () => {
   const past = "2001-01-01T00:00:00Z";
   const expired: ChatApproval = {

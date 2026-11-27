@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { deviceToolSpec } from "./catalog.ts";
-import { type DeviceStepRecord, filledBy, resolveRef, sameElement, stepRecord } from "./history.ts";
+import {
+  type DeviceStepRecord,
+  filledBy,
+  resolveRef,
+  sameElement,
+  stepRecord,
+  uncertainSignatures,
+} from "./history.ts";
 
 function spec(name: string) {
   const found = deviceToolSpec(name);
@@ -291,5 +298,18 @@ describe("what a dispatched step leaves behind", () => {
     );
     expect(sameElement(null, { role: "button", name: "Kaufen" })).toBe(false);
     expect(sameElement({ role: "button", name: "Kaufen" }, undefined)).toBe(false);
+  });
+});
+
+describe("uncertain commits", () => {
+  const press = { tool: "browser_press", device_id: "d1", filled: [] };
+
+  test("a commit that ended uncertain keeps its signature", () => {
+    const uncertain = stepRecord({ ...press, step_signature: "sig-a" }, null, "call-1", true);
+    const clean = stepRecord({ ...press, step_signature: "sig-b" }, null, "call-2");
+    const read = stepRecord({ tool: "browser_snapshot", device_id: "d1", filled: [] }, null, "c3");
+    expect(uncertain).toMatchObject({ signature: "sig-a", uncertain: true });
+    expect(read.signature).toBeUndefined();
+    expect([...uncertainSignatures([uncertain, clean, read])]).toEqual(["sig-a"]);
   });
 });

@@ -1,5 +1,5 @@
 import { app } from "electron";
-import { type AttentionItem, toNotifications } from "../shared/attention.ts";
+import { type AttentionItem, toNotifications, vaultApproval } from "../shared/attention.ts";
 import { signInFinished } from "../shared/browser-sheet-model.ts";
 import { loginCallback } from "../shared/channel.ts";
 import {
@@ -132,7 +132,7 @@ export class FeedFlow {
     summary: boolean,
   ): void {
     const { core } = this;
-    core.state = model.needsYou(core.state, items.length);
+    core.state = model.needsYou(core.state, items.length, vaultApproval(items));
     const notifications = core.store.data.settings.notifications
       ? toNotifications(notify, core.locale(), summary)
       : [];

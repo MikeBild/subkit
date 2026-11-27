@@ -27,6 +27,7 @@ export interface ChatApproval {
   decidedByOthers?: boolean;
   binding?: ApprovalBinding;
   device?: DeviceConfirmation;
+  paymentId?: string;
   changes?: { label: string; preview?: string }[];
 }
 
@@ -106,6 +107,7 @@ export function chatApproval(
     ...(decidedByOthers ? { decidedByOthers } : {}),
     ...(binding ? { binding } : {}),
     ...(device ? { device } : {}),
+    ...(device && pending.prompt?.payment_id ? { paymentId: pending.prompt.payment_id } : {}),
     ...(pending.prompt?.kind === "partial_diff_approval" && pending.prompt.diffs?.length
       ? { changes: pending.prompt.diffs }
       : {}),

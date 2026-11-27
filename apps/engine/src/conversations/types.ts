@@ -557,6 +557,7 @@ export interface ConversationResumeSummary {
       effect?: ConnectorCallSubject;
       subjects?: string[];
       device?: LocalConfirmation;
+      payment_id?: string;
     };
     summary: string;
     expires_at: string;

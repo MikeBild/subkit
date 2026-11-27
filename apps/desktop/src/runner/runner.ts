@@ -331,6 +331,7 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
           sink: {
             write: (input, signal) => filesAdapter.execute(downloadWriteCommand(input), signal),
           },
+          tickets: { claim: (ticket) => channel.claimSecretTicket(ticket) },
         })
       : null;
     const execute = executeFor(

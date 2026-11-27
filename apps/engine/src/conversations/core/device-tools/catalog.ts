@@ -21,6 +21,12 @@ const BROWSER_REF = z
   .regex(/^@?e[0-9]{1,6}$/)
   .describe("A ref from that snapshot, like e12.");
 
+const ORIGIN = z
+  .string()
+  .min(1)
+  .max(2048)
+  .describe("The origin of the page from that snapshot, like https://shop.example.");
+
 const COMPUTER_REF = z
   .string()
   .regex(/^@s[a-z0-9]{1,64}:e[1-9][0-9]{0,6}$/)
@@ -138,6 +144,50 @@ export const DEVICE_TOOL_SPECS: readonly DeviceToolSpec[] = [
     null,
     "Take a redacted screenshot of the open page for the live view.",
     {},
+  ),
+  spec(
+    "browser_sign_in",
+    "browser",
+    "browser.sign_in",
+    null,
+    "Sign in on the open page with a login from the vault. Name the login (vault_item) and the refs of the username, password, one-time code and submit controls from the snapshot you just took; SubKit fills the values on the device, you never see them. Works only on the website the login is saved for. Never type credentials with browser_fill. A sign-in is never repeated: on an uncertain outcome take a snapshot and check.",
+    {
+      snapshot_id: SNAPSHOT_ID,
+      origin: ORIGIN,
+      vault_item: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe("The name of the login in the vault, like me.shop for a personal login."),
+      kind: z.enum(["password", "totp"]).default("password"),
+      username_ref: BROWSER_REF.optional(),
+      password_ref: BROWSER_REF.optional(),
+      code_ref: BROWSER_REF.optional(),
+      submit_ref: BROWSER_REF.optional(),
+      because: BECAUSE_FIELD,
+    },
+  ),
+  spec(
+    "browser_pay",
+    "browser",
+    "browser.pay",
+    null,
+    "Pay on the open checkout page with a card from the person's vault. Name the card (its name or last 4 digits), the amount in minor units (cents) and currency shown on the page, and the refs of the card fields and the pay button from the snapshot you just took. The person approves every payment and enters the security code themselves; you never see card data. The result is submitted, not confirmed paid: never submit again, check the page instead.",
+    {
+      snapshot_id: SNAPSHOT_ID,
+      origin: ORIGIN,
+      card: z.string().min(1).max(200).describe("The card's vault name or its last 4 digits."),
+      amount_minor: z.number().int().min(1).max(100_000_000),
+      currency: z.string().regex(/^[A-Z]{3}$/),
+      number_ref: BROWSER_REF,
+      exp_ref: BROWSER_REF.optional(),
+      exp_month_ref: BROWSER_REF.optional(),
+      exp_year_ref: BROWSER_REF.optional(),
+      holder_ref: BROWSER_REF.optional(),
+      cvv_ref: BROWSER_REF.optional(),
+      submit_ref: BROWSER_REF,
+      because: BECAUSE_FIELD,
+    },
   ),
   spec(
     "browser_handover",
@@ -286,6 +336,12 @@ export const DEVICE_TOOL_NAMES: ReadonlySet<string> = new Set(
 
 export function deviceToolSpec(name: string): DeviceToolSpec | null {
   return DEVICE_TOOL_SPECS.find((tool) => tool.name === name) ?? null;
+}
+
+export const VAULT_TOOL_NAMES: ReadonlySet<string> = new Set(["browser_sign_in", "browser_pay"]);
+
+export function isVaultTool(name: string): boolean {
+  return VAULT_TOOL_NAMES.has(name);
 }
 
 export function isSnapshotTool(name: string): boolean {

@@ -9,11 +9,18 @@ export type AttentionSeverity = ApiAttentionItem["severity"];
 
 export type AttentionAction = Pick<ApiAttentionAction, "href" | "primary"> & { verb: string };
 
+export interface VaultFacts {
+  site: string;
+  amountMinor: number | null;
+  currency: string | null;
+}
+
 export type AttentionItem = Pick<ApiAttentionItem, "id" | "class" | "severity" | "kind"> & {
   subjectName: string | null;
   reason: string;
   since?: string | null;
   actions: AttentionAction[];
+  vault?: VaultFacts | null;
 };
 
 const CLASSES = new Set<string>(["stopped", "failing", "decide"] satisfies AttentionClass[]);
@@ -23,6 +30,43 @@ function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function siteOf(origin: string): string {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return origin;
+  }
+}
+
+function parseVault(raw: unknown): VaultFacts | null {
+  const vault = record(raw);
+  if (!vault || typeof vault.origin !== "string" || !vault.origin.trim()) return null;
+  const amount = vault.amount_minor;
+  const currency = vault.currency;
+  return {
+    site: siteOf(vault.origin.trim()).slice(0, 120),
+    amountMinor: typeof amount === "number" && Number.isSafeInteger(amount) ? amount : null,
+    currency:
+      typeof currency === "string" && /^[A-Za-z]{3}$/.test(currency)
+        ? currency.toUpperCase()
+        : null,
+  };
+}
+
+export function formatVaultAmount(facts: VaultFacts, locale: Locale): string | null {
+  if (facts.amountMinor === null || !facts.currency) return null;
+  try {
+    const format = new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+      style: "currency",
+      currency: facts.currency,
+    });
+    const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
+    return format.format(facts.amountMinor / 10 ** digits);
+  } catch {
+    return null;
+  }
 }
 
 function parseItem(raw: unknown): AttentionItem | null {
@@ -46,6 +90,7 @@ function parseItem(raw: unknown): AttentionItem | null {
     reason: typeof item.reason === "string" ? item.reason : "",
     since: typeof item.since === "string" ? item.since : null,
     actions,
+    vault: parseVault(item.vault),
   };
 }
 
@@ -78,6 +123,35 @@ export interface NativeNotification {
 }
 
 export const PERMISSION_REASON = "device_permission_missing";
+
+export const VAULT_APPROVAL_REASONS = {
+  payment_approval_needed: "payment",
+  sign_in_confirmation_needed: "sign_in",
+} as const;
+export type VaultApprovalKind =
+  (typeof VAULT_APPROVAL_REASONS)[keyof typeof VAULT_APPROVAL_REASONS];
+
+export interface VaultApproval {
+  readonly kind: VaultApprovalKind;
+  readonly href: string;
+  readonly count: number;
+}
+
+function vaultKindOf(reason: string): VaultApprovalKind | null {
+  return reason in VAULT_APPROVAL_REASONS
+    ? VAULT_APPROVAL_REASONS[reason as keyof typeof VAULT_APPROVAL_REASONS]
+    : null;
+}
+
+export function vaultApproval(items: readonly AttentionItem[]): VaultApproval | null {
+  const pending = items.filter((item) => vaultKindOf(item.reason) !== null && primaryAction(item));
+  const payments = pending.filter((item) => vaultKindOf(item.reason) === "payment");
+  const newest = newestItem(payments.length > 0 ? payments : pending);
+  const action = newest ? primaryAction(newest) : null;
+  const kind = newest ? vaultKindOf(newest.reason) : null;
+  if (!action || !kind) return null;
+  return { kind, href: action.href, count: pending.length };
+}
 export const HANDOVER_REASON = "device_handover_waiting";
 
 const VERB_KEYS = {
@@ -130,6 +204,8 @@ const REASON_KEYS = {
   task_owner_unavailable: "notify.reason.task_owner_unavailable",
   device_offline_waiting: "notify.reason.device_offline_waiting",
   local_confirmation_needed: "notify.reason.local_confirmation_needed",
+  payment_approval_needed: "notify.reason.payment_approval_needed",
+  sign_in_confirmation_needed: "notify.reason.sign_in_confirmation_needed",
   device_permission_missing: "notify.reason.device_permission_missing",
   device_handover_waiting: "notify.reason.device_handover_waiting",
   knowledge_review_due: "notify.reason.knowledge_review_due",
@@ -224,6 +300,29 @@ export function toNotification(item: AttentionItem, locale: Locale): NativeNotif
   const verbKey =
     action && action.verb in VERB_KEYS ? VERB_KEYS[action.verb as keyof typeof VERB_KEYS] : null;
   const handover = item.reason === HANDOVER_REASON;
+  const vault = vaultKindOf(item.reason);
+  const site = item.vault?.site ?? name ?? t(locale, "notify.vault.aSite");
+  const amount = item.vault ? formatVaultAmount(item.vault, locale) : null;
+  if (vault)
+    return {
+      id: item.id,
+      title: t(
+        locale,
+        vault === "payment" ? "notify.vault.payment.title" : "notify.vault.signIn.title",
+      ),
+      body: t(
+        locale,
+        vault === "sign_in"
+          ? "notify.vault.signIn.body"
+          : amount
+            ? "notify.vault.payment.bodyAmount"
+            : "notify.vault.payment.body",
+        { site, amount: amount ?? "" },
+      ),
+      href: action ? action.href : null,
+      urgency: "critical",
+      silent: false,
+    };
   return {
     id: item.id,
     title,

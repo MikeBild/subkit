@@ -49,7 +49,12 @@ function Shell({
       </span>
       {children}
       {error ? (
-        <p role="alert" className="text-destructive text-xs" data-testid={`${id}-error`}>
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="text-destructive text-xs"
+          data-testid={`${id}-error`}
+        >
           {error}
         </p>
       ) : null}
@@ -69,6 +74,8 @@ export function TextField({
   invalid,
   error,
   mono,
+  inputMode,
+  describedBy,
 }: {
   id: string;
   label: string;
@@ -81,7 +88,10 @@ export function TextField({
   invalid?: boolean;
   error?: string | null;
   mono?: boolean;
+  inputMode?: "text" | "numeric" | "email" | "tel" | "url";
+  describedBy?: string;
 }) {
+  const described = [error ? `${id}-error` : null, describedBy].filter(Boolean).join(" ");
   return (
     <Shell id={id} label={label} help={help} error={error}>
       <input
@@ -90,7 +100,9 @@ export function TextField({
         value={value}
         placeholder={placeholder}
         required={required}
+        inputMode={inputMode}
         aria-invalid={invalid || Boolean(error) || undefined}
+        aria-describedby={described || undefined}
         autoComplete="off"
         onChange={(event) => onChange(event.target.value)}
         className={cn(CONTROL, "h-10 sm:h-8", mono && "font-mono")}
@@ -154,6 +166,7 @@ export function TextAreaField({
         placeholder={placeholder}
         required={required}
         aria-invalid={Boolean(error) || undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
         spellCheck={false}
         autoComplete="off"
         autoCorrect="off"

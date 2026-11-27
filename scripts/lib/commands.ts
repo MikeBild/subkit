@@ -755,6 +755,10 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
       summary: "live authoring sweep (paid)",
       plan: () => [bun("eval sweep", "apps/engine/eval/live-sweep.ts")],
     },
+    browser: {
+      summary: "live browser benchmark with fixture sites and SubKit Desktop (paid, report only)",
+      plan: () => [bun("eval browser", "apps/engine/eval/browser/run.ts")],
+    },
   },
   db: {
     generate: {

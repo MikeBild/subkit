@@ -5,7 +5,9 @@ import {
   BrowserHandoverArgsSchema,
   BrowserOpenArgsSchema,
   BrowserPageArgsSchema,
+  BrowserPayArgsSchema,
   BrowserPressArgsSchema,
+  BrowserSignInArgsSchema,
   BrowserWaitArgsSchema,
 } from "@shared/device/browser.ts";
 import {
@@ -56,6 +58,8 @@ export const DEVICE_ARGS_SCHEMAS: Readonly<Record<DeviceCommandKind, z.ZodType |
   "browser.snapshot": BrowserPageArgsSchema,
   "browser.screenshot": BrowserPageArgsSchema,
   "browser.handover": BrowserHandoverArgsSchema,
+  "browser.sign_in": BrowserSignInArgsSchema,
+  "browser.pay": BrowserPayArgsSchema,
   "computer.apps": ComputerAppsArgsSchema,
   "computer.open": null,
   "computer.snapshot": ComputerWindowArgsSchema,

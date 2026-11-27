@@ -2,14 +2,14 @@
 slug: local-workflow-steps
 scope: global
 title: Workflow Steps On A Device
-description: How to author request steps on a device connector (`local_files`, `local_browser`, `local_computer`): the path names the action, the body shape per action, elements by role and name instead of refs, and what the approval binds.
-activates_when: [{"kind":"intent_keyword","word":"local_files"},{"kind":"intent_keyword","word":"local_browser"},{"kind":"intent_keyword","word":"local_computer"},{"kind":"intent_keyword","word":"this device"},{"kind":"intent_keyword","word":"on my mac"},{"kind":"intent_keyword","word":"local folder"},{"kind":"intent_keyword","word":"auf meinem mac"},{"kind":"intent_keyword","word":"auf diesem gerät"},{"kind":"intent_keyword","word":"lokalen ordner"},{"kind":"intent_keyword","word":"files.write"},{"kind":"intent_keyword","word":"browser.open"}]
+description: How to author request steps on a device connector (`local_files`, `local_browser`, `local_computer`): the path names the action, the body shape per action, elements by role and name instead of refs, signing in and paying with the vault (`browser.sign_in`, `browser.pay`), and what the approval binds.
+activates_when: [{"kind":"intent_keyword","word":"local_files"},{"kind":"intent_keyword","word":"local_browser"},{"kind":"intent_keyword","word":"local_computer"},{"kind":"intent_keyword","word":"this device"},{"kind":"intent_keyword","word":"on my mac"},{"kind":"intent_keyword","word":"local folder"},{"kind":"intent_keyword","word":"auf meinem mac"},{"kind":"intent_keyword","word":"auf diesem gerät"},{"kind":"intent_keyword","word":"lokalen ordner"},{"kind":"intent_keyword","word":"files.write"},{"kind":"intent_keyword","word":"browser.open"},{"kind":"intent_keyword","word":"browser.sign_in"},{"kind":"intent_keyword","word":"browser.pay"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow, device, local]
 audience: [driver:local_files, driver:local_browser, driver:local_computer]
-version: 1
+version: 2
 ---
 
 # Workflow Steps On A Device
@@ -40,6 +40,8 @@ Browser (the site must be one the person allowed):
 - `browser.wait`: `{for: "load", state?}`, `{for: "text", text}` or `{for: "ms", ms}`.
 - `browser.extract`: `{element?}`. `browser.snapshot` and `browser.screenshot`: `{}`.
 - `browser.download`: `{element, folder_id, name}` saves into an allowed folder with write access.
+- `browser.sign_in`: `{origin, vault_item, kind, username?, password?, code?, submit?}` signs in with a vault login. See below.
+- `browser.pay`: `{origin, card, amount_minor, currency, number, exp? | exp_month + exp_year, holder?, cvv?, submit}` pays with a vault card. See below.
 
 Computer (the app must be one the person allowed; `app_id` is its bundle id):
 - `computer.apps`: `{}`.
@@ -51,9 +53,27 @@ Computer (the app must be one the person allowed; `app_id` is its bundle id):
 
 Name an element as `element: {role, name, nth?}`, for example `{role: "button", name: "Download"}`. Add `nth` (0 is the first) only when several elements share role and name. Never write a ref such as `e12` or `@s1:e4`: refs change with every snapshot, so SubKit takes a fresh snapshot right before each such action and picks the ref itself.
 
+## Signing in and paying with the vault
+
+The values never appear in the workflow, in the run or in its result. The step names the vault item; SubKit Desktop fills the fields on the device.
+
+- `browser.sign_in`:
+  - `origin` is the exact site, for example `"https://members.example.com"`. It must be one of the login item's origins (or its `www.` pair), or the step is refused.
+  - `vault_item` is the name of a `login` item (`me.<name>` for a personal one), never a value or a placeholder.
+  - `kind` is `"password"` or `"totp"`. With `"totp"`, the device computes the one-time code from the item's TOTP seed and fills `code`.
+  - `username`, `password`, `code` and `submit` are elements, for example `{role: "textbox", name: "Email"}`.
+  - The step result is `{filled, outcome}` and a redacted snapshot.
+- `browser.pay`:
+  - `card` is the name of a `card` item or its last four digits. Cards are personal (“Only me”), so the step runs only for the card's owner.
+  - `amount_minor` and `currency` are fixed values, for example `4990` and `"EUR"`. When the device can read the total on the page and it differs, it refuses.
+  - `number`, `exp` (or `exp_month` and `exp_year`), `holder`, `cvv` and `submit` are elements. The card fields must sit on the page's own origin: fields inside a payment provider's frame (Stripe, Adyen) are refused, so such a payment needs the person.
+  - Every run pauses for the person's payment approval. They enter the CVV there; it is never stored.
+  - The result is `outcome: "submitted"` or `"uncertain"`. Submitted is not paid: check the confirmation page in the next step, and never repeat a pay step whose outcome is uncertain.
+- Plain `browser.fill` never writes into password, code or card fields. A `browser.press` on a pay button asks every time; pay with `browser.pay`.
+
 ## Approval
 
-- The approval names the device and, for each local step, the folders (with read or write access), the websites and the apps it uses. Write `folder_id`, `to_folder_id`, `url` and `app_id` as fixed values. A placeholder there leaves the workflow unapprovable, and a value filled in while the run goes that the approval does not name is refused.
+- The approval names the device and, for each local step, the folders (with read or write access), the websites and the apps it uses. For `browser.sign_in` and `browser.pay` it also names the vault items and the payment sites. Write `folder_id`, `to_folder_id`, `url` and `app_id` as fixed values. A placeholder there leaves the workflow unapprovable, and a value filled in while the run goes that the approval does not name is refused.
 - Approve on the device itself. A new folder, write access where only reading was approved, a new or private website and a new app need a new approval; fewer items carry it forward.
 - Browser and computer steps run only for the device's person: from their chat or task, a run they start, or a schedule they set up.
 - A workflow called by another workflow refuses local steps. Put local steps in the workflow the person approves and runs.

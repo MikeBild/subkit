@@ -1,4 +1,4 @@
-import { peopleHref } from "./links";
+import { peopleHref, settingsHref } from "./links";
 
 export const PAGE_ROUTES = ["/", "/audit", "/usage", "/api-access", "/settings"] as const;
 
@@ -14,10 +14,13 @@ export const STANDALONE_ROUTES = [RECOVERY_ROUTE, WELCOME_ROUTE, INVITE_ROUTE] a
 
 export type StandaloneRoute = (typeof STANDALONE_ROUTES)[number];
 
-export const REDIRECT_ROUTES = ["/access"] as const;
+export const REDIRECT_ROUTES = ["/access", "/vault"] as const;
 
-export function movedTarget(search: string): string {
-  return redirectTarget(peopleHref("roles"), search);
+export type RedirectRoute = (typeof REDIRECT_ROUTES)[number];
+
+export function movedTarget(search: string, from: RedirectRoute = "/access"): string {
+  const target = from === "/vault" ? settingsHref(null, { area: "vault" }) : peopleHref("roles");
+  return redirectTarget(target, search);
 }
 
 function redirectTarget(target: string, incomingSearch: string): string {

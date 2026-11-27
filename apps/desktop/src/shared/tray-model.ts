@@ -1,4 +1,4 @@
-import { badgeLabel } from "./attention.ts";
+import { badgeLabel, type VaultApproval } from "./attention.ts";
 import { clockLabel, type Locale, t } from "./i18n.ts";
 import type { Mute } from "./quiet-hours.ts";
 
@@ -7,6 +7,7 @@ export type Connection = "signed-out" | "connecting" | "online" | "offline" | "e
 export interface TrayModel {
   locale: Locale;
   count: number;
+  approval?: VaultApproval | null;
   connection: Connection;
   mute: Mute | null;
   update: MenuUpdateItem | null;
@@ -23,6 +24,7 @@ export interface MenuUpdateItem {
 export type TrayAction =
   | "open"
   | "needsYou"
+  | "approval"
   | "pause"
   | "resume"
   | "launchAtLogin"
@@ -80,6 +82,18 @@ export function trayMenu(model: TrayModel): TrayMenuItem[] {
   const items: TrayMenuItem[] = [
     { kind: "item", action: "open", label: t(locale, "tray.open"), enabled: true },
     { kind: "item", action: "needsYou", label: trayStatus(model), enabled: live },
+    ...(model.approval && live
+      ? [
+          {
+            kind: "item" as const,
+            action: "approval" as const,
+            label: t(locale, `tray.approval.${model.approval.kind}`, {
+              count: model.approval.count,
+            }),
+            enabled: true,
+          },
+        ]
+      : []),
     ...(model.liveView
       ? [
           {

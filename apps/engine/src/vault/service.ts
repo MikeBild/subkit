@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
 import type { VaultField, VaultHandle } from "@shared/vault-handle.ts";
-import { and, desc, eq, inArray, isNull, or, type SQL, sql } from "drizzle-orm";
+import {
+  fieldsOfKind,
+  isPersonalOnlyKind,
+  needsFreshAuthToReveal,
+  usableInConnectorSteps,
+} from "@shared/vault-kinds.ts";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Actor } from "../audit/actor.ts";
-import { auditActor } from "../audit/actor.ts";
-import { auditAwait } from "../audit/audit.ts";
-import { AuditAction, type AuditActionValue } from "../audit/types.ts";
+import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { deserializePlain, serializePlain } from "../credentials/credential-value.ts";
 import { deleteCredential } from "../credentials/service.ts";
-import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Executor } from "../db/client.ts";
 import { type ScopedTx, withTenantScope } from "../db/index.ts";
-import { auditLog, connectors, vaultItems } from "../db/schema/index.ts";
+import { auditLog, vaultItems } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import {
@@ -19,6 +21,7 @@ import {
   type PreparedVaultValues,
   vaultValueKey,
 } from "./core/injection.ts";
+import { normalizeOrigins } from "./core/kinds.ts";
 import {
   handleMatches,
   isEditableKind,
@@ -36,6 +39,22 @@ import {
   vaultScopeOf,
   vaultSecretsOf,
 } from "./core/vault-item.ts";
+import {
+  type ItemRow,
+  modeOf,
+  openRow,
+  record,
+  revealedFields,
+  sealed,
+  selectItems,
+  storedValueOf,
+  VaultError,
+  visibleTo,
+} from "./persistence/store.ts";
+
+export { VaultError };
+
+export const FRESH_AUTH_MAX_AGE_MS = 5 * 60 * 1000;
 
 export interface VaultItemView {
   id: string;
@@ -48,6 +67,8 @@ export interface VaultItemView {
   connector: { id: string; slug: string; display_name: string } | null;
   template_slug: string | null;
   fields: string[];
+  metadata: Record<string, unknown>;
+  origins: string[];
   created_at: string;
   updated_at: string;
   rotated_at: string | null;
@@ -64,56 +85,6 @@ export interface VaultActivityEntry {
   metadata: Record<string, unknown>;
 }
 
-export class VaultError extends Error {
-  constructor(
-    readonly code: "not_found" | "forbidden" | "conflict" | "invalid" | "unreadable",
-    message: string,
-  ) {
-    super(message);
-    this.name = "VaultError";
-  }
-}
-
-const COLUMNS = {
-  id: vaultItems.id,
-  tenant_id: vaultItems.tenant_id,
-  name: vaultItems.name,
-  kind: vaultItems.kind,
-  owner_user_id: vaultItems.owner_user_id,
-  environment: vaultItems.environment,
-  mode: vaultItems.mode,
-  description: vaultItems.description,
-  credential_generation: vaultItems.credential_generation,
-  template_slug: vaultItems.template_slug,
-  connector_id: vaultItems.connector_id,
-  connector_slug: connectors.slug,
-  connector_display_name: connectors.display_name,
-  created_at: vaultItems.created_at,
-  updated_at: vaultItems.updated_at,
-  rotated_at: vaultItems.rotated_at,
-  last_used_at: vaultItems.last_used_at,
-};
-
-type ItemRow = {
-  id: string;
-  tenant_id: string;
-  name: string;
-  kind: VaultItemKind;
-  owner_user_id: string | null;
-  environment: VaultEnvironment;
-  mode: string;
-  description: string | null;
-  credential_generation: number;
-  template_slug: string | null;
-  connector_id: string | null;
-  connector_slug: string | null;
-  connector_display_name: string | null;
-  created_at: Date;
-  updated_at: Date;
-  rotated_at: Date | null;
-  last_used_at: Date | null;
-};
-
 const FIELDS_BY_MODE: Readonly<Record<string, readonly string[]>> = {
   bearer: ["token"],
   basic: ["username", "password"],
@@ -127,16 +98,18 @@ const FIELDS_BY_MODE: Readonly<Record<string, readonly string[]>> = {
   signed_jwt: ["private_key"],
 };
 
-function aadFor(tenant_id: string, id: string): string {
-  return `credential:${tenant_id}:${id}`;
-}
-
-function templateAadFor(tenant_id: string, template_slug: string): string {
-  return `connector-template-credential:${tenant_id}:${template_slug}`;
-}
-
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
+}
+
+function fieldNamesOf(row: ItemRow): string[] {
+  if (!isEditableKind(row.kind)) return [...(FIELDS_BY_MODE[row.mode] ?? [])];
+  if (row.kind === "login") {
+    return row.fields.has_totp === true
+      ? ["username", "password", "totp_seed"]
+      : ["username", "password"];
+  }
+  return [...fieldsOfKind(row.kind)];
 }
 
 function toView(row: ItemRow): VaultItemView {
@@ -157,7 +130,9 @@ function toView(row: ItemRow): VaultItemView {
           }
         : null,
     template_slug: row.template_slug,
-    fields: [...(FIELDS_BY_MODE[row.mode] ?? [])],
+    fields: fieldNamesOf(row),
+    metadata: row.fields ?? {},
+    origins: row.kind === "login" ? [...(row.origins ?? [])] : [],
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     rotated_at: iso(row.rotated_at),
@@ -180,21 +155,6 @@ export async function vaultViewer(
     if (decision.allow) granted.add(permission);
   }
   return { user_id: principal.kind === "user" ? principal.id : null, permissions: granted };
-}
-
-function visibleTo(viewer: VaultViewer) {
-  const own = viewer.user_id ? eq(vaultItems.owner_user_id, viewer.user_id) : sql`false`;
-  return viewer.permissions.has(VAULT_PERMISSION.read)
-    ? or(isNull(vaultItems.owner_user_id), own)
-    : own;
-}
-
-function selectItems(db: ScopedTx, tenant_id: string, ...conditions: (SQL | undefined)[]) {
-  return db
-    .select(COLUMNS)
-    .from(vaultItems)
-    .leftJoin(connectors, eq(connectors.id, vaultItems.connector_id))
-    .where(and(eq(vaultItems.tenant_id, tenant_id), ...conditions));
 }
 
 export async function listVaultItems(
@@ -260,44 +220,18 @@ export async function getVaultItem(
   );
 }
 
-function sealed(tenant_id: string, id: string, value: VaultValue) {
-  const plain =
-    value.kind === "secret"
-      ? serializePlain({ mode: "bearer", token: value.token })
-      : serializePlain({ mode: "basic", username: value.username, password: value.password });
-  const payload = encryptSecret(plain, aadFor(tenant_id, id));
-  return {
-    ciphertext: Buffer.from(payload.ciphertext),
-    iv: Buffer.from(payload.iv),
-    auth_tag: Buffer.from(payload.auth_tag),
-  };
+export function freshAuth(auth_time: Date | null, now: Date = new Date()): boolean {
+  if (auth_time === null) return false;
+  const age = now.getTime() - auth_time.getTime();
+  return age >= -60_000 && age <= FRESH_AUTH_MAX_AGE_MS;
 }
 
-async function record(
-  db: Executor,
-  tenant_id: string,
-  actor: Actor | null,
-  action: AuditActionValue,
-  row: { id: string; name: string; kind: string; owner_user_id: string | null },
-  metadata: Record<string, unknown> = {},
-): Promise<void> {
-  await auditAwait(
-    {
-      tenant_id,
-      ...auditActor(actor),
-      action,
-      resource_type: "vault_item",
-      resource_id: row.id,
-      result: "success",
-      metadata: {
-        name: row.name,
-        kind: row.kind,
-        scope: vaultScopeOf(row),
-        ...metadata,
-      },
-    },
-    db,
-  );
+function originsFor(kind: VaultItemKind, raw: readonly string[] | undefined): string[] {
+  if (raw === undefined || raw.length === 0) return [];
+  if (kind !== "login") throw new VaultError("invalid", "only a login is bound to websites");
+  const origins = normalizeOrigins(raw);
+  if (typeof origins === "string") throw new VaultError("invalid", origins);
+  return origins;
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -317,12 +251,23 @@ export async function createVaultItem(
     environment: VaultEnvironment;
     description: string | null;
     value: VaultValue;
+    origins?: readonly string[];
   },
 ): Promise<VaultItemView> {
   const owner = input.scope === "person" ? input.viewer.user_id : null;
   if (input.scope === "person" && !owner) {
     throw new VaultError("invalid", "only a person can own a personal vault item");
   }
+  if (input.value.kind !== input.kind) {
+    throw new VaultError("invalid", `the value is a ${input.value.kind}, not a ${input.kind}`);
+  }
+  if (isPersonalOnlyKind(input.kind) && input.scope !== "person") {
+    throw new VaultError(
+      "invalid",
+      "cards, bank accounts and identities are personal; save them for yourself only",
+    );
+  }
+  const origins = originsFor(input.kind, input.origins);
   if (
     input.scope === "workspace" &&
     vaultAccess(input.viewer, { kind: input.kind, owner_user_id: null }, "write") !== "allow"
@@ -340,9 +285,10 @@ export async function createVaultItem(
         description: input.description,
         owner_user_id: owner,
         environment: input.environment,
-        mode: input.kind === "secret" ? "bearer" : "basic",
+        mode: modeOf(input.kind),
+        origins,
         created_by: input.actor?.id ?? null,
-        ...sealed(input.tenant_id, id, input.value),
+        ...sealed({ tenant_id: input.tenant_id, id, owner_user_id: owner }, input.value),
       });
       await record(tx, input.tenant_id, input.actor, AuditAction.VAULT_ITEM_CREATED, {
         id,
@@ -369,6 +315,7 @@ export async function updateVaultItem(
     viewer: VaultViewer;
     description?: string | null;
     value?: VaultValue | VaultLoginPatch;
+    origins?: readonly string[];
   },
 ): Promise<VaultItemView> {
   const action: VaultAction = input.value ? "rotate" : "write";
@@ -379,18 +326,20 @@ export async function updateVaultItem(
   if (valueKind && valueKind !== row.kind) {
     throw new VaultError("invalid", `this item holds a ${row.kind}`);
   }
+  const origins = input.origins === undefined ? undefined : originsFor(row.kind, input.origins);
   const rotatedVersion = await withTenantScope(db, input.tenant_id, async (tx) => {
     const value =
       input.value?.kind === "login_patch"
-        ? await mergedRotationValue(tx, input.tenant_id, row, input.value)
+        ? await mergedRotationValue(tx, row, input.value)
         : input.value;
     const [updated] = await tx
       .update(vaultItems)
       .set({
         ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(origins !== undefined ? { origins } : {}),
         ...(value
           ? {
-              ...sealed(input.tenant_id, row.id, value),
+              ...sealed(row, value),
               credential_generation: sql`${vaultItems.credential_generation} + 1`,
               rotated_at: new Date(),
             }
@@ -444,64 +393,34 @@ export async function deleteVaultItem(
 
 async function mergedRotationValue(
   db: ScopedTx,
-  tenant_id: string,
   row: ItemRow,
   patch: VaultLoginPatch,
 ): Promise<VaultValue> {
-  const merged = mergedLoginValue(
-    revealedFields(row, await openRow(db, tenant_id, row, true)),
-    patch,
-  );
+  const merged = mergedLoginValue(revealedFields(row, await openRow(db, row, true)), patch);
   if (typeof merged === "string") throw new VaultError("invalid", merged);
   return merged;
 }
 
-async function openRow(
-  db: ScopedTx,
-  tenant_id: string,
-  row: ItemRow,
-  lock = false,
-): Promise<string> {
-  const query = db
-    .select({ ciphertext: vaultItems.ciphertext, iv: vaultItems.iv, auth_tag: vaultItems.auth_tag })
-    .from(vaultItems)
-    .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, row.id)))
-    .limit(1);
-  const [sealedRow] = await (lock ? query.for("update") : query);
-  if (!sealedRow) throw new VaultError("not_found", "vault item not found");
-  try {
-    return decryptSecret(
-      sealedRow,
-      row.kind === "template_client" && row.template_slug
-        ? templateAadFor(tenant_id, row.template_slug)
-        : aadFor(tenant_id, row.id),
-    );
-  } catch {
-    throw new VaultError("unreadable", "this vault item can't be opened with the current key");
-  }
-}
-
-function revealedFields(row: ItemRow, raw: string): Record<string, string> {
-  const decoded: Record<string, unknown> =
-    row.kind === "template_client"
-      ? (JSON.parse(raw) as Record<string, unknown>)
-      : (deserializePlain(row.mode as never, raw) as unknown as Record<string, unknown>);
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(decoded)) {
-    if (key === "mode") continue;
-    if (typeof value === "string") out[key] = value;
-    else if (value && typeof value === "object") out[key] = JSON.stringify(value);
-  }
-  return out;
-}
-
 export async function revealVaultItem(
   db: Executor,
-  input: { tenant_id: string; id: string; actor: Actor | null; viewer: VaultViewer },
+  input: {
+    tenant_id: string;
+    id: string;
+    actor: Actor | null;
+    viewer: VaultViewer;
+    auth_time?: Date | null;
+    now?: Date;
+  },
 ): Promise<{ id: string; name: string; values: Record<string, string> }> {
   return withTenantScope(db, input.tenant_id, async (tx) => {
     const row = await loadItem(tx, input.tenant_id, input.id, input.viewer, "reveal");
-    const values = revealedFields(row, await openRow(tx, input.tenant_id, row));
+    if (needsFreshAuthToReveal(row.kind) && !freshAuth(input.auth_time ?? null, input.now)) {
+      throw new VaultError(
+        "reauth_required",
+        "sign in again to show a card or bank account; the sign-in must be less than 5 minutes old",
+      );
+    }
+    const values = revealedFields(row, await openRow(tx, row));
     await record(tx, input.tenant_id, input.actor, AuditAction.VAULT_ITEM_REVEALED, row, {
       fields: Object.keys(values),
     });
@@ -563,22 +482,6 @@ export type VaultResolution =
       readonly message: string;
     };
 
-function storedValueOf(kind: VaultItemKind, raw: string, mode: string): VaultValue | null {
-  if (!isEditableKind(kind)) return null;
-  const decoded = deserializePlain(mode as never, raw) as unknown as Record<string, unknown>;
-  if (kind === "secret" && typeof decoded.token === "string") {
-    return { kind, token: decoded.token };
-  }
-  if (
-    kind === "login" &&
-    typeof decoded.username === "string" &&
-    typeof decoded.password === "string"
-  ) {
-    return { kind, username: decoded.username, password: decoded.password };
-  }
-  return null;
-}
-
 interface ResolveVaultHandleInput {
   tenant_id: string;
   environment: VaultEnvironment;
@@ -610,6 +513,8 @@ async function resolveScopedHandle(
   const row = candidates.find((candidate) => handleMatches(input.handle, candidate, input.user_id));
   const label = `secret.${input.handle.scope === "person" ? "me." : ""}${input.handle.name}`;
   if (!row) {
+    const other = await connectorStepRefusal(db, input, label);
+    if (other) return other;
     return {
       ok: false,
       code: "key_not_found",
@@ -618,8 +523,15 @@ async function resolveScopedHandle(
   }
   let value: VaultValue | null;
   try {
-    value = storedValueOf(row.kind, await openRow(db, input.tenant_id, row), row.mode);
-  } catch {
+    value = storedValueOf(row.kind, await openRow(db, row), row.mode);
+  } catch (error) {
+    logger.warn({
+      module: "vault",
+      msg: "vault item could not be opened",
+      tenant_id: input.tenant_id,
+      vault_item_id: row.id,
+      error: error instanceof Error ? error.name : "unknown",
+    });
     return { ok: false, code: "decrypt_failed", message: `vault item ${label} can't be opened` };
   }
   if (!value) {
@@ -654,6 +566,31 @@ async function resolveScopedHandle(
       value: resolved,
       secrets: [resolved, ...vaultSecretsOf(value)],
     },
+  };
+}
+
+async function connectorStepRefusal(
+  db: ScopedTx,
+  input: ResolveVaultHandleInput,
+  label: string,
+): Promise<VaultResolution | null> {
+  const others = (await selectItems(
+    db,
+    input.tenant_id,
+    eq(vaultItems.name, input.handle.name),
+    eq(vaultItems.environment, input.environment),
+    isNull(vaultItems.deleted_at),
+  ).limit(5)) as ItemRow[];
+  const other = others.find(
+    (candidate) =>
+      !usableInConnectorSteps(candidate.kind) &&
+      handleMatches(input.handle, candidate, input.user_id),
+  );
+  if (!other) return null;
+  return {
+    ok: false,
+    code: "key_not_found",
+    message: `vault item ${label} is a ${other.kind}; only secrets and logins go into connector steps`,
   };
 }
 

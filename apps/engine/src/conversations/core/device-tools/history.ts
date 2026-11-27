@@ -21,6 +21,8 @@ export interface DeviceStepRecord {
   readonly app: string | null;
   readonly refs: Readonly<Record<string, ElementFacts>> | null;
   readonly filled: readonly FilledValue[];
+  readonly signature?: string | null;
+  readonly uncertain?: boolean;
 }
 
 export interface Resolved {
@@ -113,9 +115,15 @@ export function filledBy(
 }
 
 export function stepRecord(
-  p: { readonly tool: string; readonly device_id: string; readonly filled: readonly FilledValue[] },
+  p: {
+    readonly tool: string;
+    readonly device_id: string;
+    readonly filled: readonly FilledValue[];
+    readonly step_signature?: string | null;
+  },
   output: unknown,
   call_id: string,
+  uncertain = false,
 ): DeviceStepRecord {
   const step = bag(bag(output).step);
   const base: DeviceStepRecord = {
@@ -128,6 +136,7 @@ export function stepRecord(
     app: null,
     refs: null,
     filled: p.filled,
+    ...(p.step_signature ? { signature: p.step_signature, uncertain } : {}),
   };
   if (p.tool === "browser_snapshot") {
     const page = parseBrowserSnapshot(output);
@@ -145,6 +154,14 @@ export function stepRecord(
         refs: window.refs,
       }
     : base;
+}
+
+export function uncertainSignatures(steps: readonly DeviceStepRecord[]): ReadonlySet<string> {
+  return new Set(
+    steps.flatMap((step) =>
+      step.uncertain === true && typeof step.signature === "string" ? [step.signature] : [],
+    ),
+  );
 }
 
 export function sameElement(a: ElementFacts | null, b: ElementFacts | undefined): boolean {

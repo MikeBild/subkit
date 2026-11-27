@@ -42,6 +42,13 @@ paths = [
 ]
 
 [[allowlists]]
+description = "browser benchmark fixture logins for local fake sites; no real account"
+targetRules = ["generic-api-key"]
+paths = [
+  '''apps/engine/eval/browser/sites\.ts''',
+]
+
+[[allowlists]]
 description = "engine --smoke redaction self-test fake token"
 targetRules = ["generic-api-key"]
 paths = [

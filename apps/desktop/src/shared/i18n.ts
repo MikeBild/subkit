@@ -8,6 +8,14 @@ const MESSAGES = {
   "tray.open": { de: "SubKit öffnen", en: "Open SubKit" },
   "tray.needsYou": { de: "Braucht dich ({count})", en: "Needs you ({count})" },
   "tray.needsYou.none": { de: "Nichts braucht dich gerade", en: "Nothing needs you right now" },
+  "tray.approval.payment": {
+    de: "Zahlung freigeben ({count})",
+    en: "Approve payment ({count})",
+  },
+  "tray.approval.sign_in": {
+    de: "Anmeldung bestätigen ({count})",
+    en: "Confirm sign-in ({count})",
+  },
   "tray.pause": {
     de: "Benachrichtigungen 1 Stunde pausieren",
     en: "Pause notifications for 1 hour",
@@ -368,6 +376,14 @@ const MESSAGES = {
     de: "Bestätige eine Aktion auf deinem Gerät.",
     en: "Confirm an action on your device.",
   },
+  "notify.reason.payment_approval_needed": {
+    de: "Eine Zahlung mit deiner Karte wartet auf deine Freigabe.",
+    en: "A payment with your card is waiting for your approval.",
+  },
+  "notify.reason.sign_in_confirmation_needed": {
+    de: "Eine Anmeldung mit deinem Tresor wartet auf deine Bestätigung.",
+    en: "A sign-in with your vault is waiting for your confirmation.",
+  },
   "notify.reason.device_permission_missing": {
     de: "Diesem Gerät fehlt eine Systemberechtigung.",
     en: "This device is missing a system permission.",
@@ -376,6 +392,21 @@ const MESSAGES = {
     de: "Ein Browser-Schritt wartet auf diesem Gerät auf dich.",
     en: "A browser step is waiting for you on this device.",
   },
+  "notify.vault.payment.title": { de: "Zahlung freigeben", en: "Approve payment" },
+  "notify.vault.payment.body": {
+    de: "Ein Browser-Schritt möchte auf {site} mit deiner Karte bezahlen. Prüf Shop, Betrag und Karte und gib die CVV im Cockpit ein.",
+    en: "A browser step wants to pay on {site} with your card. Check shop, amount and card, then enter the CVV in the Cockpit.",
+  },
+  "notify.vault.payment.bodyAmount": {
+    de: "Ein Browser-Schritt möchte auf {site} {amount} mit deiner Karte bezahlen. Prüf Shop, Betrag und Karte und gib die CVV im Cockpit ein.",
+    en: "A browser step wants to pay {amount} on {site} with your card. Check shop, amount and card, then enter the CVV in the Cockpit.",
+  },
+  "notify.vault.signIn.title": { de: "Anmeldung bestätigen", en: "Confirm sign-in" },
+  "notify.vault.signIn.body": {
+    de: "Ein Browser-Schritt möchte dich mit einem Tresor-Eintrag auf {site} anmelden. Bestätige es im Cockpit.",
+    en: "A browser step wants to sign you in on {site} with a vault entry. Confirm it in the Cockpit.",
+  },
+  "notify.vault.aSite": { de: "einer Website", en: "a website" },
   "notify.reason.knowledge_review_due": {
     de: "Mindestens eine Wissensquelle ist zur Prüfung fällig.",
     en: "At least one knowledge source is due for a review.",

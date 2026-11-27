@@ -148,6 +148,10 @@ export const overviewEn = {
   "overview.reason.device_offline_waiting": "{subject} is waiting for its device to come online",
   "overview.reason.local_confirmation_needed":
     "{subject} waits for you to confirm an action on your device",
+  "overview.reason.payment_approval_needed":
+    "A payment with one of your cards waits for your approval with the CVV",
+  "overview.reason.sign_in_confirmation_needed":
+    "A sign-in with your vault waits for your confirmation",
   "overview.reason.device_permission_missing":
     "{subject} is missing a system permission for local steps",
   "overview.reason.folder_changed":
@@ -325,6 +329,8 @@ export const overviewEn = {
   "overview.short.pair_approval_waitingAnyone": "Approval requested, waiting for a second person",
   "overview.short.device_offline_waiting": "Waiting for device",
   "overview.short.local_confirmation_needed": "Confirm on your device",
+  "overview.short.payment_approval_needed": "Approve payment",
+  "overview.short.sign_in_confirmation_needed": "Confirm sign-in",
   "overview.short.device_permission_missing": "Permission missing",
   "overview.short.folder_changed": "Folder changed",
   "overview.short.device_handover_waiting": "Waiting for you to take over",
@@ -524,6 +530,10 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.reason.device_offline_waiting": "{subject} wartet, bis sein Gerät online ist",
   "overview.reason.local_confirmation_needed":
     "{subject} wartet, bis du eine Aktion auf deinem Gerät bestätigst",
+  "overview.reason.payment_approval_needed":
+    "Eine Zahlung mit einer deiner Karten wartet auf deine Freigabe mit der CVV",
+  "overview.reason.sign_in_confirmation_needed":
+    "Eine Anmeldung mit deinem Tresor wartet auf deine Bestätigung",
   "overview.reason.device_permission_missing":
     "{subject} fehlt eine Systemberechtigung für lokale Schritte",
   "overview.reason.folder_changed":
@@ -705,6 +715,8 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.short.pair_approval_waitingAnyone": "Freigabe angefragt, wartet auf eine zweite Person",
   "overview.short.device_offline_waiting": "Wartet auf Gerät",
   "overview.short.local_confirmation_needed": "Auf deinem Gerät bestätigen",
+  "overview.short.payment_approval_needed": "Zahlung freigeben",
+  "overview.short.sign_in_confirmation_needed": "Anmeldung bestätigen",
   "overview.short.device_permission_missing": "Berechtigung fehlt",
   "overview.short.folder_changed": "Ordner geändert",
   "overview.short.device_handover_waiting": "Wartet auf deine Übernahme",

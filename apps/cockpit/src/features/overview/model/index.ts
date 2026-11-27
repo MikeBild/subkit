@@ -48,6 +48,7 @@ export {
   sinceLabel,
   sourceLabel,
   statusLine,
+  vaultAttentionFacts,
   waitingOnLine,
   waitingOnName,
 } from "./overview-model";

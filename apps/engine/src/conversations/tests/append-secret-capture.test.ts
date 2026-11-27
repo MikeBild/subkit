@@ -157,4 +157,26 @@ describe("appendUserMessage — secret scrub + capture", () => {
     expect(result.message).toBe("what does the latest probe say?");
     expect(getDraftCredential(conversation_id)).toBeNull();
   });
+
+  test("a card number or one-time code is withheld before it is stored or read by the model", async () => {
+    const conversation_id = await seedConversationWithConnector("basic");
+    const result = await appendUserMessage(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        actor_id: ctx.user_id,
+        message: "pay with 4242 4242 4242 4242, the code is 482913",
+      },
+      ctx.testDb.db,
+    );
+    expect(result.message).toBe("pay with ***REDACTED:card***, the code is ***REDACTED:otp***");
+    expect(await readLastUserMessageText(conversation_id)).toBe(result.message);
+    expect(getDraftCredential(conversation_id)).toBeNull();
+
+    const created = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, initial_message: "Der TAN ist 482 913" },
+      ctx.testDb.db,
+    );
+    expect(created.initial_message).toBe("Der TAN ist ***REDACTED:otp***");
+  });
 });

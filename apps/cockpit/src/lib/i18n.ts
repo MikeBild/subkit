@@ -41,6 +41,7 @@ import { tasksDe, tasksEn } from "./i18n/tasks";
 import { toolDe, toolEn } from "./i18n/tool";
 import { usageDe, usageEn } from "./i18n/usage";
 import { vaultDe, vaultEn } from "./i18n/vault";
+import { vaultEntriesDe, vaultEntriesEn } from "./i18n/vault-entries";
 import { voiceDe, voiceEn } from "./i18n/voice";
 import { workflowDe, workflowEn } from "./i18n/workflow";
 import { workflowReviewDe, workflowReviewEn } from "./i18n/workflow-review";
@@ -98,6 +99,7 @@ const EN = {
   ...toolEn,
   ...usageEn,
   ...vaultEn,
+  ...vaultEntriesEn,
   ...workflowEn,
   ...workflowReviewEn,
 } as const;
@@ -151,6 +153,7 @@ const DE: Record<TranslationKey, string> = {
   ...toolDe,
   ...usageDe,
   ...vaultDe,
+  ...vaultEntriesDe,
   ...workflowDe,
   ...workflowReviewDe,
 };

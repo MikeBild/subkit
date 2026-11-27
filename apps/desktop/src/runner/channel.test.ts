@@ -215,4 +215,33 @@ describe("createHttpChannel", () => {
       { type: "runner.revoked" },
     ]);
   });
+
+  test("claims a secret ticket with the runner token and reads a gone ticket as none", async () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    let claims = 0;
+    const server = fakeServer({
+      "POST /v1/device-runner/token": token,
+      [`POST /v1/device-runner/secret-tickets/${id}/claim`]: () => {
+        claims += 1;
+        return claims === 1
+          ? Response.json({
+              values: { username: "mike", password: "pw" },
+              expires_at: new Date(NOW + 60_000).toISOString(),
+            })
+          : new Response(null, { status: 410 });
+      },
+    });
+    const channel = createHttpChannel({
+      origin: ORIGIN,
+      deviceRunnerId: "r1",
+      sign: async () => "sig",
+      fetch: server.fetcher,
+      now: () => NOW,
+      locale: "en",
+    });
+    const values = await channel.claimSecretTicket(id);
+    expect(values && Object.fromEntries(values)).toEqual({ username: "mike", password: "pw" });
+    expect(server.calls.at(-1)?.headers.authorization).toBe("Bearer tok-1");
+    expect(await channel.claimSecretTicket(id)).toBeNull();
+  });
 });

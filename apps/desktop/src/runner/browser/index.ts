@@ -19,6 +19,7 @@ import { type BrowserFiles, createBrowserAdapter, type DownloadSink } from "./ac
 import { type AgentBrowserClient, createAgentBrowserProcess } from "./agent-browser.ts";
 import { type FilteringProxy, type ProxyDecisionEvent, startFilteringProxy } from "./proxy.ts";
 import { closeBrowser } from "./teardown.ts";
+import type { SecretTickets } from "./vault-actions.ts";
 
 export interface BrowserCapability {
   readonly adapter: DeviceAdapter;
@@ -29,6 +30,7 @@ export interface BrowserCapability {
 export interface BrowserCapabilityOptions {
   readonly config: RunnerBrowserConfig;
   readonly sink: DownloadSink;
+  readonly tickets?: SecretTickets;
   readonly onStep?: (step: BrowserStep) => void;
   readonly onDecision?: (event: ProxyDecisionEvent) => void;
 }
@@ -124,6 +126,7 @@ export function createBrowserCapability(
       await closeBrowser(lazyClient(partition), layout, partition);
     },
     ...(options.onStep ? { onStep: options.onStep } : {}),
+    ...(options.tickets ? { tickets: options.tickets } : {}),
   });
 
   const stop = async () => {

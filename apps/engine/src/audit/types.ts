@@ -96,6 +96,10 @@ export const AuditAction = {
   VAULT_ITEM_USED: "vault.item.used",
   VAULT_ITEM_PROMOTED: "vault.item.promoted",
   VAULT_ITEM_REFRESHED: "vault.item.refreshed",
+  VAULT_PAYMENT_REQUESTED: "vault.payment.requested",
+  VAULT_PAYMENT_APPROVED: "vault.payment.approved",
+  VAULT_PAYMENT_REJECTED: "vault.payment.rejected",
+  VAULT_PAYMENT_EXPIRED: "vault.payment.expired",
 
   CONNECTOR_CREATED: "connector.created",
   CONNECTOR_UPDATED: "connector.updated",

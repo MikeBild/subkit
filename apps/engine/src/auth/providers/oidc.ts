@@ -191,6 +191,7 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
         );
       }
       const chooseAccount = accountChoiceRequested(req);
+      const reauth = url.searchParams.get("reauth") === "1";
       const exec = db;
       let installation = null;
       if (opts.installationId) {
@@ -268,7 +269,7 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
         nonce,
         code_challenge,
         code_challenge_method: "S256",
-        ...(hostedSignup && redirectTo === "/v1/identity/recovery"
+        ...((hostedSignup && redirectTo === "/v1/identity/recovery") || reauth
           ? { prompt: "login", max_age: "0" }
           : chooseAccount
             ? { prompt: "select_account" }

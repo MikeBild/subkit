@@ -44,6 +44,7 @@ export interface ResumeSummary {
       kind?: string;
       diffs?: ConfirmDiff[];
       device?: LocalConfirmation;
+      payment_id?: string;
     };
     summary: string;
     expires_at: string;
@@ -451,6 +452,7 @@ export function pendingPrompt(
     kind?: string;
     diffs?: ConfirmDiff[];
     device?: LocalConfirmation;
+    payment_id?: string;
   };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
@@ -466,6 +468,7 @@ export function pendingPrompt(
   const confirmKind = confirm && typeof value.kind === "string" ? value.kind : undefined;
   const diffs = confirm ? confirmDiffs(value.diffs) : undefined;
   const device = confirm ? localConfirmationOf(value) : null;
+  const paymentId = device ? pendingPaymentId(value.target) : null;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
     try {
@@ -494,6 +497,15 @@ export function pendingPrompt(
       ...(confirmKind ? { kind: confirmKind } : {}),
       ...(diffs ? { diffs } : {}),
       ...(device ? { device } : {}),
+      ...(paymentId ? { payment_id: paymentId } : {}),
     },
   };
+}
+
+function pendingPaymentId(target: unknown): string | null {
+  if (!target || typeof target !== "object") return null;
+  const args = (target as { args?: unknown }).args;
+  if (!args || typeof args !== "object") return null;
+  const id = (args as { payment_id?: unknown }).payment_id;
+  return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }

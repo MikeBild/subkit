@@ -17,6 +17,9 @@ export const ROW_SCOPED_TABLES = [
   "workflow_run_state",
   "auth_provider_configs",
   "owned_resources",
+  "vault_uses",
+  "vault_secret_tickets",
+  "vault_payments",
 ] as const;
 
 export type RowScopedTable = (typeof ROW_SCOPED_TABLES)[number];

@@ -80,6 +80,8 @@ export const ATTENTION_REASONS = [
   "device_handover_waiting",
   "knowledge_review_due",
   "folder_changed",
+  "payment_approval_needed",
+  "sign_in_confirmation_needed",
 ] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
 
@@ -179,7 +181,18 @@ export interface AttentionItem {
   deadline: string | null;
   detail: string | null;
   waiting_on?: { user_id: string; name: string };
+  vault?: AttentionVaultUse;
   actions: AttentionAction[];
+}
+
+export interface AttentionVaultUse {
+  kind: "payment" | "sign_in";
+  id: string;
+  origin: string;
+  conversation_id: string | null;
+  amount_minor?: number;
+  currency?: string;
+  card?: { brand: string; last4: string };
 }
 
 export interface SnoozedAttentionItem extends AttentionItem {

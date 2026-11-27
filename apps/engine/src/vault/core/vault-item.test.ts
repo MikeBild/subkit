@@ -29,6 +29,7 @@ describe("permissions", () => {
       rotate: "vault:rotate",
       delete: "vault:delete",
       reveal: "vault:reveal",
+      use: "vault:use",
     });
   });
 });
@@ -73,9 +74,27 @@ describe("scope and kinds", () => {
     expect(vaultScopeOf({ owner_user_id: null })).toBe("workspace");
   });
 
-  test("only secrets and logins are edited in the vault", () => {
-    const kinds: VaultItemKind[] = ["connector", "secret", "login", "template_client"];
-    expect(kinds.filter(isEditableKind)).toEqual(["secret", "login"]);
+  test("entries are edited in the vault, connector and template items on their connector", () => {
+    const kinds: VaultItemKind[] = [
+      "connector",
+      "secret",
+      "login",
+      "template_client",
+      "card",
+      "bank_account",
+      "identity",
+      "address",
+      "note",
+    ];
+    expect(kinds.filter(isEditableKind)).toEqual([
+      "secret",
+      "login",
+      "card",
+      "bank_account",
+      "identity",
+      "address",
+      "note",
+    ]);
   });
 });
 
@@ -85,7 +104,7 @@ describe("vaultAccess", () => {
   const mine = { kind: "login" as const, owner_user_id: "u1" };
 
   test("a personal item is allowed to its owner for every action, hidden from others", () => {
-    for (const action of ["read", "write", "rotate", "delete", "reveal"] as const) {
+    for (const action of ["read", "write", "rotate", "delete", "reveal", "use"] as const) {
       expect(vaultAccess({ user_id: "u1", permissions: NONE }, mine, action)).toBe("allow");
       expect(vaultAccess({ user_id: "u2", permissions: ALL }, mine, action)).toBe("hidden");
       expect(vaultAccess({ user_id: null, permissions: ALL }, mine, action)).toBe("hidden");
@@ -99,7 +118,7 @@ describe("vaultAccess", () => {
   test("workspace actions need their own permission", () => {
     const reader = { user_id: "u1", permissions: READ_ONLY };
     expect(vaultAccess(reader, workspace, "read")).toBe("allow");
-    for (const action of ["write", "rotate", "delete", "reveal"] as const) {
+    for (const action of ["write", "rotate", "delete", "reveal", "use"] as const) {
       expect(vaultAccess(reader, workspace, action)).toBe("denied");
       expect(vaultAccess({ user_id: "u1", permissions: ALL }, workspace, action)).toBe("allow");
     }
@@ -173,6 +192,33 @@ describe("values", () => {
     expect(vaultFieldValue(login, "password")).toBe("p");
     expect(vaultFieldValue(login, null)).toBeNull();
     expect(vaultFieldValue(login, "token")).toBeNull();
+    const card = {
+      kind: "card" as const,
+      number: "4111111111111111",
+      exp_month: 1,
+      exp_year: 2040,
+      holder: "A",
+    };
+    expect(vaultFieldValue(card, "number")).toBeNull();
+    expect(vaultFieldValue(card, null)).toBeNull();
+  });
+
+  test("a login rotation keeps the one-time code key unless the patch replaces or removes it", () => {
+    const stored = { username: "u", password: "p", totp_seed: "JBSWY3DPEHPK3PXP" };
+    expect(mergedLoginValue(stored, { kind: "login_patch", password: "p2" })).toEqual({
+      kind: "login",
+      username: "u",
+      password: "p2",
+      totp_seed: "JBSWY3DPEHPK3PXP",
+    });
+    expect(mergedLoginValue(stored, { kind: "login_patch", totp_seed: null })).toEqual({
+      kind: "login",
+      username: "u",
+      password: "p",
+    });
+    expect(
+      mergedLoginValue(stored, { kind: "login_patch", totp_seed: "GEZDGNBVGY3TQOJQ" }),
+    ).toMatchObject({ totp_seed: "GEZDGNBVGY3TQOJQ" });
   });
 
   test("secrets to redact are the token or the password, not the username", () => {

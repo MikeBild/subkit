@@ -63,7 +63,7 @@ const redirectRoutes = REDIRECT_ROUTES.map((path) =>
     getParentRoute: () => rootRoute,
     path,
     beforeLoad: () => {
-      window.location.replace(absolute(movedTarget(window.location.search)));
+      window.location.replace(absolute(movedTarget(window.location.search, path)));
     },
   }),
 );

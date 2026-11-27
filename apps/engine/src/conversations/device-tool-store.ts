@@ -12,6 +12,7 @@ import type { ElementFacts } from "./core/device-tools/snapshot.ts";
 export type { DeviceStepRecord };
 
 import type { FilledValue } from "./core/device-tools/step.ts";
+import type { PendingVaultUse } from "./core/device-tools/vault.ts";
 
 export interface PendingDeviceCommand {
   readonly tool: string;
@@ -25,6 +26,8 @@ export interface PendingDeviceCommand {
   readonly element: ElementFacts | null;
   readonly partition: string | null;
   readonly filled: readonly FilledValue[];
+  readonly step_signature?: string;
+  readonly vault?: PendingVaultUse;
 }
 
 function isCapability(value: unknown): value is DeviceCapability {

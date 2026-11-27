@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { VAULT_KINDS, type VaultKind } from "@shared/vault-kinds.ts";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -37,6 +38,7 @@ export const credentialModeEnum = pgEnum("credential_mode", [
   "oauth2_client",
   "oauth2_private_key",
   "signed_jwt",
+  "structured",
 ]);
 export const connectorTemplateSourceEnum = pgEnum("connector_template_source", [
   "builtin",
@@ -216,8 +218,8 @@ export const connectorPromotions = pgTable(
   ],
 );
 
-export const VAULT_ITEM_KINDS = ["connector", "secret", "login", "template_client"] as const;
-export type VaultItemKind = (typeof VAULT_ITEM_KINDS)[number];
+export const VAULT_ITEM_KINDS = VAULT_KINDS;
+export type VaultItemKind = VaultKind;
 
 export const vaultItems = pgTable(
   "vault_items",
@@ -252,6 +254,9 @@ export const vaultItems = pgTable(
     rotated_at: timestamp("rotated_at", { withTimezone: true }),
     last_used_at: timestamp("last_used_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
+    fields: jsonb("fields").$type<Record<string, unknown>>().notNull().default({}),
+    origins: text("origins").array().notNull().default(sql`'{}'::text[]`),
+    value_digest: text("value_digest"),
     ...timestamps,
   },
   (t) => [
@@ -272,7 +277,19 @@ export const vaultItems = pgTable(
     check("vault_items_credential_generation_positive", sql`${t.credential_generation} > 0`),
     check(
       "vault_items_kind_check",
-      sql`${t.kind} IN ('connector', 'secret', 'login', 'template_client')`,
+      sql`${t.kind} IN ('connector', 'secret', 'login', 'template_client', 'card', 'bank_account', 'identity', 'address', 'note')`,
+    ),
+    check(
+      "vault_items_personal_only_check",
+      sql`${t.kind} NOT IN ('card', 'bank_account', 'identity') OR ${t.owner_user_id} IS NOT NULL`,
+    ),
+    check(
+      "vault_items_origins_login_check",
+      sql`${t.kind} = 'login' OR cardinality(${t.origins}) = 0`,
+    ),
+    check(
+      "vault_items_value_digest_check",
+      sql`${t.value_digest} IS NULL OR ${t.value_digest} ~ '^[0-9a-f]{64}$'`,
     ),
     check(
       "vault_items_connector_kind_check",

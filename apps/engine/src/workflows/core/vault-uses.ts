@@ -22,7 +22,20 @@ export function onlyVaultHandles(value: unknown): boolean {
   );
 }
 
+const VAULT_STEP_PATH = /(?:^|\/)browser\.(sign_in|pay)$/u;
+
+function browserVaultUse(path: unknown, body: unknown): string | null {
+  const found = typeof path === "string" ? VAULT_STEP_PATH.exec(path) : null;
+  if (!found) return null;
+  const named = Object(body) as { vault_item?: unknown; card?: unknown };
+  const reference = found[1] === "pay" ? named.card : named.vault_item;
+  return typeof reference === "string" && reference.length > 0
+    ? `${found[1] === "pay" ? "card" : "login"}:${reference}`
+    : null;
+}
+
 export function stepVaultUses(step: {
+  readonly path?: unknown;
   readonly headers?: unknown;
   readonly query?: unknown;
   readonly body?: unknown;
@@ -31,6 +44,8 @@ export function stepVaultUses(step: {
 }): string[] {
   const found = new Set<string>();
   collect([step.headers, step.query, step.body, step.form, step.idempotency_key], found);
+  const browser = browserVaultUse(step.path, step.body);
+  if (browser !== null) found.add(browser);
   return [...found].sort();
 }
 

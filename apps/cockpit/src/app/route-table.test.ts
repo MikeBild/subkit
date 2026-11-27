@@ -148,6 +148,10 @@ describe("cockpit route table", () => {
     expect(movedTarget("?q=admin")).toBe("/settings?area=people&section=roles&q=admin");
   });
 
+  test("the vault address from attention items lands on the vault settings with its payment", () => {
+    expect(movedTarget("?payment=abc", "/vault")).toBe("/settings?area=vault&payment=abc");
+  });
+
   test("old run list, connection and notification addresses are gone, not redirected", () => {
     for (const gone of ["/runs", "/connections", "/notifications", "/decisions", "/operations"]) {
       expect(ALL_ROUTE_PATHS).not.toContain(gone);
@@ -157,7 +161,7 @@ describe("cockpit route table", () => {
   test("builds every redirect as a browser navigation on the raw query", () => {
     const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
     expect(source).toContain("REDIRECT_ROUTES.map(");
-    expect(source).toContain("movedTarget(window.location.search)");
+    expect(source).toContain("movedTarget(window.location.search, path)");
     expect(source).toContain("window.location.replace(");
     const code = source.replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toMatch(/location\.searchStr|redirect\(\{/);

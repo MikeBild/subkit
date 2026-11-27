@@ -1,8 +1,25 @@
-export type SecretKind = "pat" | "bearer" | "jwt" | "aws_key" | "key_value" | "generic" | "prompt";
+import { cardBrand, ibanValid, luhnValid, panDigits } from "./vault-validate.ts";
+
+export type SecretKind =
+  | "pat"
+  | "bearer"
+  | "jwt"
+  | "aws_key"
+  | "key_value"
+  | "generic"
+  | "prompt"
+  | "card"
+  | "iban"
+  | "cvv"
+  | "otp";
 
 export interface SecretPattern {
   readonly kind: SecretKind;
   readonly regex: RegExp;
+}
+
+export interface CheckedSecretPattern extends SecretPattern {
+  readonly accept: (match: string) => boolean;
 }
 
 const REDACTED = (kind: SecretKind): string => `***REDACTED:${kind}***`;
@@ -93,6 +110,54 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
       /Bearer\s+(?=[A-Za-z0-9._-]*(?:[0-9_]|\.[A-Za-z0-9_-]))[A-Za-z0-9._-]{7,}[A-Za-z0-9_-]/gi,
   },
 ];
+
+function isPaymentCardNumber(match: string): boolean {
+  const digits = panDigits(match);
+  return digits.length >= 13 && luhnValid(digits) && cardBrand(digits) !== "unknown";
+}
+
+const always = (): boolean => true;
+
+export const PAYMENT_DATA_PATTERNS: ReadonlyArray<CheckedSecretPattern> = [
+  {
+    kind: "card",
+    regex: /(?<![\w-])\d(?:[ -]?\d){11,18}(?!\w|-\w)/g,
+    accept: isPaymentCardNumber,
+  },
+  {
+    kind: "iban",
+    regex: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/g,
+    accept: ibanValid,
+  },
+  {
+    kind: "cvv",
+    regex:
+      /(?<=\b(?:cvv2?|cvc2?|cvn|csc|cid|security code|card verification(?: code| value)?)(?:\s+(?:is|code))?[\s:=#"']{1,4})\d{3,4}\b/gi,
+    accept: always,
+  },
+  {
+    kind: "otp",
+    regex:
+      /(?<=\b(?:code|otp|passcode|one[- ]time (?:code|password)|verification code|login code|sign[- ]in code|2fa code|auth(?:entication)? code)(?:\s+(?:is|was))?[\s:=#"']{1,4})\d{6,8}\b/gi,
+    accept: always,
+  },
+];
+
+function replacePaymentData(value: string, onMatch: () => void = () => {}): string {
+  let out = value;
+  for (const { kind, regex, accept } of PAYMENT_DATA_PATTERNS) {
+    out = out.replace(regex, (match) => {
+      if (!accept(match)) return match;
+      onMatch();
+      return REDACTED(kind);
+    });
+  }
+  return out;
+}
+
+export function redactPaymentData(value: string): string {
+  return replacePaymentData(value);
+}
 
 const GENERIC_TOKEN_RE: RegExp =
   /\b(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*\d[A-Za-z0-9+=_-]*\d)[A-Za-z0-9+=_-]{32,}/g;
@@ -188,6 +253,7 @@ export function scrubString(value: string): string {
   for (const { kind, regex } of SECRET_PATTERNS) {
     out = out.replace(regex, (match) => (isPresentableToken(match) ? match : REDACTED(kind)));
   }
+  out = replacePaymentData(out);
   out = redactGenericTokens(out);
   return out;
 }
@@ -210,6 +276,9 @@ export function redactSecretShapes(value: string): SecretShapeRedaction {
       return REDACTED(kind);
     });
   }
+  out = replacePaymentData(out, () => {
+    count++;
+  });
   return { text: out, count };
 }
 
@@ -247,6 +316,18 @@ export function findSecretSpans(text: string): SecretSpan[] {
         !overlapsAny(start, end, markers) &&
         !overlapsAny(start, end, spans)
       ) {
+        spans.push({ start, end, kind, match: m[0] });
+      }
+    }
+    regex.lastIndex = 0;
+  }
+
+  for (const { kind, regex, accept } of PAYMENT_DATA_PATTERNS) {
+    regex.lastIndex = 0;
+    for (const m of text.matchAll(regex)) {
+      const start = m.index;
+      const end = m.index + m[0].length;
+      if (accept(m[0]) && !overlapsAny(start, end, markers) && !overlapsAny(start, end, spans)) {
         spans.push({ start, end, kind, match: m[0] });
       }
     }
@@ -417,9 +498,34 @@ export function referencesKeyMaterialPath(text: string): boolean {
   return KEY_MATERIAL_PATH_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+function panVariants(secret: string): string[] {
+  const digits = panDigits(secret);
+  if (!/^\d{12,19}$/.test(digits) || !luhnValid(digits)) return [];
+  const groups = (sizes: readonly number[]): string[] => {
+    const parts: string[] = [];
+    let at = 0;
+    for (const size of sizes) {
+      if (at >= digits.length) break;
+      parts.push(digits.slice(at, at + size));
+      at += size;
+    }
+    if (at < digits.length) parts.push(digits.slice(at));
+    return parts;
+  };
+  const layouts = [groups([4, 4, 4, 4, 3]), groups([4, 6, 5]), groups([4, 6, 4])];
+  const out = new Set<string>([digits]);
+  for (const parts of layouts) {
+    out.add(parts.join(" "));
+    out.add(parts.join("-"));
+  }
+  return [...out];
+}
+
 function encodedForms(secret: string): string[] {
-  const form = new URLSearchParams({ v: secret }).toString().slice(2);
-  return [secret, encodeURIComponent(secret), form, JSON.stringify(secret).slice(1, -1)];
+  return [secret, ...panVariants(secret)].flatMap((variant) => {
+    const form = new URLSearchParams({ v: variant }).toString().slice(2);
+    return [variant, encodeURIComponent(variant), form, JSON.stringify(variant).slice(1, -1)];
+  });
 }
 
 export function knownValueForms(secrets: readonly string[]): string[] {

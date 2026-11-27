@@ -75,6 +75,7 @@ export class ShellPresenter {
     this.tray?.render({
       locale,
       count,
+      approval: core.state.approval,
       connection,
       mute: core.pause.mute(),
       update,

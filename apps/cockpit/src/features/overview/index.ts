@@ -34,6 +34,7 @@ export {
   signsInFromRow,
   sinceLabel,
   sourceLabel,
+  vaultAttentionFacts,
   waitingOnLine,
   waitingOnName,
 } from "./model/overview-model";

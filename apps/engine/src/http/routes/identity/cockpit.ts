@@ -4,11 +4,15 @@ import { WorkspaceLanguageSchema } from "../../../api/index.ts";
 import { AiAccessSchema } from "../../../api/operations/workspace-ai-access.ts";
 import {
   browserSessionForPrincipal,
+  browserSessionFromRequest,
+  clearBrowserSessionCookieForRequest,
   cockpitInstallationIdFromPath,
   findOwnedSession,
+  revokeBrowserSession,
   signBrowserCsrf,
   signLoginState,
 } from "../../../auth/index.ts";
+import { getConfig, isBrowserLoginProvider } from "../../../config/index.ts";
 import { buildOAuthRedirectUri } from "../../../credentials/index.ts";
 import {
   findCockpitIdentity,
@@ -30,6 +34,12 @@ import {
 
 const CockpitLoginQuery = z.object({
   return_to: z.string().max(2048).optional(),
+  reauth: z
+    .enum(["1"])
+    .optional()
+    .describe(
+      "1 ends the current browser session and asks the identity provider for a fresh sign-in. Used before actions that need a sign-in younger than 5 minutes, such as revealing a card.",
+    ),
 });
 
 const CockpitBootstrapResponse = z
@@ -168,7 +178,9 @@ function safeCockpitReturnPath(raw: string | undefined): string | null {
 
 export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(loginRoute, async (c) => {
-    const returnTo = safeCockpitReturnPath(c.req.valid("query").return_to);
+    const query = c.req.valid("query");
+    const reauth = query.reauth === "1";
+    const returnTo = safeCockpitReturnPath(query.return_to);
     if (!returnTo) {
       if (wantsHtmlPage(c.req.header("accept")))
         return negotiatedPageResponse(
@@ -192,7 +204,18 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
     const loginState = await signLoginState({
       redirect_to: returnTo,
       ...(installationId ? { installation_id: installationId } : {}),
+      ...(reauth ? { reauth: true } : {}),
     });
+    if (
+      reauth &&
+      c.req.header("sec-fetch-site") === "same-origin" &&
+      getConfig().auth.providers.some(isBrowserLoginProvider)
+    ) {
+      const current = await browserSessionFromRequest(c.req.raw);
+      await revokeBrowserSession(c.get("db"), current, "reauthentication");
+      c.header("set-cookie", clearBrowserSessionCookieForRequest(c.req.raw));
+      c.header("cache-control", "no-store");
+    }
     return c.redirect(
       `/v1/identity/login/start?login_state=${encodeURIComponent(loginState)}`,
       302,

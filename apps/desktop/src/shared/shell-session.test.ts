@@ -51,6 +51,7 @@ describe("shell session", () => {
     expect(INITIAL_SESSION).toEqual({
       connection: "signed-out",
       count: 0,
+      approval: null,
       login: { phase: "idle" },
       notice: null,
       view: "connect",

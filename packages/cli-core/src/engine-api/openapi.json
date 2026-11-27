@@ -33287,6 +33287,138 @@
           "updated_at"
         ]
       },
+      "VaultPaymentListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VaultPayment"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "VaultPayment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "consumed",
+              "expired",
+              "rejected"
+            ]
+          },
+          "origin": {
+            "type": "string"
+          },
+          "amount_minor": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "card": {
+            "type": "object",
+            "properties": {
+              "brand": {
+                "type": "string"
+              },
+              "last4": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "brand",
+              "last4"
+            ]
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "origin",
+          "amount_minor",
+          "currency",
+          "card",
+          "expires_at",
+          "created_at",
+          "conversation_id",
+          "task_run_id"
+        ]
+      },
+      "VaultPaymentDecision": {
+        "type": "object",
+        "properties": {
+          "payment": {
+            "$ref": "#/components/schemas/VaultPayment"
+          },
+          "resume": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "conversation_id": {
+                "type": "string"
+              },
+              "tool_call_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "tool_call_id"
+            ],
+            "description": "The paused chat step this payment belongs to. Answer it right away with POST /v1/conversations/{conversation_id}/tool-calls/{tool_call_id}/respond and output {confirmed: true} after an approval or {confirmed: false} after a rejection; the device ticket lives 60 seconds. Null for a workflow run, which continues by itself."
+          }
+        },
+        "required": [
+          "payment",
+          "resume"
+        ]
+      },
+      "VaultPaymentApproveBody": {
+        "type": "object",
+        "properties": {
+          "cvv": {
+            "type": "string",
+            "pattern": "^[0-9]{3,4}$",
+            "description": "The card's security code. It is never stored; it goes to the device once."
+          }
+        },
+        "required": [
+          "cvv"
+        ],
+        "additionalProperties": false
+      },
       "VaultItemListResponse": {
         "type": "object",
         "properties": {
@@ -33317,7 +33449,12 @@
               "connector",
               "secret",
               "login",
-              "template_client"
+              "template_client",
+              "card",
+              "bank_account",
+              "identity",
+              "address",
+              "note"
             ]
           },
           "scope": {
@@ -33379,6 +33516,15 @@
               "type": "string"
             }
           },
+          "metadata": {
+            "$ref": "#/components/schemas/VaultItemMetadata"
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "created_at": {
             "type": "string"
           },
@@ -33409,11 +33555,49 @@
           "connector",
           "template_slug",
           "fields",
+          "metadata",
+          "origins",
           "created_at",
           "updated_at",
           "rotated_at",
           "last_used_at"
         ]
+      },
+      "VaultItemMetadata": {
+        "type": "object",
+        "properties": {
+          "username_hint": {
+            "type": "string"
+          },
+          "has_totp": {
+            "type": "boolean"
+          },
+          "brand": {
+            "type": "string"
+          },
+          "last4": {
+            "type": "string"
+          },
+          "exp_month": {
+            "type": "integer"
+          },
+          "exp_year": {
+            "type": "integer"
+          },
+          "iban_last4": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "label_hint": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          }
+        },
+        "description": "Public metadata of the item, safe to show and to give to models: login username_hint and has_totp, card brand, last4 and expiry, bank account iban_last4 and country, identity label_hint, address city and country"
       },
       "VaultItemCreate": {
         "type": "object",
@@ -33422,7 +33606,12 @@
             "type": "string",
             "enum": [
               "secret",
-              "login"
+              "login",
+              "card",
+              "bank_account",
+              "identity",
+              "address",
+              "note"
             ]
           },
           "name": {
@@ -33469,11 +33658,172 @@
             "minLength": 1,
             "maxLength": 16384,
             "description": "Secret value. Never returned."
+          },
+          "totp_seed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048,
+            "description": "login: the one-time code key as a base32 seed or an otpauth:// link; null removes it. Never returned."
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "maxItems": 20,
+            "description": "login: the websites (https origins) this login may be used on"
+          },
+          "value": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "description": "card, bank_account, identity, address or note: the structured value. A card never takes its security code. Never returned."
           }
         },
         "required": [
           "kind",
           "name"
+        ],
+        "additionalProperties": false
+      },
+      "VaultImportResult": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "chrome",
+              "1password",
+              "bitwarden"
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "row": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "created",
+                    "exists",
+                    "invalid"
+                  ]
+                },
+                "origin": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "username_hint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "has_totp": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "row",
+                "name",
+                "status",
+                "origin",
+                "username_hint",
+                "has_totp",
+                "reason"
+              ]
+            }
+          },
+          "created": {
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "integer"
+          },
+          "invalid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "format",
+          "rows",
+          "created",
+          "skipped",
+          "invalid"
+        ]
+      },
+      "VaultImport": {
+        "type": "object",
+        "properties": {
+          "csv": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000000,
+            "description": "The exported CSV file as text"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "chrome",
+              "1password",
+              "bitwarden"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "workspace",
+              "person"
+            ],
+            "default": "person"
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ],
+            "default": "prod"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "csv"
         ],
         "additionalProperties": false
       },
@@ -33503,6 +33853,38 @@
             "minLength": 1,
             "maxLength": 16384,
             "description": "Secret value. Never returned."
+          },
+          "totp_seed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048,
+            "description": "login: the one-time code key as a base32 seed or an otpauth:// link; null removes it. Never returned."
+          },
+          "origins": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "maxItems": 20,
+            "description": "login: the websites (https origins) this login may be used on"
+          },
+          "value": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "description": "card, bank_account, identity, address or note: the structured value. A card never takes its security code. Never returned."
           }
         },
         "additionalProperties": false
@@ -41757,6 +42139,11 @@
                         "additionalProperties": false,
                         "description": "The device, capability, redacted target and deadline of a local step that asks (kind local_confirmation)."
                       },
+                      "payment_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Set when the local step pays with a card: approve the payment with POST /v1/vault/payments/{payment_id}/approve (CVV) instead of confirming here. Confirming without an approved payment pays nothing."
+                      },
                       "kind": {
                         "type": "string",
                         "enum": [
@@ -47342,7 +47729,9 @@
               "device_permission_missing",
               "device_handover_waiting",
               "knowledge_review_due",
-              "folder_changed"
+              "folder_changed",
+              "payment_approval_needed",
+              "sign_in_confirmation_needed"
             ]
           },
           "trigger": {
@@ -47567,6 +47956,58 @@
               "name"
             ],
             "description": "Present on an item that needs an approval when the viewer named someone else as their approver: the item waits for that person, who is notified instead of the viewer."
+          },
+          "vault": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "payment",
+                  "sign_in"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "amount_minor": {
+                "type": "integer"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "card": {
+                "type": "object",
+                "properties": {
+                  "brand": {
+                    "type": "string"
+                  },
+                  "last4": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "brand",
+                  "last4"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "origin",
+              "conversation_id"
+            ],
+            "description": "Present on a pending payment or sign-in with the vault: id is the payment id or the tool call id. amount_minor is in the currency's minor unit; card shows only brand and last 4 digits."
           },
           "actions": {
             "type": "array",
@@ -61833,6 +62274,19 @@
             "required": false,
             "name": "return_to",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ],
+              "description": "1 ends the current browser session and asks the identity provider for a fresh sign-in. Used before actions that need a sign-in younger than 5 minutes, such as revealing a card."
+            },
+            "required": false,
+            "description": "1 ends the current browser session and asks the identity provider for a fresh sign-in. Used before actions that need a sign-in younger than 5 minutes, such as revealing a card.",
+            "name": "reauth",
+            "in": "query"
           }
         ],
         "responses": {
@@ -63340,6 +63794,8 @@
                         "browser.snapshot",
                         "browser.screenshot",
                         "browser.handover",
+                        "browser.sign_in",
+                        "browser.pay",
                         "computer.apps",
                         "computer.open",
                         "computer.snapshot",
@@ -63437,6 +63893,105 @@
           },
           "409": {
             "description": "The command cannot be taken: already claimed, closed, past its deadline or from a stopped generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRunnerFailure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/device-runner/secret-tickets/{id}/claim": {
+      "post": {
+        "tags": [
+          "device-runner"
+        ],
+        "summary": "Take the vault values for one sign-in or payment command, once",
+        "description": "A ticket belongs to one device and one command and lives 60 s. It is handed out once, only while its command is claimed by this device; afterwards and after expiry it answers 410. Keep the values in memory only for this command and overwrite them when it ends.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The values for this one command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "values": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "values",
+                    "expires_at"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Runner credential missing or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRunnerFailure"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a runner credential, or the device was revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRunnerFailure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such ticket for this device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRunnerFailure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The ticket's command is not claimed by this device right now",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRunnerFailure"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The ticket was already taken or expired",
             "content": {
               "application/json": {
                 "schema": {
@@ -73256,6 +73811,230 @@
         }
       }
     },
+    "/v1/vault/payments": {
+      "get": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "List your own payment requests: shop, amount and card brand and last 4 digits only",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "consumed",
+                "expired",
+                "rejected"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultPaymentListResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only a person signed in themselves sees their payments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vault/payments/{id}/approve": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Approve one payment with the card's security code; the code is never stored and goes to the device once, within 60 seconds",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultPaymentApproveBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultPaymentDecision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The security code has 3 or 4 digits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the card owner approves",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided, or the card changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vault/payments/{id}/reject": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Reject one payment request; nothing is paid",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultPaymentDecision"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the card owner rejects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/vault": {
       "get": {
         "tags": [
@@ -73287,7 +74066,12 @@
                 "connector",
                 "secret",
                 "login",
-                "template_client"
+                "template_client",
+                "card",
+                "bank_account",
+                "identity",
+                "address",
+                "note"
               ]
             },
             "required": false,
@@ -73312,7 +74096,7 @@
         "tags": [
           "vault"
         ],
-        "summary": "Add a secret or a login to the vault",
+        "summary": "Add a secret, login, card, bank account, identity, address or note to the vault; cards, bank accounts and identities are personal only",
         "security": [
           {
             "bearerAuth": []
@@ -73361,6 +74145,61 @@
           },
           "409": {
             "description": "Name taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vault/import": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Import logins from a Chrome, 1Password or Bitwarden CSV export, with one-time code keys; dry_run (the default) only shows what would happen",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -73573,7 +74412,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Forbidden, or a card or bank account needs a sign-in younger than 5 minutes (details.reason reauthentication_required)",
             "content": {
               "application/json": {
                 "schema": {

@@ -126,6 +126,8 @@ const NEED_VISUAL: Record<AttentionReason, { tone: Tone; icon: NeedIcon }> = {
   pair_approval_requested: { tone: "info", icon: "approval" },
   device_offline_waiting: { tone: "warning", icon: "paused" },
   local_confirmation_needed: { tone: "info", icon: "approval" },
+  payment_approval_needed: { tone: "warning", icon: "approval" },
+  sign_in_confirmation_needed: { tone: "info", icon: "approval" },
   device_permission_missing: { tone: "warning", icon: "key" },
   device_handover_waiting: { tone: "warning", icon: "paused" },
   knowledge_review_due: { tone: "warning", icon: "paused" },

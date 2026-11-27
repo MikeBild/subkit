@@ -39,6 +39,7 @@ export interface JobState {
   readonly expires_at: Date;
   readonly outputs: readonly unknown[];
   readonly used_signatures: ReadonlySet<string>;
+  readonly uncertain_signatures?: ReadonlySet<string>;
   readonly device?: PersonalBoundary;
 }
 
@@ -223,6 +224,20 @@ const RESULT_GROUPS: ReadonlyArray<readonly [string, RegExp]> = [
   ["create", stems(["create", "erstell", "anleg", "eintrag", "trag", "new ", "neu"])],
   ["fill", stems(["fill", "ausfull", "full", "enter", "eingeb"])],
   [
+    "sign_in",
+    stems([
+      "sign in",
+      "sign me in",
+      "log in",
+      "log me in",
+      "login",
+      "anmeld",
+      "einlogg",
+      "melde (?:dich|mich)",
+      "logg? (?:dich|mich) ein",
+    ]),
+  ],
+  [
     "organize",
     stems([
       "sort",
@@ -400,6 +415,9 @@ function decideDeviceStep(
   }
   const extra = step.phase === "commit" ? extraAlwaysAsk(step.name) : null;
   if (extra !== null) return ask("always_ask", extra);
+  if (step.phase === "commit" && job.uncertain_signatures?.has(deviceSignature(step))) {
+    return ask("already_used", "the same step ended uncertain before");
+  }
   const routine: JobDecision = {
     decision: "covered",
     by: "routine",

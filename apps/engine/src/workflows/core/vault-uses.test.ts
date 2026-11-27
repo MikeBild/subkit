@@ -43,3 +43,11 @@ test("a value holds only vault handles when every placeholder is one and it pars
   expect(onlyVaultHandles(`${handle("secret.a")} ${handle("secret.A")}`)).toBe(false);
   expect(onlyVaultHandles(7)).toBe(false);
 });
+
+test("a browser sign-in or pay step names its login or card for the approval", () => {
+  expect(stepVaultUses({ path: "/browser.sign_in", body: { vault_item: "me.shop" } })).toEqual([
+    "login:me.shop",
+  ]);
+  expect(stepVaultUses({ path: "/browser.pay", body: { card: "4242" } })).toEqual(["card:4242"]);
+  expect(stepVaultUses({ path: "/browser.fill", body: { vault_item: "me.shop" } })).toEqual([]);
+});

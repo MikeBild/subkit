@@ -242,6 +242,17 @@ export type {
 export { notificationChannels } from "./schema/notifications.ts";
 export type { PersonalNoteArchiveReason } from "./schema/personal-notes.ts";
 export { personalNoteSources, personalNotes } from "./schema/personal-notes.ts";
+export {
+  VAULT_PAYMENT_STATUSES,
+  VAULT_USE_PURPOSES,
+  VAULT_USE_STATUSES,
+  type VaultPaymentStatus,
+  type VaultUsePurpose,
+  type VaultUseStatus,
+  vaultPayments,
+  vaultSecretTickets,
+  vaultUses,
+} from "./schema/vault-uses.ts";
 export type { TenantBootstrapPayload } from "./seed.ts";
 export { printIssuedKey, seedAtBoot, seedTenantBootstrap } from "./seed.ts";
 export type { RateLimitVerdict, SharedRateLimiter, WindowLimit } from "./shared-rate-limit.ts";

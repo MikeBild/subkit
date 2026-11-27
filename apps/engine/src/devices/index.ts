@@ -4,9 +4,13 @@ export {
   recordCommandResult,
 } from "./channel.ts";
 export { DEVICE_ALLOWANCES_MAX } from "./core/allowances.ts";
+export { dispatchedOutcome, parseCommandArgs } from "./core/command-args.ts";
+export { conversationCommandId, workflowCommandId } from "./core/command-id.ts";
 export { deviceConnectorLocale } from "./core/device-connectors.ts";
 export { nextCommandGeneration } from "./core/generation.ts";
+export { deviceStepError } from "./core/step-output.ts";
 export { uploadRefusalStatus } from "./core/upload.ts";
+export { type DeviceDispatchOutcome, sendDeviceCommand } from "./dispatch.ts";
 export {
   activeAllowances,
   DeviceRegistryError,

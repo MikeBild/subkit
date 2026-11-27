@@ -1,15 +1,22 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import {
+  approveVaultPaymentOperation,
+  listVaultPaymentsOperation,
+  rejectVaultPaymentOperation,
+} from "../../api/index.ts";
 import { toHonoRoute } from "../../api/operations/hono.ts";
 import {
   createVaultItemOperation,
   deleteVaultItemOperation,
   getVaultItemOperation,
+  importVaultLoginsOperation,
   listVaultItemsOperation,
   revealVaultItemOperation,
   updateVaultItemOperation,
   vaultItemActivityOperation,
 } from "../../api/operations/vault.ts";
+
 import { actorOf } from "../../audit/index.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/index.ts";
@@ -145,8 +152,12 @@ function registerVaultRefreshRoute(app: OpenAPIHono<AppEnv>): void {
 
 export function registerVaultRoutes(app: OpenAPIHono<AppEnv>): void {
   registerVaultRefreshRoute(app);
+  toHonoRoute(app, listVaultPaymentsOperation);
+  toHonoRoute(app, approveVaultPaymentOperation);
+  toHonoRoute(app, rejectVaultPaymentOperation);
   toHonoRoute(app, listVaultItemsOperation);
   toHonoRoute(app, createVaultItemOperation);
+  toHonoRoute(app, importVaultLoginsOperation);
   toHonoRoute(app, getVaultItemOperation);
   toHonoRoute(app, updateVaultItemOperation);
   toHonoRoute(app, deleteVaultItemOperation);

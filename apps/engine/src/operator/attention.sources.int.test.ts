@@ -105,8 +105,8 @@ describe("permission cost", () => {
     expect(forTen).toBe(forOne);
     expect(
       forTen,
-      "43 permission queries, one read of the person's own snoozes and seven for knowledge sources due for review",
-    ).toBeLessThanOrEqual(51);
+      "43 permission queries, one read of the person's own snoozes, seven for knowledge sources due for review and one for the person's waiting vault payments and sign-ins",
+    ).toBeLessThanOrEqual(52);
   });
 });
 

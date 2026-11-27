@@ -7,6 +7,7 @@ import { Fragment, useState } from "react";
 import { listDevices } from "@/api/devices";
 import { contextualHref } from "@/app/installation-context";
 import { Button, ContextHelp } from "@/components/cockpit/patterns";
+import { PaymentApprovalFor } from "@/features/vault";
 import {
   ChangeReview,
   ChangeReviewActions,
@@ -46,6 +47,8 @@ export function ChatApprovalCard({
 }) {
   const { t, tn, locale } = useI18n();
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const paymentId = approval.paymentId;
   const reviewable = approval.savesInactiveWorkflow && Boolean(conversationId);
   const deadline = Date.parse(approval.expiresAt);
   const now = useNow();
@@ -122,23 +125,29 @@ export function ChatApprovalCard({
         declineDisabled={expired}
         showPending={pending}
         onDecision={(allow) =>
-          allow && reviewable ? setReviewOpen(true) : onDecision(approval.id, allow)
+          allow && paymentId
+            ? setPaymentOpen(true)
+            : allow && reviewable
+              ? setReviewOpen(true)
+              : onDecision(approval.id, allow)
         }
         labels={{
           approve: t(
             busy
               ? "chat.decision.processing"
-              : approval.oauth
-                ? approval.oauth === "start"
-                  ? "chat.oauth.start"
-                  : "chat.oauth.check"
-                : approval.singleRun
-                  ? "chat.singleRun.confirm"
-                  : approval.savesInactiveWorkflow
-                    ? reviewable
-                      ? "reviewWorkflow.open"
-                      : "chat.decision.save"
-                    : "chat.approval.approve",
+              : paymentId
+                ? "vault.payment.approve"
+                : approval.oauth
+                  ? approval.oauth === "start"
+                    ? "chat.oauth.start"
+                    : "chat.oauth.check"
+                  : approval.singleRun
+                    ? "chat.singleRun.confirm"
+                    : approval.savesInactiveWorkflow
+                      ? reviewable
+                        ? "reviewWorkflow.open"
+                        : "chat.decision.save"
+                      : "chat.approval.approve",
           ),
           decline: t("chat.approval.decline"),
           pending: t("chat.decision.pending"),
@@ -251,6 +260,9 @@ export function ChatApprovalCard({
           />
         )}
       </ToolApprovalCard>
+      {paymentId && paymentOpen ? (
+        <PaymentApprovalFor id={paymentId} onClose={() => setPaymentOpen(false)} />
+      ) : null}
       {reviewable && conversationId && (
         <WorkflowReview
           key={`${conversationId}:${approval.id}`}

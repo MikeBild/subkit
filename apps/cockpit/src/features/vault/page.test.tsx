@@ -19,6 +19,8 @@ function item(overrides: Partial<VaultItem> = {}): VaultItem {
     connector: null,
     template_slug: null,
     fields: ["token"],
+    metadata: {},
+    origins: [],
     created_at: "2026-11-01T08:00:00.000Z",
     updated_at: "2026-11-01T08:00:00.000Z",
     rotated_at: null,

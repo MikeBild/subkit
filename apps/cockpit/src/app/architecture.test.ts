@@ -163,7 +163,7 @@ const INTERNAL_DEBT = new Set<string>([
   "features/tasks/ui/tasks-list.tsx -> @/features/workflows/model",
   "features/usage/breakdown.tsx -> @/features/tasks/model",
   "features/usage/dialogs.tsx -> @/features/settings/model",
-  "features/vault/page.tsx -> @/features/audit/model",
+  "features/vault/detail-parts.tsx -> @/features/audit/model",
   "features/workflows/model/automation-panel-model.ts -> @/features/connectors/model",
   "features/workflows/model/automation-panel-model.ts -> @/features/grants/model",
   "features/workflows/ui/automation-panel.tsx -> @/features/grants/model",

@@ -29,7 +29,7 @@ function memberPermissionFilter(name: string): boolean {
   if (name === "api_key:revoke") return false;
   if (name === "connector:promote") return false;
   if (name === "connector:confirm_local_command") return false;
-  if (name.startsWith("vault:") && name !== "vault:read") return false;
+  if (name.startsWith("vault:") && name !== "vault:read" && name !== "vault:use") return false;
   if (name === "discovery:approve") return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;

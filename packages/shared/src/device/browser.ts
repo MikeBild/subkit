@@ -119,3 +119,119 @@ export const BrowserStepSchema = z
   })
   .strict();
 export type BrowserStep = z.infer<typeof BrowserStepSchema>;
+
+export const VAULT_USE_KINDS = ["password", "totp"] as const;
+export const SecretTicketIdSchema = z.string().uuid();
+export const BrowserOriginSchema = z
+  .string()
+  .min(1)
+  .max(2048)
+  .regex(/^https?:\/\/[^/?#\s]+$/);
+
+export const BrowserSignInFieldsSchema = z
+  .object({
+    username: BrowserRefSchema.optional(),
+    password: BrowserRefSchema.optional(),
+    code: BrowserRefSchema.optional(),
+    submit: BrowserRefSchema.optional(),
+  })
+  .strict()
+  .refine((fields) => Object.values(fields).some((ref) => ref !== undefined), {
+    message: "name at least one field",
+  });
+
+export const BrowserSignInArgsSchema = z
+  .object({
+    ...common,
+    snapshot_id: z.string().min(1).max(200).optional(),
+    origin: BrowserOriginSchema,
+    fields: BrowserSignInFieldsSchema,
+    secret_ticket: SecretTicketIdSchema,
+    kind: z.enum(VAULT_USE_KINDS),
+  })
+  .strict();
+export type BrowserSignInArgs = z.infer<typeof BrowserSignInArgsSchema>;
+
+export const PAY_FIELD_NAMES = [
+  "number",
+  "exp",
+  "exp_month",
+  "exp_year",
+  "holder",
+  "cvv",
+  "submit",
+] as const;
+export type PayFieldName = (typeof PAY_FIELD_NAMES)[number];
+
+export const BrowserPayFieldsSchema = z
+  .object({
+    number: BrowserRefSchema,
+    exp: BrowserRefSchema.optional(),
+    exp_month: BrowserRefSchema.optional(),
+    exp_year: BrowserRefSchema.optional(),
+    holder: BrowserRefSchema.optional(),
+    cvv: BrowserRefSchema.optional(),
+    submit: BrowserRefSchema,
+  })
+  .strict();
+
+export const CurrencySchema = z.string().regex(/^[A-Z]{3}$/);
+export const AmountMinorSchema = z.number().int().min(1).max(100_000_000);
+export const PageFingerprintSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+export const BrowserPayArgsSchema = z
+  .object({
+    ...common,
+    snapshot_id: z.string().min(1).max(200).optional(),
+    origin: BrowserOriginSchema,
+    page_fingerprint: PageFingerprintSchema,
+    fields: BrowserPayFieldsSchema,
+    field_frames: z.partialRecord(z.enum(PAY_FIELD_NAMES), BrowserOriginSchema),
+    secret_ticket: SecretTicketIdSchema,
+    amount_minor: AmountMinorSchema,
+    currency: CurrencySchema,
+  })
+  .strict();
+export type BrowserPayArgs = z.infer<typeof BrowserPayArgsSchema>;
+
+export const VAULT_FILL_OUTCOMES = ["submitted", "uncertain", "refused"] as const;
+export type VaultFillOutcome = (typeof VAULT_FILL_OUTCOMES)[number];
+
+export const BrowserVaultResultSchema = z
+  .object({
+    filled: z.boolean(),
+    submitted: z.boolean(),
+    outcome: z.enum(VAULT_FILL_OUTCOMES),
+    reason: z.string().max(500).optional(),
+    snapshot: z.unknown().optional(),
+    step: BrowserStepSchema.optional(),
+  })
+  .strict();
+export type BrowserVaultResult = z.infer<typeof BrowserVaultResultSchema>;
+
+export const SIGN_IN_TICKET_KEYS = ["username", "password", "totp_seed"] as const;
+export const PAY_TICKET_KEYS = ["number", "exp_month", "exp_year", "holder", "cvv"] as const;
+
+export const SecretTicketClaimSchema = z
+  .object({
+    values: z.record(z.string(), z.string()),
+    expires_at: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+export type SecretTicketClaim = z.infer<typeof SecretTicketClaimSchema>;
+
+export interface PayFieldFacts {
+  readonly role: string | null;
+  readonly name: string | null;
+}
+
+export function payPageFingerprintText(
+  origin: string,
+  fields: Readonly<Partial<Record<PayFieldName, PayFieldFacts>>>,
+): string {
+  const entries = PAY_FIELD_NAMES.flatMap((field) => {
+    const facts = fields[field];
+    return facts ? [[field, facts.role ?? "", facts.name ?? ""]] : [];
+  });
+  return JSON.stringify(["pay-page:v1", origin, entries]);
+}

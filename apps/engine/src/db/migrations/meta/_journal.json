@@ -141,6 +141,20 @@
       "when": 1795749871868,
       "tag": "0019_hosted_guard_transcript",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795791770733,
+      "tag": "0020_vault_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795792622654,
+      "tag": "0021_vault_uses",
+      "breakpoints": true
     }
   ]
 }

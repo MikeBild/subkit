@@ -277,6 +277,19 @@ function respondToChatElicitation(
   );
 }
 
+export function respondToToolCallStream(
+  conversationId: string,
+  toolCallId: string,
+  output: Readonly<Record<string, unknown>>,
+  onEvent?: (event: ConversationStreamEvent) => void,
+): Promise<ConversationRun> {
+  return streamConversation(
+    `/v1/conversations/${encodeURIComponent(conversationId)}/tool-calls/${encodeURIComponent(toolCallId)}/respond`,
+    { output },
+    onEvent,
+  );
+}
+
 export function respondToChatApproval(
   conversationId: string,
   elicitationId: string,

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Panel, Pill } from "@ui/atoms/pill";
 import { EmptyState } from "@ui/molecules/empty-state";
-import { Eye, EyeOff, KeyRound, Plus } from "lucide-react";
+import { Eye, KeyRound, Plus, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -16,6 +16,7 @@ import {
   vaultActivityKey,
 } from "@/api/vault";
 import { absolute, connectorHref } from "@/app/links";
+import { loginHref } from "@/app/login-href";
 import { useSession } from "@/app/session";
 import { ChoiceField, TextAreaField, TextField } from "@/components/cockpit/form-field";
 import {
@@ -33,9 +34,20 @@ import {
   SegmentedControl,
   useConfirmTarget,
 } from "@/components/cockpit/patterns";
-import { auditActionLabel } from "@/features/audit/model";
 import {
-  activityTone,
+  cardExpired,
+  ENTRY_KINDS,
+  isFreshAuthRefusal,
+  maskedLine,
+  metadataOf,
+  needsFreshAuth,
+  originsOf,
+  scopeChoices,
+  scopeFor,
+  scopeNoteKey,
+} from "@/features/vault/model/entries";
+import { paymentFromUrl, vaultItemFromUrl, withVaultItem } from "@/features/vault/model/payments";
+import {
   canAddToWorkspace,
   canOnItem,
   createBody,
@@ -45,22 +57,22 @@ import {
   emptyKey,
   groupByKind,
   hasHandle,
+  hasProblems,
   itemsInScope,
   itemsMatching,
   lastUsedLabel,
-  revealedRows,
   revealState,
   rotateBody,
+  rotateProblem,
   VAULT_KIND_LABEL,
   VAULT_SCOPE_LABEL,
   type ValueDraft,
-  type VaultActivityEntry,
   type VaultDraft,
   type VaultEntryKind,
   type VaultGroup,
   type VaultItem,
   type VaultScope,
-  valueProblem,
+  valueFieldProblems,
   vaultErrorKey,
   vaultFieldLabel,
   vaultHandle,
@@ -71,15 +83,15 @@ import { EnvironmentChip } from "@/features/workflows";
 import { reportFailure } from "@/lib/action-failure";
 import { formatDateTime, formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { VaultActivityList, VaultRevealed } from "./detail-parts";
+import { ImportDialog } from "./import-dialog";
+import { clearPaymentLink, PaymentsSection } from "./payments";
+import { ValueFields } from "./value-fields";
+
+export { VaultActivityList, VaultRevealed } from "./detail-parts";
+export { ValueFields } from "./value-fields";
 
 const SENSITIVE = { sensitive: true } as const;
-
-const TONE_DOT = {
-  ok: "bg-emerald-500",
-  warn: "bg-amber-500",
-  error: "bg-destructive",
-  neutral: "bg-muted-foreground/40",
-} as const;
 
 export function VaultList({
   groups,
@@ -108,6 +120,7 @@ export function VaultList({
             <ul className="divide-y">
               {group.items.map((item) => {
                 const used = lastUsedLabel(item);
+                const masked = maskedLine(item.kind, metadataOf(item));
                 return (
                   <li key={item.id} data-testid={`vault-item-${item.name}`}>
                     <button
@@ -120,6 +133,14 @@ export function VaultList({
                         <span className="block font-mono text-sm font-medium [overflow-wrap:anywhere]">
                           {item.name}
                         </span>
+                        {masked ? (
+                          <span
+                            className="block text-xs tabular-nums"
+                            data-testid={`vault-item-${item.name}-masked`}
+                          >
+                            {t(masked.key, masked.values)}
+                          </span>
+                        ) : null}
                         <span className="block text-xs text-muted-foreground">
                           {item.connector ? `${item.connector.display_name} · ` : null}
                           {t("vault.version", { version: item.version })}
@@ -179,86 +200,13 @@ export function VaultEmpty({
   );
 }
 
-export function VaultRevealed({
-  values,
-  secondsLeft,
-  onHide,
-}: {
-  values: Readonly<Record<string, string>>;
-  secondsLeft: number;
-  onHide(): void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="grid gap-2" data-testid="vault-revealed">
-      {revealedRows(values).map((row) => {
-        const field = row.label ? t(row.label) : row.field;
-        return (
-          <CopyField
-            key={row.field}
-            value={row.value}
-            label={t("vault.reveal.value", { field })}
-            labelled
-            testId={`vault-revealed-${row.field}`}
-          />
-        );
-      })}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground" role="timer">
-          {t("vault.reveal.hidesIn", { seconds: secondsLeft })}
-        </p>
-        <Button variant="ghost" size="sm" onClick={onHide} data-testid="vault-reveal-hide">
-          <EyeOff data-icon="inline-start" />
-          {t("vault.reveal.hide")}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-export function VaultActivityList({ entries }: { entries: readonly VaultActivityEntry[] }) {
-  const { t, locale } = useI18n();
-  if (entries.length === 0)
-    return (
-      <p className="text-sm text-muted-foreground" data-testid="vault-activity-empty">
-        {t("vault.activity.empty")}
-      </p>
-    );
-  return (
-    <ol className="grid gap-1.5" data-testid="vault-activity">
-      {entries.map((entry) => {
-        const label = auditActionLabel(entry.action);
-        const tone = activityTone(entry.result);
-        return (
-          <li
-            key={entry.id}
-            className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm"
-            data-action={entry.action}
-          >
-            <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${TONE_DOT[tone]}`} />
-            <span className="min-w-0 flex-1">
-              {label.kind === "named" ? (
-                t(label.key)
-              ) : (
-                <span className="font-mono text-xs">{label.value}</span>
-              )}
-            </span>
-            <time dateTime={entry.at} className="shrink-0 text-xs text-muted-foreground">
-              {formatDateTime(locale, entry.at)}
-            </time>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 export function VaultDetail({
   item,
   permissions,
   revealed,
   secondsLeft,
   revealPending,
+  revealRefused = false,
   activity,
   onReveal,
   onHide,
@@ -271,6 +219,7 @@ export function VaultDetail({
   revealed: Readonly<Record<string, string>> | null;
   secondsLeft: number;
   revealPending: boolean;
+  revealRefused?: boolean;
   activity: ReactNode;
   onReveal(): void;
   onHide(): void;
@@ -287,8 +236,45 @@ export function VaultDetail({
       revealArea.current?.querySelector<HTMLButtonElement>("button")?.focus();
     wasRevealed.current = revealed !== null;
   }, [revealed]);
+  const meta = metadataOf(item);
+  const masked = maskedLine(item.kind, meta);
+  const origins = originsOf(item);
   const facts: Fact[] = [
     { label: t("vault.detail.kind"), value: t(VAULT_KIND_LABEL[item.kind]) },
+    ...(masked
+      ? [
+          {
+            label: t("vault.detail.summary"),
+            value: (
+              <span className="flex flex-wrap items-center gap-2 tabular-nums">
+                <span data-testid="vault-detail-masked">{t(masked.key, masked.values)}</span>
+                {item.kind === "card" && cardExpired(meta, new Date()) ? (
+                  <Pill tone="warning">{t("vault.detail.expired")}</Pill>
+                ) : null}
+              </span>
+            ),
+          },
+        ]
+      : []),
+    ...(item.kind === "login"
+      ? [
+          {
+            label: t("vault.detail.origins"),
+            value:
+              origins.length > 0 ? (
+                <ul className="grid gap-0.5 font-mono text-xs" data-testid="vault-detail-origins">
+                  {origins.map((origin) => (
+                    <li key={origin}>{origin}</li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-muted-foreground" data-testid="vault-detail-no-origins">
+                  {t("vault.detail.noOrigins")}
+                </span>
+              ),
+          },
+        ]
+      : []),
     { label: t("vault.detail.scope"), value: t(VAULT_SCOPE_LABEL[item.scope]) },
     {
       label: t("vault.detail.environment"),
@@ -367,9 +353,33 @@ export function VaultDetail({
                 <Eye data-icon="inline-start" />
                 {t("vault.reveal")}
               </Button>
-              <span className="text-xs text-muted-foreground">{t("vault.reveal.note")}</span>
+              <span className="text-xs text-muted-foreground">
+                {t(needsFreshAuth(item.kind) ? "vault.reveal.freshNote" : "vault.reveal.note")}
+              </span>
             </div>
           )}
+          {revealRefused && !revealed ? (
+            <div
+              className="grid gap-2 rounded-lg border border-amber-500/40 px-3 py-2"
+              role="alert"
+              data-testid="vault-reveal-fresh-auth"
+            >
+              <p className="text-sm">{t("vault.error.freshAuth")}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                onClick={() =>
+                  window.location.assign(
+                    loginHref(withVaultItem(window.location, item.id), { reauth: true }),
+                  )
+                }
+                data-testid="vault-reveal-sign-in"
+              >
+                {t("vault.reveal.signInAgain")}
+              </Button>
+            </div>
+          ) : null}
         </section>
       ) : null}
       {canOnItem(item, "rotate", permissions) || canOnItem(item, "delete", permissions) ? (
@@ -396,55 +406,6 @@ export function VaultDetail({
   );
 }
 
-export function ValueFields({
-  idPrefix,
-  draft,
-  onChange,
-  error,
-}: {
-  idPrefix: string;
-  draft: ValueDraft;
-  onChange(change: Partial<ValueDraft>): void;
-  error: string | null;
-}) {
-  const { t } = useI18n();
-  if (draft.kind === "secret")
-    return (
-      <TextAreaField
-        id={`${idPrefix}-token`}
-        label={t("vault.field.token")}
-        help={t("vault.field.tokenHelp")}
-        value={draft.token}
-        onChange={(token) => onChange({ token })}
-        error={error}
-        rows={4}
-        required
-        masked
-        mono
-      />
-    );
-  return (
-    <>
-      <TextField
-        id={`${idPrefix}-username`}
-        label={t("vault.field.username")}
-        value={draft.username}
-        onChange={(username) => onChange({ username })}
-        required
-      />
-      <TextField
-        id={`${idPrefix}-password`}
-        label={t("vault.field.password")}
-        type="password"
-        value={draft.password}
-        onChange={(password) => onChange({ password })}
-        error={error}
-        required
-      />
-    </>
-  );
-}
-
 function AddDialog({
   open,
   canWriteWorkspace,
@@ -467,7 +428,12 @@ function AddDialog({
     meta: SENSITIVE,
   });
   const problems = draftProblems(draft);
-  const change = (next: Partial<VaultDraft>) => setDraft((current) => ({ ...current, ...next }));
+  const change = (next: Partial<VaultDraft>) =>
+    setDraft((current) => {
+      const merged = { ...current, ...next };
+      if (next.kind && next.kind !== current.kind) merged.fields = {};
+      return { ...merged, scope: scopeFor(merged.kind, merged.scope) };
+    });
   const close = () => {
     setDraft(emptyDraft(canWriteWorkspace));
     setTouched(false);
@@ -477,7 +443,7 @@ function AddDialog({
   };
   const submit = () => {
     setTouched(true);
-    if (problems.name || problems.value) return;
+    if (hasProblems(problems)) return;
     const body = createBody(draft);
     setFailure(null);
     setDraft((current) => withoutValues(current));
@@ -498,6 +464,7 @@ function AddDialog({
   const nameError = touched && problems.name ? t(problems.name) : null;
   const valueError = touched && problems.value ? t(problems.value) : null;
   const name = draft.name.trim();
+  const scopeNote = scopeNoteKey(draft.kind, canWriteWorkspace);
   return (
     <FormDialog
       open={open}
@@ -516,10 +483,8 @@ function AddDialog({
           label={t("vault.field.kind")}
           value={draft.kind}
           onChange={(kind) => change({ kind })}
-          options={[
-            { value: "secret", label: t("vault.kind.secret") },
-            { value: "login", label: t("vault.kind.login") },
-          ]}
+          options={ENTRY_KINDS.map((kind) => ({ value: kind, label: t(VAULT_KIND_LABEL[kind]) }))}
+          wrap
           testId="vault-add-kind"
         />
         <div className="grid gap-1.5">
@@ -546,11 +511,11 @@ function AddDialog({
           label={t("vault.field.scope")}
           value={draft.scope}
           onChange={(scope) => change({ scope })}
-          options={(canWriteWorkspace
-            ? (["workspace", "person"] as const)
-            : (["person"] as const)
-          ).map((scope) => ({ value: scope, label: t(VAULT_SCOPE_LABEL[scope]) }))}
-          {...(canWriteWorkspace ? {} : { description: t("vault.field.scopeReadOnly") })}
+          options={scopeChoices(draft.kind, canWriteWorkspace).map((scope) => ({
+            value: scope,
+            label: t(VAULT_SCOPE_LABEL[scope]),
+          }))}
+          {...(scopeNote ? { description: t(scopeNote) } : {})}
           testId="vault-add-scope"
         />
         <ChoiceField
@@ -563,7 +528,13 @@ function AddDialog({
           ]}
           testId="vault-add-environment"
         />
-        <ValueFields idPrefix="vault-add" draft={draft} onChange={change} error={valueError} />
+        <ValueFields
+          idPrefix="vault-add"
+          draft={draft}
+          onChange={change}
+          error={valueError}
+          fieldErrors={touched ? (problems.fields ?? {}) : {}}
+        />
         <TextAreaField
           id="vault-add-description"
           label={t("vault.field.description")}
@@ -586,8 +557,17 @@ function RotateDialog({
   onRotated(item: VaultItem): void;
 }) {
   const { t } = useI18n();
-  const kind: VaultEntryKind = item?.kind === "login" ? "login" : "secret";
-  const blank: ValueDraft = { kind, token: "", username: "", password: "" };
+  const kind: VaultEntryKind =
+    item && (ENTRY_KINDS as readonly string[]).includes(item.kind)
+      ? (item.kind as VaultEntryKind)
+      : "secret";
+  const blank: ValueDraft = {
+    kind,
+    token: "",
+    username: "",
+    password: "",
+    fields: item?.origins?.length ? { origins: item.origins.join("\n") } : {},
+  };
   const [draft, setDraft] = useState<ValueDraft>(blank);
   const [touched, setTouched] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -599,7 +579,8 @@ function RotateDialog({
     meta: SENSITIVE,
   });
   const shown = { ...draft, kind };
-  const problem = valueProblem(shown);
+  const problem = rotateProblem(shown);
+  const fieldErrors = valueFieldProblems(shown);
   const close = () => {
     setDraft(blank);
     setTouched(false);
@@ -609,7 +590,7 @@ function RotateDialog({
   };
   const submit = () => {
     setTouched(true);
-    if (!item || problem) return;
+    if (!item || problem || Object.keys(fieldErrors).length > 0) return;
     const body = rotateBody(shown);
     setFailure(null);
     setDraft(withoutValues(shown));
@@ -649,6 +630,7 @@ function RotateDialog({
           draft={shown}
           onChange={(change) => setDraft((current) => ({ ...current, ...change }))}
           error={touched && problem ? t(problem) : null}
+          fieldErrors={touched ? fieldErrors : {}}
         />
       </div>
     </FormDialog>
@@ -686,6 +668,7 @@ function VaultSheet({
     values: Record<string, string>;
     at: number;
   } | null>(null);
+  const [refusedId, setRefusedId] = useState<string | null>(null);
   const now = useRevealTimer(revealed?.at ?? null);
   const timer = revealState(revealed?.at ?? null, now);
   const shown = revealed && item && revealed.id === item.id && timer.visible ? revealed : null;
@@ -700,8 +683,16 @@ function VaultSheet({
     meta: SENSITIVE,
     mutationFn: revealVaultItem,
     gcTime: 0,
-    onError: (failure) => reportFailure(t(vaultErrorKey(failure, item?.kind)), failure),
+    onError: (failure) => {
+      reveal.reset();
+      if (isFreshAuthRefusal(failure)) {
+        setRefusedId(item?.id ?? null);
+        return;
+      }
+      reportFailure(t(vaultErrorKey(failure, item?.kind)), failure);
+    },
     onSuccess: (result) => {
+      setRefusedId(null);
       setRevealed({ id: result.id, values: { ...result.values }, at: Date.now() });
       reveal.reset();
       void activity.refetch();
@@ -716,6 +707,7 @@ function VaultSheet({
       onOpenChange={(open) => {
         if (open) return;
         setRevealed(null);
+        setRefusedId(null);
         onClose();
       }}
       title={<span className="font-mono">{item?.name ?? ""}</span>}
@@ -729,6 +721,7 @@ function VaultSheet({
           revealed={shown?.values ?? null}
           secondsLeft={timer.secondsLeft}
           revealPending={reveal.isPending}
+          revealRefused={refusedId === item.id}
           onReveal={() => reveal.mutate(item.id)}
           onHide={() => setRevealed(null)}
           onRotate={() => onRotate(item)}
@@ -763,8 +756,21 @@ export function VaultArea() {
   const canWriteWorkspace = canAddToWorkspace(permissions);
   const [scope, setScope] = useState<VaultScope>("workspace");
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [linkedPayment, setLinkedPayment] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : paymentFromUrl(window.location.search),
+  );
   const [search, setSearch] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenIdState] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : vaultItemFromUrl(window.location.search),
+  );
+  const setOpenId = (id: string | null) => {
+    setOpenIdState(id);
+    if (id === null && typeof window !== "undefined" && vaultItemFromUrl(window.location.search)) {
+      const next = withVaultItem(window.location, null);
+      window.history.replaceState(window.history.state, "", `${next.pathname}${next.search}`);
+    }
+  };
   const [rotating, setRotating] = useState<VaultItem | null>(null);
   const deletingConfirm = useConfirmTarget<VaultItem>();
   const deleting = deletingConfirm.target;
@@ -790,6 +796,14 @@ export function VaultArea() {
   return (
     <section className="flex flex-col gap-4" data-testid="settings-area-vault">
       <p className="text-sm text-muted-foreground">{t("vault.intro")}</p>
+      <PaymentsSection
+        linkedId={linkedPayment}
+        onLinkHandled={() => {
+          if (!linkedPayment) return;
+          setLinkedPayment(null);
+          clearPaymentLink();
+        }}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <FilterBar
           search={{
@@ -812,7 +826,16 @@ export function VaultArea() {
             />
           }
         />
-        <Button className="ms-auto" onClick={() => setAdding(true)} data-testid="vault-add-open">
+        <Button
+          variant="outline"
+          className="ms-auto"
+          onClick={() => setImporting(true)}
+          data-testid="vault-import-open"
+        >
+          <Upload data-icon="inline-start" />
+          {t("vault.import.open")}
+        </Button>
+        <Button onClick={() => setAdding(true)} data-testid="vault-add-open">
           <Plus data-icon="inline-start" />
           {t("vault.add")}
         </Button>
@@ -854,6 +877,16 @@ export function VaultArea() {
           void refresh();
         }}
       />
+      <ImportDialog
+        open={importing}
+        canWriteWorkspace={canWriteWorkspace}
+        onClose={() => setImporting(false)}
+        onImported={(count) => {
+          toast.success(t("vault.import.done", { count }));
+          setImporting(false);
+          void refresh();
+        }}
+      />
       <VaultSheet
         item={open}
         permissions={permissions}
@@ -862,6 +895,7 @@ export function VaultArea() {
         onDelete={deletingConfirm.ask}
       />
       <RotateDialog
+        key={rotating?.id ?? "none"}
         item={rotating}
         onClose={() => setRotating(null)}
         onRotated={(item) => {

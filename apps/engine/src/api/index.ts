@@ -538,11 +538,17 @@ export {
   createVaultItemOperation,
   deleteVaultItemOperation,
   getVaultItemOperation,
+  importVaultLoginsOperation,
   listVaultItemsOperation,
   revealVaultItemOperation,
   updateVaultItemOperation,
   vaultItemActivityOperation,
 } from "./operations/vault.ts";
+export {
+  approveVaultPaymentOperation,
+  listVaultPaymentsOperation,
+  rejectVaultPaymentOperation,
+} from "./operations/vault-payments.ts";
 export {
   createWorkflowOperation,
   deleteWorkflowOperation,

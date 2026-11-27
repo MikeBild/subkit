@@ -14,6 +14,7 @@ import {
   reasonLine,
   toNotification,
   toNotifications,
+  vaultApproval,
 } from "./attention.ts";
 
 const payload = {
@@ -365,5 +366,103 @@ describe("hintRetryDelay", () => {
     ]);
     expect(hintRetryDelay(HINT_RETRY_DELAYS_MS.length)).toBeNull();
     expect(HINT_RETRY_DELAYS_MS.reduce((sum, delay) => sum + delay, 0)).toBeGreaterThan(10_000);
+  });
+});
+
+describe("vault approvals", () => {
+  const pending = (id: string, reason: string, name: string, since: string): AttentionItem => ({
+    id,
+    class: "decide",
+    severity: "urgent",
+    kind: "vault",
+    subjectName: name,
+    reason,
+    since,
+    actions: [{ verb: "review", href: `/settings?area=vault&${id}`, primary: true }],
+  });
+
+  test("a waiting payment is an urgent notification that links to its Cockpit approval", () => {
+    const item = pending(
+      "payment:1",
+      "payment_approval_needed",
+      "shop.example.com",
+      "2026-11-27T10:00:00Z",
+    );
+    const german = toNotification(item, "de");
+    expect(german).toMatchObject({
+      title: "Zahlung freigeben",
+      href: "/settings?area=vault&payment:1",
+      urgency: "critical",
+      silent: false,
+    });
+    expect(german.body).toContain("shop.example.com");
+    expect(german.body).toContain("CVV");
+    expect(toNotification(item, "en").body).toContain("enter the CVV in the Cockpit");
+  });
+
+  test("the tray offers the newest payment first, then sign-ins", () => {
+    const signIn = pending(
+      "sign:1",
+      "sign_in_confirmation_needed",
+      "mail.example.com",
+      "2026-11-27T11:00:00Z",
+    );
+    const older = pending(
+      "payment:1",
+      "payment_approval_needed",
+      "a.example",
+      "2026-11-27T09:00:00Z",
+    );
+    const newer = pending(
+      "payment:2",
+      "payment_approval_needed",
+      "b.example",
+      "2026-11-27T10:00:00Z",
+    );
+    expect(vaultApproval([signIn, older, newer, ...items()])).toEqual({
+      kind: "payment",
+      href: "/settings?area=vault&payment:2",
+      count: 3,
+    });
+    expect(vaultApproval([signIn])?.kind).toBe("sign_in");
+    expect(vaultApproval(items())).toBeNull();
+  });
+
+  test("the engine's structured payment facts name the shop host and the amount", () => {
+    const [item] =
+      parseAttention({
+        items: [
+          {
+            id: "vault_payment:1",
+            class: "decide",
+            severity: "urgent",
+            kind: "vault_payment_pending",
+            subject: null,
+            reason: "payment_approval_needed",
+            detail: null,
+            vault: {
+              kind: "payment",
+              id: "1",
+              origin: "https://shop.example.com",
+              conversation_id: null,
+              amount_minor: 1234,
+              currency: "eur",
+              card: { brand: "visa", last4: "4242" },
+            },
+            actions: [{ verb: "review", href: "/cockpit/vault?payment=1", primary: true }],
+          },
+        ],
+      }) ?? [];
+    if (!item) throw new Error("item not parsed");
+    expect(item.vault).toEqual({ site: "shop.example.com", amountMinor: 1234, currency: "EUR" });
+    const english = toNotification(item, "en");
+    expect(english.body).toContain("€12.34 on shop.example.com");
+    expect(english.href).toBe("/cockpit/vault?payment=1");
+    expect(toNotification(item, "de").body).toContain("12,34");
+    const yen = toNotification({ ...item, vault: { ...item.vault!, currency: "JPY" } }, "en");
+    expect(yen.body).toContain("¥1,234");
+    const bare = toNotification({ ...item, vault: null }, "en");
+    expect(bare.body).toContain("a website");
+    expect(reasonLine("sign_in_confirmation_needed", "en")).toContain("sign-in");
   });
 });

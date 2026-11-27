@@ -56,6 +56,7 @@ export * from "./tenant-erasure.ts";
 export * from "./tool_approvals.ts";
 export * from "./transactional-mail.ts";
 export * from "./usage.ts";
+export * from "./vault-uses.ts";
 export * from "./webhooks.ts";
 export * from "./workflow_run_state.ts";
 export * from "./workflow_signals.ts";

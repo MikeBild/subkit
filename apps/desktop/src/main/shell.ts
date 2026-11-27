@@ -257,6 +257,7 @@ export class Shell implements ShellCore {
     return new TrayController(PATHS.assets, {
       open: () => this.open(),
       needsYou: () => this.open("/"),
+      approval: () => this.open(this.state.approval?.href ?? "/"),
       pause: () => void this.pause.toggle(),
       resume: () => void this.pause.toggle(),
       launchAtLogin: () => this.settings.setLaunch(!this.store.data.settings.launchAtLogin),

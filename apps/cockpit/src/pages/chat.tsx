@@ -62,6 +62,7 @@ import {
   waitsForPerson,
 } from "@/features/chat";
 import { budgetPressure, budgetSummary } from "@/features/usage/model";
+import { LinkedPaymentApproval } from "@/features/vault";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { humanFacingText } from "@/lib/presentation";
@@ -422,6 +423,7 @@ export function ChatPage() {
 
   return (
     <Page kind="workspace" scroll="content" testId="chat-workspace" header={null}>
+      <LinkedPaymentApproval />
       <div
         ref={chatWorkspace.ref}
         className={cn(

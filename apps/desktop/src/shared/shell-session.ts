@@ -1,3 +1,4 @@
+import type { VaultApproval } from "./attention.ts";
 import type { ConnectNotice, ConnectView, LoginPhase, ProfileSummary, SignedIn } from "./ipc.ts";
 import { LOADING_ONBOARDING, NO_ONBOARDING, type Onboarding } from "./onboarding.ts";
 import { isSignedIn, type Profile, type StoreData } from "./profiles.ts";
@@ -9,6 +10,7 @@ import type { Connection } from "./tray-model.ts";
 export interface ShellSession {
   readonly connection: Connection;
   readonly count: number;
+  readonly approval: VaultApproval | null;
   readonly login: LoginPhase;
   readonly notice: { readonly kind: ConnectNotice; readonly profileId: string } | null;
   readonly view: ConnectView;
@@ -20,6 +22,7 @@ export interface ShellSession {
 export const INITIAL_SESSION: ShellSession = {
   connection: "signed-out",
   count: 0,
+  approval: null,
   login: { phase: "idle" },
   notice: null,
   view: "connect",
@@ -94,7 +97,7 @@ export function profileActivated(
   switched: boolean,
 ): ShellSession {
   const next = withoutOfflineNotice(session, profileId);
-  return switched ? { ...next, count: 0 } : next;
+  return switched ? { ...next, count: 0, approval: null } : next;
 }
 
 export function authFailed(
@@ -102,7 +105,7 @@ export function authFailed(
   profileId: string,
   failure: AuthFailure,
 ): ShellSession {
-  return { ...session, count: 0, notice: { kind: failure, profileId } };
+  return { ...session, count: 0, approval: null, notice: { kind: failure, profileId } };
 }
 
 export function cockpitUnreachable(session: ShellSession, profileId: string): ShellSession {
@@ -113,6 +116,7 @@ export function serverRemoved(session: ShellSession, profileId: string): ShellSe
   return {
     ...session,
     count: 0,
+    approval: null,
     notice: session.notice?.profileId === profileId ? null : session.notice,
   };
 }
@@ -122,6 +126,7 @@ export function signedInTo(session: ShellSession, signedIn: SignedIn): ShellSess
     ...session,
     notice: null,
     count: 0,
+    approval: null,
     signedIn,
     onboarding: LOADING_ONBOARDING,
     view: "connect",
@@ -132,8 +137,12 @@ export function loginMoved(session: ShellSession, login: LoginPhase): ShellSessi
   return { ...session, login };
 }
 
-export function needsYou(session: ShellSession, count: number): ShellSession {
-  return { ...session, count };
+export function needsYou(
+  session: ShellSession,
+  count: number,
+  approval: VaultApproval | null = null,
+): ShellSession {
+  return { ...session, count, approval };
 }
 
 export function deviceIdFor(

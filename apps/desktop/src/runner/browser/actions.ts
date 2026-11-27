@@ -8,8 +8,10 @@ import {
   BrowserFillArgsSchema,
   BrowserOpenArgsSchema,
   BrowserPageArgsSchema,
+  BrowserPayArgsSchema,
   type BrowserPressArgs,
   BrowserPressArgsSchema,
+  BrowserSignInArgsSchema,
   type BrowserStep,
   type BrowserWaitArgs,
   BrowserWaitArgsSchema,
@@ -46,6 +48,23 @@ import type { DownloadWrite } from "../../shared/local/download-write.ts";
 import type { DeviceAdapter } from "../adapter.ts";
 import type { AgentBrowserClient } from "./agent-browser.ts";
 import { PngError, redactPng } from "./png-redact.ts";
+import {
+  NO_TICKETS,
+  type RecordedSnapshot,
+  runVaultAction,
+  type SecretTickets,
+  type VaultProgress,
+  type VaultRequest,
+} from "./vault-actions.ts";
+import {
+  createScriptLedger,
+  DOCUMENT_PROBE_SCRIPT,
+  documentId,
+  RUNNER_SCRIPTS,
+  refFacts,
+  SCRIPT_TOOLS,
+  type ScriptLedger,
+} from "./vault-fill.ts";
 
 export interface DownloadSink {
   write(input: DownloadWrite, signal: AbortSignal): Promise<DeviceResult>;
@@ -82,6 +101,8 @@ export interface BrowserAdapterOptions {
   readonly files: BrowserFiles;
   teardown(partition: string): Promise<void>;
   onStep?(step: BrowserStep): void;
+  readonly tickets?: SecretTickets;
+  readonly scripts?: ScriptLedger;
 }
 
 export const BROWSER_KINDS = [
@@ -93,6 +114,8 @@ export const BROWSER_KINDS = [
   "browser.extract",
   "browser.screenshot",
   "browser.download",
+  "browser.sign_in",
+  "browser.pay",
 ] as const satisfies readonly DeviceCommandKind[];
 type BrowserKind = (typeof BROWSER_KINDS)[number];
 
@@ -105,7 +128,16 @@ const SCHEMAS: Record<BrowserKind, z.ZodType> = {
   "browser.extract": BrowserExtractArgsSchema,
   "browser.screenshot": BrowserPageArgsSchema,
   "browser.download": BrowserDownloadArgsSchema,
+  "browser.sign_in": BrowserSignInArgsSchema,
+  "browser.pay": BrowserPayArgsSchema,
 };
+
+const VAULT_KINDS: ReadonlySet<string> = new Set(["browser.sign_in", "browser.pay"]);
+
+function scriptOf(tool: string, input: Record<string, unknown>): boolean {
+  if (!SCRIPT_TOOLS.has(tool)) return false;
+  return tool !== "agent_browser_eval" || !RUNNER_SCRIPTS.has(String(input.script));
+}
 
 interface CommonArgs {
   partition?: string;
@@ -170,7 +202,24 @@ function uncertain(handoff: Handoff): DeviceResult {
   return { status: "failed", code: "delivery_uncertain", detail: UNCERTAIN_DETAIL[handoff] };
 }
 
+function evidenceOf(state: PageState): DeviceEvidence {
+  return { after_version: stateVersion(state) };
+}
+
+function vaultRefusal(result: DeviceResult): string | null {
+  if (result.status !== "done") return null;
+  const output = Object(result.output) as { outcome?: unknown; reason?: unknown };
+  if (output.outcome !== "refused" && output.outcome !== "uncertain") return null;
+  return typeof output.reason === "string" && MACHINE_CODE.test(output.reason)
+    ? output.reason
+    : String(output.outcome);
+}
+
 export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdapter {
+  const scripts = options.scripts ?? createScriptLedger();
+  const tickets = options.tickets ?? NO_TICKETS;
+  const claimed = new Set<string>();
+  const recorded = new Map<string, RecordedSnapshot>();
   const run = async (
     command: DeviceCommand,
     kind: BrowserKind,
@@ -178,9 +227,16 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
     signal: AbortSignal,
     page: { state: PageState | null },
     handed: { kind: Handoff | null },
+    vault: VaultProgress,
   ): Promise<{ output: Record<string, unknown>; evidence: DeviceEvidence }> => {
     const partition = args.partition ?? DEFAULT_PARTITION;
-    const client = options.clientFor(partition);
+    const browser = options.clientFor(partition);
+    const client: typeof browser = {
+      call(tool, input, signal) {
+        if (scriptOf(tool, input)) scripts.mark(partition);
+        return browser.call(tool, input, signal);
+      },
+    };
     const allowances = options.allowances();
     const decided = siteRulesFor(command, args.boundary?.sites, allowances);
     options.setRules(decided ?? CLOSED_RULES);
@@ -226,25 +282,63 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
       return state;
     };
 
-    const evidenceOf = (state: PageState): DeviceEvidence => ({
-      after_version: stateVersion(state),
-    });
-
     if (kind === "browser.open") {
       const url = String(args.url);
       const target = /^https?:/i.test(url) ? requestTarget(url) : null;
       if (target === null) refused("origin_not_allowed", detailFor("origin_not_allowed"));
       const allowed = targetAllowed(target, rules);
       if (!allowed.ok) refused(allowed.code, detailFor(allowed.code));
+      recorded.delete(partition);
       await call("agent_browser_open", { url: target.url });
+      scripts.reset(partition);
       const state = await settle();
       return { output: { origin: state.origin }, evidence: evidenceOf(state) };
     }
 
     if (kind === "browser.snapshot") {
+      recorded.delete(partition);
       const snapshot = await call("agent_browser_snapshot", { interactive: true });
+      const probed = await client.call(
+        "agent_browser_eval",
+        { script: DOCUMENT_PROBE_SCRIPT },
+        signal,
+      );
+      const document = probed.ok ? documentId(probed.data) : null;
+      if (document !== null) recorded.set(partition, { document, facts: refFacts(snapshot) });
       const { state } = await readState();
       return { output: { snapshot }, evidence: evidenceOf(state) };
+    }
+
+    if (VAULT_KINDS.has(kind)) {
+      const request = { kind, args } as unknown as VaultRequest;
+      const outcome = await runVaultAction(
+        request,
+        {
+          call,
+          attempt: async (tool, input) => {
+            if (signal.aborted) throw new StepEnd({ status: "stopped" });
+            const result = await client.call(tool, input, signal);
+            if (signal.aborted) throw new StepEnd({ status: "stopped" });
+            return result;
+          },
+          origin: async () => (await readState()).state.origin,
+          scripted: () => scripts.ran(partition),
+          recorded: () => recorded.get(partition) ?? null,
+        },
+        tickets,
+        claimed,
+        signal,
+        vault,
+      );
+      if (outcome.submitted) recorded.delete(partition);
+      const state = page.state ?? pageState(null, null);
+      const after = outcome.submitted
+        ? await readState().then(
+            (read) => read.state,
+            () => state,
+          )
+        : state;
+      return { output: { ...outcome }, evidence: evidenceOf(after) };
     }
 
     if (kind === "browser.press") {
@@ -378,6 +472,7 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
       const parsed = SCHEMAS[kind].safeParse(command.args);
       const page: { state: PageState | null } = { state: null };
       const handed: { kind: Handoff | null } = { kind: null };
+      const vault: VaultProgress = { filled: false, submitting: false };
       let result: DeviceResult;
       let stopping: Promise<void> | null = null;
       const args = parsed.success ? (parsed.data as CommonArgs & Record<string, unknown>) : {};
@@ -388,7 +483,7 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
       signal.addEventListener("abort", onAbort, { once: true });
       try {
         if (!parsed.success) failed("invalid_args", "The browser command is not valid.");
-        const done = await run(command, kind, args, signal, page, handed);
+        const done = await run(command, kind, args, signal, page, handed, vault);
         result = { status: "done", output: done.output, evidence: done.evidence };
       } catch (error) {
         if (signal.aborted) result = { status: "stopped" };
@@ -408,12 +503,20 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
         result = { status: "stopped" };
       }
       if (handed.kind !== null && result.status !== "done") result = uncertain(handed.kind);
+      if (vault.submitting && result.status !== "done")
+        result = {
+          status: "done",
+          output: { filled: vault.filled, submitted: true, outcome: "uncertain" },
+          evidence: page.state ? evidenceOf(page.state) : {},
+        };
+      const vaultReason = vaultRefusal(result);
       const step: BrowserStep = {
         action: kind,
         origin: page.state?.origin ?? null,
         title_sha256: page.state?.title_sha256 ?? null,
         outcome: outcomeOf(result),
         ...(result.status === "refused" || result.status === "failed" ? { code: result.code } : {}),
+        ...(vaultReason ? { code: vaultReason } : {}),
       };
       options.onStep?.(step);
       if (result.status === "done")

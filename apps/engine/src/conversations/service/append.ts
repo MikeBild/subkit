@@ -11,6 +11,7 @@ import { retryTransient } from "../../db/transient.ts";
 import { log } from "../../logging/index.ts";
 import { findSecretSpans, scrubString } from "../../logging/scrub-secrets.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
+import { withholdPaymentData } from "../payment-data-guard.ts";
 import { captureDraftCredentialFromChatText } from "../persistence/auto-persist/credential-cache.ts";
 import { appendMessage } from "../persistence/index.ts";
 import type { ConversationReference } from "../references.ts";
@@ -113,7 +114,7 @@ export async function appendUserMessage(
     ...(p.principal !== undefined ? { principal: p.principal } : {}),
   });
 
-  let persistedText = rewrite.text;
+  let persistedText = withholdPaymentData(rewrite.text).text;
   if (findSecretSpans(persistedText).length > 0) {
     const draftConnector = conv.draft?.connector ?? null;
     const authType = draftConnector?.auth_type ?? null;

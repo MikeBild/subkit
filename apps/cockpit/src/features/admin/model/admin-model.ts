@@ -89,6 +89,7 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   run: "permission.action.run",
   signal: "permission.action.signal",
   test: "permission.action.test",
+  use: "permission.action.use",
   write: "permission.action.write",
 };
 

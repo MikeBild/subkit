@@ -101,6 +101,8 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "device_handover_waiting",
     "knowledge_review_due",
     "folder_changed",
+    "payment_approval_needed",
+    "sign_in_confirmation_needed",
   ]);
   expect(ATTENTION_SUBJECT_KINDS).toEqual([
     "workflow",

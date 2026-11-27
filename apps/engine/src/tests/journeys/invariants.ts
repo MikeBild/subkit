@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
-import { decryptSecret } from "../../crypto/index.ts";
+import { decryptSecret, vaultItemAadCandidates } from "../../crypto/index.ts";
 import type { Db } from "../../db/client.ts";
 import { vaultItems } from "../../db/schema/index.ts";
 import { logRing } from "../../observability/log-ring.ts";
@@ -45,22 +45,26 @@ async function vaultSecrets(db: Db): Promise<string[]> {
     .select({
       id: vaultItems.id,
       tenant_id: vaultItems.tenant_id,
+      owner_user_id: vaultItems.owner_user_id,
+      kind: vaultItems.kind,
       ciphertext: vaultItems.ciphertext,
       iv: vaultItems.iv,
       auth_tag: vaultItems.auth_tag,
     })
     .from(vaultItems);
-  return items.flatMap((item) => {
-    try {
-      const plain = decryptSecret(
-        { ciphertext: item.ciphertext, iv: item.iv, auth_tag: item.auth_tag },
-        `credential:${item.tenant_id}:${item.id}`,
-      );
-      return plain.length > 0 ? leafStrings(JSON.parse(plain)) : [];
-    } catch {
-      return [];
-    }
-  });
+  return items.flatMap((item) =>
+    vaultItemAadCandidates(item).flatMap((aad) => {
+      try {
+        const plain = decryptSecret(
+          { ciphertext: item.ciphertext, iv: item.iv, auth_tag: item.auth_tag },
+          aad,
+        );
+        return plain.length > 0 ? leafStrings(JSON.parse(plain)) : [];
+      } catch {
+        return [];
+      }
+    }),
+  );
 }
 
 async function runningWithoutWorker(input: InvariantInput): Promise<string[]> {

@@ -1,10 +1,11 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { reviewFromUrl, workflowAutomationHref, workflowHref } from "@/app/links";
 import { growthLine } from "@/features/grants/model";
+import { cardLabel, formatMinor } from "@/features/vault";
 import { autoPauseRemedy } from "@/features/workflows/model";
 import { causeClassKey } from "@/lib/cause-class";
 import { type EngineSentence, engineSentence } from "@/lib/engine-sentence";
-import type { Translate } from "@/lib/i18n";
+import type { Locale, Translate } from "@/lib/i18n";
 import { CATALOGS, type PluralKey, pluralKey, type TranslationKey } from "@/lib/i18n";
 import { clipAtWord } from "@/lib/presentation";
 import {
@@ -22,7 +23,13 @@ import {
 export type AttentionAction = components["schemas"]["AttentionAction"];
 export type HealthState = NonNullable<Attention["status"]>["health_state"];
 
+const VAULT_REASON_KEYS = {
+  payment_approval_needed: "overview.reason.payment_approval_needed",
+  sign_in_confirmation_needed: "overview.reason.sign_in_confirmation_needed",
+} as const;
+
 const REASON_KEYS = {
+  ...VAULT_REASON_KEYS,
   awaiting_answer: "overview.reason.awaiting_answer",
   execution_authority_required: "overview.reason.execution_authority_required",
   execution_authority_expired: "overview.reason.execution_authority_expired",
@@ -600,6 +607,8 @@ const SHORT_REASON_KEYS = {
   pair_approval_requested: "overview.short.pair_approval_requested",
   device_offline_waiting: "overview.short.device_offline_waiting",
   local_confirmation_needed: "overview.short.local_confirmation_needed",
+  payment_approval_needed: "overview.short.payment_approval_needed",
+  sign_in_confirmation_needed: "overview.short.sign_in_confirmation_needed",
   device_permission_missing: "overview.short.device_permission_missing",
   device_handover_waiting: "overview.short.device_handover_waiting",
   knowledge_review_due: "overview.short.knowledge_review_due",
@@ -654,6 +663,8 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   pair_approval_requested: { state: "pending", label: "ops.pair.waitingSecond" },
   device_offline_waiting: { state: "pending", label: "settings.status.waiting" },
   local_confirmation_needed: { state: "pending", label: "overview.state.decide" },
+  payment_approval_needed: { state: "pending", label: "overview.state.decide" },
+  sign_in_confirmation_needed: { state: "pending", label: "overview.state.decide" },
   device_permission_missing: { state: "needs_attention", label: "automation.state.repair" },
   device_handover_waiting: { state: "pending", label: "overview.state.decide" },
   knowledge_review_due: { state: "pending", label: "overview.state.decide" },
@@ -783,8 +794,30 @@ export function attentionDetail(
   item: { reason: string; cause_class?: string | null; detail?: string | null },
   t: Translate,
 ): EngineSentence | null {
-  if (!item.detail?.trim()) return null;
+  if (!item.detail?.trim() || item.reason in VAULT_REASON_KEYS) return null;
   return engineSentence({ hold: item.reason, cause_class: item.cause_class, text: item.detail }, t);
+}
+
+function hostOf(origin: string): string {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return origin;
+  }
+}
+
+export function vaultAttentionFacts(
+  item: Pick<AttentionItem, "vault">,
+  locale: Locale,
+): string | null {
+  const vault = item.vault;
+  if (!vault) return null;
+  const amount =
+    typeof vault.amount_minor === "number" && vault.currency
+      ? formatMinor(locale, vault.amount_minor, vault.currency.toUpperCase())
+      : null;
+  const card = vault.card ? cardLabel(vault.card) : null;
+  return [hostOf(vault.origin), amount, card].filter(Boolean).join(" · ");
 }
 
 export function attentionEnvironment(

@@ -85,6 +85,7 @@ import {
   sinceLabel,
   sourceLabel,
   startSteps,
+  vaultAttentionFacts,
   WaitingOnLine,
 } from "@/features/overview";
 import { isExecutionRecord, latestFailedRun, runName } from "@/features/runs";
@@ -120,7 +121,17 @@ function AttentionEnvironment({ item, index }: { item: AttentionItem; index: num
 }
 
 function AttentionDetail({ item }: { item: AttentionItem }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const facts = vaultAttentionFacts(item, locale);
+  if (facts)
+    return (
+      <span
+        className="mt-1 block text-xs font-normal text-muted-foreground tabular-nums"
+        data-testid="attention-vault-facts"
+      >
+        {facts}
+      </span>
+    );
   const detail = attentionDetail(item, t);
   if (!detail) return null;
   return detail.source === "engine" ? (

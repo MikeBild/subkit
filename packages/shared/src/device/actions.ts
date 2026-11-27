@@ -32,6 +32,8 @@ const ACTIONS: Record<DeviceCommandKind, DeviceAction> = {
   "browser.snapshot": "read",
   "browser.screenshot": "screenshot",
   "browser.handover": "signin",
+  "browser.sign_in": "signin",
+  "browser.pay": "fill",
   "computer.apps": "read",
   "computer.open": "open",
   "computer.snapshot": "read",
