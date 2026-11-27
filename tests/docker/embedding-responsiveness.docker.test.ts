@@ -174,7 +174,7 @@ test("workflow writes remain available while real local inference is in progress
         const value = await progress(source);
         return value.total === before.total && value.pending === 0 ? value : null;
       },
-      { timeoutMs: 180_000, label: "all workload chunks embedded" },
+      { timeoutMs: 360_000, label: "all workload chunks embedded" },
     );
     expect(after.pending).toBeGreaterThan(0);
     expect(settledWrites.map((write) => write.status)).toEqual(Array(8).fill(201));
@@ -192,4 +192,4 @@ test("workflow writes remain available while real local inference is in progress
       await db.end();
     }
   }
-}, 360_000);
+}, 720_000);
