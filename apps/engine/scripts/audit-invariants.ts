@@ -10,6 +10,10 @@ import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts
 import { parseFloorFile } from "./audit/coverage-floor.ts";
 import { listFiles } from "./audit/files.ts";
 import { parseSource, resolveImport } from "./audit/imports.ts";
+import { mutationClosureFiles } from "./audit/mutation-inputs.ts";
+import { assertCompletePureTargetInventory } from "./audit/pure-targets.ts";
+import { parseQualityShardPolicy } from "./audit/quality-shard-policy.ts";
+import { QUALITY_SHARD_POLICY_PATH } from "./audit/quality-wave-manifest.ts";
 import { createCache, evaluateRatchet, RATCHETS, writeRatchetBaseline } from "./audit/ratchets.ts";
 import { isRowScopeScope, rowScopeHits } from "./audit/row-scope.ts";
 import { isTestPath } from "./audit/rules.ts";
@@ -857,6 +861,26 @@ function checkNoTypedVersions(): Result {
   };
 }
 
+function checkQualityShardPolicy(): Result {
+  const id = "quality_shard_policy";
+  try {
+    const owners = assertCompletePureTargetInventory(mutationClosureFiles(REPO)).map(
+      (entry) => entry.owner_shard,
+    );
+    parseQualityShardPolicy(
+      JSON.parse(readFileSync(join(REPO, QUALITY_SHARD_POLICY_PATH), "utf8")),
+      owners,
+    );
+    return { id, status: "PASS", message: "every mutation target owner has a shard policy" };
+  } catch (error) {
+    return {
+      id,
+      status: "FAIL",
+      message: `the release mutation wave cannot start: ${(error as Error).message}; add the subsystem to ${QUALITY_SHARD_POLICY_PATH}`,
+    };
+  }
+}
+
 const CHECKS: Array<() => Result> = [
   checkAiSdkLocality,
   checkJsonataLocality,
@@ -882,6 +906,7 @@ const CHECKS: Array<() => Result> = [
   checkNoComments,
   checkTopLevelLayout,
   checkNoTypedVersions,
+  checkQualityShardPolicy,
 ];
 
 const cache = createCache(REPO);

@@ -98,6 +98,10 @@
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
+      "id": "webhooks",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
       "id": "workflows",
       "resource_tags": ["db", "ports", "global-state"]
     }
