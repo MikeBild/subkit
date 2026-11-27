@@ -25,7 +25,7 @@ const ORIGIN = z
   .string()
   .min(1)
   .max(2048)
-  .describe("The origin of the page from that snapshot, like https://shop.example.");
+  .describe("The origin of the page from that snapshot, like https://shop.example.com.");
 
 const COMPUTER_REF = z
   .string()

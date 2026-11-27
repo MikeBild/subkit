@@ -347,7 +347,7 @@ const addCommand = defineCommand({
     username: { type: "string", description: "login: the username" },
     origins: {
       type: "string",
-      description: "login: the websites it may sign in to, e.g. https://shop.example",
+      description: "login: the websites it may sign in to, e.g. https://shop.example.com",
     },
     totp: { type: "boolean", description: "login: also ask for the one-time code key" },
     scope: {

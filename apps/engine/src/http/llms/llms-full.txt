@@ -8591,7 +8591,7 @@ Add a secret, login, card, bank account, identity, address or note. Values are r
 - `<name>` (positional, required) — Handle name, e.g. crm-token
 - `--kind` (string, default: secret) — secret | login | card | bank_account | identity | address | note
 - `--username` (string) — login: the username
-- `--origins` (string) — login: the websites it may sign in to, e.g. https://shop.example
+- `--origins` (string) — login: the websites it may sign in to, e.g. https://shop.example.com
 - `--totp` — login: also ask for the one-time code key
 - `--scope` (string) — workspace | person (default: person for card, bank_account, identity)
 - `--env` (string, default: prod) — dev | prod

@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "b364b2208c4ca1eb4d223d17e4402277c1ff1cf8",
+  "source": "4f15d4710964be827f0c38253f92e6c62a505dd0",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2465,15 +2465,18 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     }
   ],
   "unpublished": {
-    "version": "13.3.1",
+    "version": "13.4.0",
     "notes": [
+      "sign in and pay in the browser with the vault",
       "calm the overview and tell retiring endpoints from removed ones"
     ],
     "highlights": [
-      "Calmer overview: the Cockpit now gathers live updates and refreshes the overview once per burst instead of several times a second, so counts and entries no longer flicker or show an older state.",
-      "Honest connector notices: an endpoint the vendor plans to retire now shows its retirement date and stays a decision, not an urgent failure. It turns urgent only shortly before the date or once the endpoint is really gone.",
-      "Badge and list agree: hiding and restoring an entry keeps the overview counter and the list in step.",
-      "Fixes: a connector whose deprecated endpoint is later removed now moves from “retiring” to “gone”."
+      "Sign in with the vault: browser tasks in chat, tasks and workflows sign in with a saved login, including one-time codes, by reference only. The model never sees the value, you confirm each use, and every use is on record.",
+      "Pay with the vault: a saved card fills a checkout only after you approve the shop, amount and card and enter the security code for that payment. The code is never stored, and a submitted payment is reported as submitted, never retried.",
+      "More kinds of private data: the vault now keeps cards, bank accounts, identities, addresses and secure notes next to logins and secrets. Cards, bank accounts and identities stay in your personal area and show masked.",
+      "Calmer overview: the Cockpit gathers live updates and refreshes once per burst, an endpoint the vendor plans to retire shows its retirement date instead of “gone”, and the badge and list stay in step.",
+      "Better browser results: a new browser skill and a deterministic eval set cover sign-in, payment, lookalike sites and instructions hidden in page content.",
+      "Known limits: card fields inside a payment provider’s frame hand over to you, the local workspace cannot reveal a card after five minutes, and the CLI has no vault import or payment commands yet. SubKit makes no PCI DSS claim."
     ]
   },
   "highlights": {
