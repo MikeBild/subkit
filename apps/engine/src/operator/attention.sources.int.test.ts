@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { executionSteps, executions, patchCandidates, tenants, users } from "../db/schema/index.ts";
+import {
+  connectors,
+  executionSteps,
+  executions,
+  patchCandidates,
+  tenants,
+  users,
+} from "../db/schema/index.ts";
 import { grantResource } from "../rbac/grants.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
@@ -276,5 +283,79 @@ describe("a scheduled run that timed out", () => {
     invalidateAttention(timeoutTenant);
     const recovered = await buildAttention(testDb.db, reader);
     expect(recovered.items.some((i) => i.id === `workflow:${workflow_id}`)).toBe(false);
+  });
+});
+
+describe("a connector whose vendor retires an endpoint", () => {
+  test("is a notice to decide while the endpoint works, and failing once it is gone", async () => {
+    const [t] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-attention-retiring", display_name: "Retiring" })
+      .returning();
+    const retiringTenant = t!.id;
+    const reader = adminPrincipal(retiringTenant);
+    const now = getTestNow();
+    const base = {
+      tenant_id: retiringTenant,
+      driver: "http",
+      environment: "prod" as const,
+      auth_type: "none" as const,
+      base_url: "https://vendor.test",
+      config: {},
+      health_state: "needs_update",
+      health_changed_at: new Date(now - HOUR),
+    };
+    const [retiring, soon, gone] = await testDb.db
+      .insert(connectors)
+      .values([
+        {
+          ...base,
+          slug: "retiring",
+          display_name: "Retiring",
+          health_error_code: "endpoint_deprecated",
+          health_reason: "vendor announced deprecation of an endpoint this connector uses",
+          sunset_at: new Date(now + 400 * 24 * HOUR),
+        },
+        {
+          ...base,
+          slug: "soon",
+          display_name: "Soon",
+          health_error_code: "endpoint_deprecated",
+          sunset_at: new Date(now + 10 * 24 * HOUR),
+        },
+        {
+          ...base,
+          slug: "gone",
+          display_name: "Gone",
+          health_error_code: "endpoint_removed",
+          sunset_at: new Date(now - 24 * HOUR),
+        },
+      ])
+      .returning();
+
+    invalidateAttention(retiringTenant);
+    const attention = await buildAttention(testDb.db, reader);
+    const placed = (id: string) => {
+      const entry = attention.items.find((i) => i.id === `connector:${id}`);
+      return entry && { class: entry.class, severity: entry.severity, reason: entry.reason };
+    };
+    expect(placed(retiring!.id)).toEqual({
+      class: "decide",
+      severity: "notice",
+      reason: "needs_update",
+    });
+    expect(placed(soon!.id)).toEqual({
+      class: "decide",
+      severity: "urgent",
+      reason: "needs_update",
+    });
+    expect(placed(gone!.id)).toEqual({
+      class: "failing",
+      severity: "urgent",
+      reason: "needs_update",
+    });
+    expect(attention.items.find((i) => i.id === `connector:${retiring!.id}`)?.deadline).toBe(
+      new Date(now + 400 * 24 * HOUR).toISOString(),
+    );
   });
 });

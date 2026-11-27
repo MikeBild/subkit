@@ -1,3 +1,9 @@
+import {
+  type Attention,
+  attentionBadge,
+  type HiddenEntries,
+  settleHidden,
+} from "@/features/overview";
 import { ATTENTION_READ_PERMISSIONS } from "./navigation";
 
 type Hidden = ReadonlyMap<string, string>;
@@ -8,6 +14,14 @@ export function canReadAttention(permissions: readonly string[]): boolean {
 
 export function withHidden(hidden: Hidden, id: string, snapshot: string): Hidden {
   return new Map([...hidden, [id, snapshot]]);
+}
+
+export function attentionView(
+  data: Attention | undefined,
+  hidden: HiddenEntries,
+): { hidden: HiddenEntries; badge: ReturnType<typeof attentionBadge> } {
+  const settled = data ? settleHidden(hidden, data.items) : hidden;
+  return { hidden: settled, badge: attentionBadge(data, settled) };
 }
 
 export function withoutHidden(hidden: Hidden, id: string): Hidden {

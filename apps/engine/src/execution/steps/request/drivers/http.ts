@@ -631,7 +631,8 @@ async function httpFailure(x: HttpExchange, err: unknown): Promise<StepResult> {
   }
   if (
     activeConnector &&
-    activeConnector.health_state !== "needs_update" &&
+    (activeConnector.health_state !== "needs_update" ||
+      activeConnector.health_error_code === "endpoint_deprecated") &&
     err instanceof RequestError &&
     err.cause_kind === "http_4xx" &&
     err.status === 410

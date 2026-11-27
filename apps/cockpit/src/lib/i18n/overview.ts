@@ -296,6 +296,8 @@ export const overviewEn = {
   "overview.short.patch_proposed.other": "{count} fixes proposed",
   "overview.short.needs_reauth": "Workflows cannot run until it signs in again",
   "overview.short.needs_update": "The endpoint no longer exists",
+  "overview.short.endpoint_retiring": "Endpoint retires on {date}",
+  "overview.short.endpoint_retiringUndated": "The vendor announced the endpoint’s retirement",
   "overview.short.unhealthy": "Not reachable",
   "overview.short.refresh_refused": "The provider refused the renewal",
   "overview.short.refresh_failed": "The renewal failed",
@@ -672,6 +674,9 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.short.patch_proposed.other": "{count} Korrekturen vorgeschlagen",
   "overview.short.needs_reauth": "Workflows laufen erst nach erneuter Anmeldung",
   "overview.short.needs_update": "Den Endpunkt gibt es nicht mehr",
+  "overview.short.endpoint_retiring": "Endpunkt wird am {date} abgeschaltet",
+  "overview.short.endpoint_retiringUndated":
+    "Der Anbieter hat die Abschaltung des Endpunkts angekündigt",
   "overview.short.unhealthy": "Nicht erreichbar",
   "overview.short.refresh_refused": "Der Anbieter lehnte die Verlängerung ab",
   "overview.short.refresh_failed": "Die Verlängerung schlug fehl",

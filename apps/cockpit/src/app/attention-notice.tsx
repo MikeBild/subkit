@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n-context";
 import { cockpitBasePath } from "./installation-context";
+import { invalidationBatcher } from "./invalidation-batcher";
 
 export const ATTENTION_TOAST_ID = "cockpit-attention";
 
@@ -53,7 +54,7 @@ export function AttentionNotice() {
         basePath: cockpitBasePath(),
         overview: () =>
           router.state.location.pathname === "/" && document.visibilityState === "visible",
-        invalidate: () => void queryClient.invalidateQueries({ queryKey: ["attention"] }),
+        invalidate: () => invalidationBatcher(queryClient).schedule([["attention"]]),
         notify: () =>
           toast(t("attention.notice"), {
             id: ATTENTION_TOAST_ID,

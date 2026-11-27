@@ -14,6 +14,7 @@ import {
   respondToToolCall,
   sendConversationTurn,
 } from "@/api/client";
+import { invalidationBatcher } from "@/app/invalidation-batcher";
 import { chatSeedFromUrl, chatTargetFromUrl } from "@/app/links";
 import { usdFormatter } from "@/features/usage";
 import { formatDateTime } from "@/lib/i18n";
@@ -256,7 +257,7 @@ export function useChatTurn({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["decisions"] }),
-        queryClient.invalidateQueries({ queryKey: ["attention"] }),
+        invalidationBatcher(queryClient).now([["attention"]]),
         loaded ? null : queryClient.invalidateQueries({ queryKey: ["conversation", id] }),
       ]);
     },
@@ -457,7 +458,7 @@ export function useChatTurn({
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
           queryClient.invalidateQueries({ queryKey: ["decisions"] }),
-          queryClient.invalidateQueries({ queryKey: ["attention"] }),
+          invalidationBatcher(queryClient).now([["attention"]]),
         ]);
       } finally {
         if (decisionLock.current === variables.operation) decisionLock.current = null;

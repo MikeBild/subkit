@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
+import { invalidationBatcher } from "@/app/invalidation-batcher";
 import { absolute, taskHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useOptionalSession } from "@/app/session-context";
@@ -190,11 +191,11 @@ export function TaskRunLine({
     onSettled: async () => {
       setConfirming(false);
       await Promise.all([
+        invalidationBatcher(queryClient).now([["attention"]]),
         queryClient.invalidateQueries({ queryKey: taskKeys.runDetails }),
         queryClient.invalidateQueries({ queryKey: taskKeys.details }),
         queryClient.invalidateQueries({ queryKey: taskKeys.lists }),
         queryClient.invalidateQueries({ queryKey: taskKeys.runsOf(taskId) }),
-        queryClient.invalidateQueries({ queryKey: ["attention"] }),
         queryClient.invalidateQueries({ queryKey: ["conversation", conversationId] }),
       ]);
     },

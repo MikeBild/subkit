@@ -696,7 +696,28 @@ export function waitingOnLine(name: string, t: Translate): string {
   return t("overview.waitingOn", { name });
 }
 
-export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
+export function isEndpointRetiring(item: Pick<AttentionItem, "reason" | "class">): boolean {
+  return item.reason === "needs_update" && item.class !== "failing";
+}
+
+const RETIRING_BADGE = { state: "needs_update", label: "connectors.healthState.retiring" } as const;
+
+function retiringReason(
+  item: Pick<AttentionItem, "deadline">,
+  t: Translate,
+  day: (value: string) => string,
+): string {
+  const at = item.deadline ? Date.parse(item.deadline) : Number.NaN;
+  return Number.isNaN(at)
+    ? t("overview.short.endpoint_retiringUndated")
+    : t("overview.short.endpoint_retiring", { date: day(item.deadline as string) });
+}
+
+export function attentionRow(
+  item: AttentionItem,
+  t: Translate,
+  day: (value: string) => string = (value) => value.slice(0, 10),
+): AttentionRow {
   const name =
     (item.reason === "ai_access_missing" || item.reason === "model_tools_missing"
       ? t("overview.object.aiAccess")
@@ -714,12 +735,15 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
             : t("overview.unnamed"));
   const version = item.approval ? ` v${item.approval.version}` : "";
 
+  const retiring = isEndpointRetiring(item);
   const badge = isPairWaiting(item)
     ? PAIR_WAITING_BADGE
-    : ((STATE_OF_REASON as Record<string, AttentionRow["badge"]>)[item.reason] ?? {
-        state: "pending",
-        label: "overview.state.decide",
-      });
+    : retiring
+      ? RETIRING_BADGE
+      : ((STATE_OF_REASON as Record<string, AttentionRow["badge"]>)[item.reason] ?? {
+          state: "pending",
+          label: "overview.state.decide",
+        });
   const count =
     item.reason === "failing"
       ? (item.counts.failures ?? 1)
@@ -741,9 +765,11 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
     : counted
       ? pluralKey(counted, count)
       : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
-  const short = key
-    ? t(key, { count, step: item.repair?.step_id ?? "" })
-    : t("overview.short.other");
+  const short = retiring
+    ? retiringReason(item, t, day)
+    : key
+      ? t(key, { count, step: item.repair?.step_id ?? "" })
+      : t("overview.short.other");
   return {
     name: `${name}${version}`,
     reason: short,

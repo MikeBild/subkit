@@ -44,6 +44,7 @@ interface ConnectorHealthTransition {
   sunset_at?: Date | null;
   successor_uri?: string | null;
   workflow_id?: string | null;
+  escalates_error_code?: string | null;
 }
 
 export async function setConnectorHealth(
@@ -62,7 +63,9 @@ export async function setConnectorHealth(
              successor_uri = ${next.successor_uri ?? null}
         FROM (SELECT id, health_state AS prev_state FROM connectors
                WHERE id = ${connector.id} AND tenant_id = ${connector.tenant_id}
-                 AND health_state <> ${next.state}) AS prev
+                 AND (health_state <> ${next.state}
+                      OR (${next.escalates_error_code ?? null}::text IS NOT NULL
+                          AND health_error_code = ${next.escalates_error_code ?? null}::text))) AS prev
        WHERE c.id = prev.id
       RETURNING prev.prev_state
     `);
@@ -156,6 +159,7 @@ export async function flagConnectorContractFailure(
     sunset_at: Number.isFinite(sunsetMs) ? new Date(sunsetMs) : null,
     successor_uri: opts.deprecation?.successor_uri ?? null,
     workflow_id: opts.workflow_id ?? null,
+    escalates_error_code: opts.error_code === "endpoint_removed" ? "endpoint_deprecated" : null,
   });
 }
 

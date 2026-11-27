@@ -1,5 +1,6 @@
 import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { apiCall } from "@/api/call";
+import { invalidationBatcher } from "@/app/invalidation-batcher";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { taskKeys } from "@/features/tasks/model/task-keys";
 import { TASK_LIST_PAGE, type TaskInput, type TaskView } from "../model/tasks-model";
@@ -177,12 +178,12 @@ export function rejectTaskRun(id: string) {
 
 export async function refreshTask(client: QueryClient, id: string): Promise<void> {
   await Promise.all([
+    invalidationBatcher(client).now([["attention"]]),
     client.invalidateQueries({ queryKey: taskKeys.lists }),
     client.invalidateQueries({ queryKey: taskKeys.detail(id) }),
     client.invalidateQueries({ queryKey: taskKeys.runsOf(id) }),
     client.invalidateQueries({ queryKey: taskKeys.runDetails }),
     client.invalidateQueries({ queryKey: taskKeys.grantsOf(id) }),
     client.invalidateQueries({ queryKey: taskKeys.usage(id) }),
-    client.invalidateQueries({ queryKey: ["attention"] }),
   ]);
 }

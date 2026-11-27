@@ -30,6 +30,7 @@ import type {
   AttentionSource,
 } from "./attention.ts";
 import { heldAttentionReason } from "./core/attention.ts";
+import { connectorPlacement } from "./core/connector-placement.ts";
 import type { WaitingHandover } from "./core/device-handover.ts";
 import { heldCauseClass, heldDetail } from "./core/held-detail.ts";
 import type { PermissionGap, WaitingDevice } from "./device-attention.ts";
@@ -479,7 +480,7 @@ const CONNECTOR_REASON: Record<string, AttentionReason> = {
   degraded: "degraded",
 };
 
-const readConnectors: TenantReader = async (db, tenantId) => {
+const readConnectors: TenantReader = async (db, tenantId, now) => {
   const rows = await db
     .select({
       id: connectors.id,
@@ -488,6 +489,7 @@ const readConnectors: TenantReader = async (db, tenantId) => {
       health_state: connectors.health_state,
       needs_reauth: connectors.needs_reauth,
       health_reason: connectors.health_reason,
+      health_error_code: connectors.health_error_code,
       health_changed_at: connectors.health_changed_at,
       updated_at: connectors.updated_at,
       sunset_at: connectors.sunset_at,
@@ -499,13 +501,17 @@ const readConnectors: TenantReader = async (db, tenantId) => {
     const reason = row.needs_reauth
       ? "needs_reauth"
       : (CONNECTOR_REASON[row.health_state] ?? "unhealthy");
+    const placement = connectorPlacement(
+      { reason, health_error_code: row.health_error_code, sunset_at: row.sunset_at },
+      now,
+    );
     return {
       source: "connectors",
       resource: { type: "connector", id: row.id },
       item: {
         id: `connector:${row.id}`,
-        class: "failing",
-        severity: "urgent",
+        class: placement.class,
+        severity: placement.severity,
         kind: "connector",
         subject: { kind: "connector", id: row.id, name: row.name, environment: row.env },
         reason,

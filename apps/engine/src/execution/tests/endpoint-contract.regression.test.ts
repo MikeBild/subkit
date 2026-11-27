@@ -172,6 +172,24 @@ describe("endpoint contract — deprecation early warning (2xx + Sunset)", () =>
     expect(payload.severity).toBe("warn");
     expect(payload.error_code).toBe("endpoint_deprecated");
   });
+
+  test("a 410 after an announced deprecation escalates the connector to endpoint_removed", async () => {
+    await resetHealth();
+    await runStep("contract-deprecated-first", "/deprecated-ok");
+    expect((await connectorRow()).health_error_code).toBe("endpoint_deprecated");
+    const before = (await healthChangedEvents()).length;
+
+    const result = await runStep("contract-410-after-deprecation", "/rest/api/3/search?jql=x");
+    expect(result.status).toBe("failed");
+
+    const row = await connectorRow();
+    expect(row.health_state).toBe("needs_update");
+    expect(row.health_error_code).toBe("endpoint_removed");
+    expect((await healthChangedEvents()).length - before).toBe(1);
+
+    await runStep("contract-deprecated-after-removal", "/deprecated-ok");
+    expect((await connectorRow()).health_error_code).toBe("endpoint_removed");
+  });
 });
 
 describe("endpoint contract — 404 path guidance", () => {

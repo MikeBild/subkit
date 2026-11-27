@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ActionButton, ActionMenu, CollapsibleSection } from "@/components/cockpit/patterns";
 import { reportFailure } from "@/lib/action-failure";
+import { formatDate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import type { AttentionItem, SnoozedAttentionItem } from "../api/attention-contract";
 import { snoozeAttention, unsnoozeAttention } from "../api/attention-snooze";
@@ -44,9 +45,9 @@ export function SnoozeMenu({ item, index }: { item: AttentionItem; index: number
 }
 
 function SnoozedRow({ item, index }: { item: SnoozedAttentionItem; index: number }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const queryClient = useQueryClient();
-  const row = attentionRow(item, t);
+  const row = attentionRow(item, t, (value) => formatDate(locale, value));
   const restore = useMutation({
     mutationFn: () => unsnoozeAttention(item.attention_key),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ATTENTION_QUERY_KEY }),

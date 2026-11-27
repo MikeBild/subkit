@@ -14,10 +14,7 @@ export function useNewRunConversation(taskId: string) {
     mutationFn: (runId: string) => continueTaskRunInNewConversation(runId),
     onSuccess: async (run) => {
       toast.success(t("tasks.newConversation.done"));
-      await Promise.all([
-        refreshTask(client, taskId),
-        client.invalidateQueries({ queryKey: ["attention"] }),
-      ]);
+      await refreshTask(client, taskId);
       if (run.conversation_id) await navigate({ to: conversationHref(run.conversation_id) });
     },
     onError: (failure) => reportFailure(t("tasks.newConversation.failed"), failure),

@@ -1,5 +1,5 @@
 import { backoffDelay } from "@shared/backoff.ts";
-import { type QueryKey, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   type ReactNode,
@@ -12,7 +12,8 @@ import {
 import { noticeSessionExpiry } from "@/api/client";
 import { readSseStream, SseHttpError } from "@/lib/sse-stream";
 import { connectivity, type LiveStatus, useConnectivity } from "./connectivity";
-import { keyId, keysForEvent } from "./live-invalidation";
+import { invalidationBatcher } from "./invalidation-batcher";
+import { keysForEvent } from "./live-invalidation";
 
 const LIVE_STREAM_PATH = "/v1/cockpit/events/stream";
 
@@ -25,7 +26,6 @@ interface LiveContextValue {
 
 const LiveContext = createContext<string | null>(null);
 
-const COALESCE_MS = 300;
 const RETRY_MAX_MS = 30_000;
 
 interface HelloFrame {
@@ -80,21 +80,8 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
     let disposed = false;
     let controller: AbortController | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let flushTimer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
-    const pending = new Map<string, QueryKey>();
-
-    const flush = () => {
-      flushTimer = null;
-      const keys = [...pending.values()];
-      pending.clear();
-      for (const queryKey of keys) void queryClient.invalidateQueries({ queryKey });
-    };
-
-    const schedule = (keys: readonly QueryKey[]) => {
-      for (const key of keys) pending.set(keyId(key), key);
-      if (pending.size > 0 && flushTimer === null) flushTimer = setTimeout(flush, COALESCE_MS);
-    };
+    const batcher = invalidationBatcher(queryClient);
 
     const stop = () => {
       controller?.abort();
@@ -127,13 +114,13 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
               hello.cursor > Number(lastEventId.current ?? 0)
             )
               lastEventId.current = String(hello.cursor);
-            if (hello?.truncated === true) void queryClient.invalidateQueries();
+            if (hello?.truncated === true) batcher.everything();
             return;
           }
           if (kind === "ping") return;
           if (frame.id) lastEventId.current = frame.id;
           for (const listener of frameListeners) listener(frame.event, frame.data);
-          schedule(keysForEvent(frame.event));
+          batcher.schedule(keysForEvent(frame.event));
         },
       })
         .then(() => retry(current, shutdown))
@@ -181,7 +168,6 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
       disposed = true;
       document.removeEventListener("visibilitychange", onVisibility);
       stop();
-      if (flushTimer !== null) clearTimeout(flushTimer);
     };
   }, [queryClient]);
 

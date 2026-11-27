@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { apiRequest } from "@/api/client";
 import {
   type Attention,
   type AttentionItem,
-  attentionBadge,
   entrySnapshot,
   type HiddenEntries,
   NO_HIDDEN,
@@ -12,7 +11,7 @@ import {
   settleHidden,
   waitingOnName,
 } from "@/features/overview";
-import { canReadAttention, withHidden, withoutHidden } from "./attention-model";
+import { attentionView, canReadAttention, withHidden, withoutHidden } from "./attention-model";
 import { useLiveQueryOptions } from "./live-events";
 
 let hidden: HiddenEntries = NO_HIDDEN;
@@ -53,18 +52,19 @@ export function useAttention(permissions: readonly string[]) {
     enabled,
     ...live,
     staleTime: 30_000,
-    queryFn: async () => {
-      const attention = await apiRequest<Attention>("/v1/attention");
-      publish(settleHidden(hidden, attention.items));
-      return attention;
-    },
+    queryFn: ({ signal }) => apiRequest<Attention>("/v1/attention", { signal }),
   });
   const hiddenIds = useHiddenAttention();
+  const data = query.data;
+  useEffect(() => {
+    if (data) publish(settleHidden(hidden, data.items));
+  }, [data]);
+  const view = attentionView(data, hiddenIds);
   return {
     enabled,
     query,
-    hidden: hiddenIds,
-    badge: attentionBadge(query.data, hiddenIds),
+    hidden: view.hidden,
+    badge: view.badge,
   };
 }
 

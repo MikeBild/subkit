@@ -103,7 +103,7 @@ import {
   useOpenRunSheet,
 } from "@/features/workflows";
 import { reportFailure } from "@/lib/action-failure";
-import type { TranslationKey } from "@/lib/i18n";
+import { formatDate, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
@@ -272,8 +272,9 @@ function NeedsYou({
   permissions: readonly string[];
   onReview: (id: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const now = useMemo(() => Date.now(), []);
+  const day = (value: string) => formatDate(locale, value);
   if (pending) return <RowsSkeleton count={3} testId="attention-list-loading" />;
   if (error)
     return (
@@ -288,7 +289,7 @@ function NeedsYou({
   return (
     <ul className="flex flex-col gap-2" data-testid="attention-list" data-sk-slot="attention-list">
       {items.map((item, index) => {
-        const row = attentionRow(item, t);
+        const row = attentionRow(item, t, day);
         const href = subjectHref(item);
         const since = sinceLabel(item.since, now, t);
         return (
@@ -713,7 +714,8 @@ function ReviewSheet({
   item: AttentionItem | null;
   onClose: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const day = (value: string) => formatDate(locale, value);
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   return (
     <RecordSheet
@@ -722,8 +724,8 @@ function ReviewSheet({
       title={
         item
           ? item.subject?.kind === "workflow"
-            ? attentionRow(item, t).reason
-            : attentionRow(item, t).name
+            ? attentionRow(item, t, day).reason
+            : attentionRow(item, t, day).name
           : t("overview.sheet.title")
       }
       subtitle={
@@ -745,7 +747,7 @@ function ReviewSheet({
       closeTestId="attention-review-close"
     >
       {item && item.subject?.kind !== "workflow" ? (
-        <SummaryLine text={attentionRow(item, t).reason} testId="attention-review-reason" />
+        <SummaryLine text={attentionRow(item, t, day).reason} testId="attention-review-reason" />
       ) : null}
       {item ? <AttentionDetail item={item} /> : null}
       {id ? (

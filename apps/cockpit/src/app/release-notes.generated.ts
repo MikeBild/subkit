@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "21171562ba6388963ed7c7c8e818e759f327ae59",
+  "source": "29a018ae42cb7662625a51e536bc5027bd196da3",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2447,22 +2447,27 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "Voice dictation counts against the AI spend limit when it uses the operator's key. Each recording carries a `client_request_id`, so a retry returns the first text and is booked once. Update the `subkit` CLI to dictate against a 13.2 engine that pays with the operator's key.",
         "Fixes: long dictations settle correctly in cloud workspaces, shared values in request bodies are no longer marked as circular, skill examples load in MCP prompts, and the documentation keeps the current heading in view."
       ]
+    },
+    {
+      "version": "v13.3.0",
+      "notes": [
+        "connect local services and MCP servers over http, https and stdio"
+      ],
+      "highlights": [
+        "Local services by default: connectors reach servers on your own machine at localhost, 127.0.0.1, [::1] or, from Docker, host.docker.internal, over http or https. SubKit Cloud stays shut off from local addresses.",
+        "Local MCP servers by command: start stdio servers such as `docker mcp gateway run` from SubKit Desktop. A command runs only after an owner or admin confirms it, and again after every change.",
+        "Every way to sign in: no sign-in, an API key as Bearer or in your own header, or OAuth with a local authorization server, even without a public engine address.",
+        "Local https: trust a local certificate authority such as mkcert per connector, or skip the certificate check for local addresses only.",
+        "Fewer needless keys: connector discovery no longer asks for a key when an API only declares one as optional.",
+        "The same in chat and by hand: the chat sets up local connectors without asking for a key, and the Cockpit form accepts local addresses and commands.",
+        "Fixes: Desktop finds tools like docker through your login shell, and OAuth sign-in on a local engine no longer needs server.public_base_url."
+      ]
     }
   ],
   "unpublished": {
-    "version": "13.3.0",
-    "notes": [
-      "connect local services and MCP servers over http, https and stdio"
-    ],
-    "highlights": [
-      "Local services by default: connectors reach servers on your own machine at localhost, 127.0.0.1, [::1] or, from Docker, host.docker.internal, over http or https. SubKit Cloud stays shut off from local addresses.",
-      "Local MCP servers by command: start stdio servers such as `docker mcp gateway run` from SubKit Desktop. A command runs only after an owner or admin confirms it, and again after every change.",
-      "Every way to sign in: no sign-in, an API key as Bearer or in your own header, or OAuth with a local authorization server, even without a public engine address.",
-      "Local https: trust a local certificate authority such as mkcert per connector, or skip the certificate check for local addresses only.",
-      "Fewer needless keys: connector discovery no longer asks for a key when an API only declares one as optional.",
-      "The same in chat and by hand: the chat sets up local connectors without asking for a key, and the Cockpit form accepts local addresses and commands.",
-      "Fixes: Desktop finds tools like docker through your login shell, and OAuth sign-in on a local engine no longer needs server.public_base_url."
-    ]
+    "version": null,
+    "notes": [],
+    "highlights": null
   },
   "highlights": {
     "12.1.0": [
@@ -2591,6 +2596,12 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "Fewer needless keys: connector discovery no longer asks for a key when an API only declares one as optional.",
       "The same in chat and by hand: the chat sets up local connectors without asking for a key, and the Cockpit form accepts local addresses and commands.",
       "Fixes: Desktop finds tools like docker through your login shell, and OAuth sign-in on a local engine no longer needs server.public_base_url."
+    ],
+    "13.3.1": [
+      "Calmer overview: the Cockpit now gathers live updates and refreshes the overview once per burst instead of several times a second, so counts and entries no longer flicker or show an older state.",
+      "Honest connector notices: an endpoint the vendor plans to retire now shows its retirement date and stays a decision, not an urgent failure. It turns urgent only shortly before the date or once the endpoint is really gone.",
+      "Badge and list agree: hiding and restoring an entry keeps the overview counter and the list in step.",
+      "Fixes: a connector whose deprecated endpoint is later removed now moves from “retiring” to “gone”."
     ]
   }
 };
