@@ -9,7 +9,7 @@ idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
 audience: [runtime]
-version: 13
+version: 14
 ---
 
 # Connector Creation Guidance
@@ -437,12 +437,17 @@ the state `needs_sign_in` (the save result carries `sign_in`). Then call
 `request_connector_reauth` for the one-time sign-in link.
 
 - Dynamic client registration needs nothing from the person: the sign-in
-  registers the client once and every later sign-in reuses it.
+  registers the client once (as a public PKCE client when the server allows
+  `none`) and every later sign-in reuses it.
 - A pre-registered public client (PKCE, no secret) is plain configuration:
-  `update_connector_draft({ config: { mcp: { auth: { kind: "oauth2", issuer,
+  `update_connector_draft({ config: { mcp: { auth: { kind: "oauth2",
   client_id, token_endpoint_auth_method: "none" } } } })`. Never collect a
   public client id with a password field. Only a client secret goes through
   `ask_user_form(sensitive: true)`.
+- The issuer of a pre-registered client is discovered at save time when it is
+  missing. `mcp_oauth_issuer_unresolved` means discovery failed: ask the person
+  for the authorization server URL, set it as `config.mcp.auth.issuer` with
+  `update_connector_draft`, and save again.
 
 ### Local servers (all drivers)
 

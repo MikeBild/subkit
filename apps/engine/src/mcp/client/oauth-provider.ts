@@ -30,6 +30,7 @@ import {
   observedMcpCredentialGeneration,
   observedMcpCredentialId,
 } from "./credential-observation.ts";
+import { type RegistrationAuthMethod, registrationAuthMethod } from "./registration-method.ts";
 import type { McpAuthConfig } from "./registry.ts";
 import { updateMcpAuthConfig } from "./registry.ts";
 import { OAuthTokenEvidence } from "./token-response-evidence.ts";
@@ -59,6 +60,11 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
   >();
   private responseCredentialCapacityReached = false;
   private clientRegistered = false;
+  private supportedAuthMethods: readonly string[] | undefined;
+
+  get registrationMethod(): RegistrationAuthMethod {
+    return registrationAuthMethod(this.supportedAuthMethods);
+  }
 
   get registeredClient(): boolean {
     return this.clientRegistered;
@@ -119,6 +125,8 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
   }
 
   saveDiscoveryState(state: OAuthDiscoveryState): void {
+    this.supportedAuthMethods =
+      state.authorizationServerMetadata?.token_endpoint_auth_methods_supported;
     this.tokenEvidence.saveDiscoveryState(state);
   }
 
@@ -178,7 +186,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       redirect_uris: [this.redirect_uri],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      token_endpoint_auth_method: "client_secret_post",
+      token_endpoint_auth_method: this.registrationMethod,
     };
     if (this.auth.scope !== undefined) metadata.scope = this.auth.scope;
     return metadata;
@@ -214,8 +222,16 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     return undefined;
   }
 
-  async saveClientInformation(info: OAuthClientInformation): Promise<void> {
+  async saveClientInformation(info: OAuthClientInformationMixed): Promise<void> {
     if (!info.issuer) throw new Error("OAuth client issuer binding is required");
+    const registered = "redirect_uris" in info;
+    const method =
+      "token_endpoint_auth_method" in info && info.token_endpoint_auth_method
+        ? info.token_endpoint_auth_method
+        : registered
+          ? this.registrationMethod
+          : undefined;
+    const client_secret = method === "none" ? undefined : info.client_secret;
     await upsertCredential(
       {
         tenant_id: this.tenant_id,
@@ -226,7 +242,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
           mode: "oauth2_client",
           issuer: info.issuer,
           client_id: info.client_id,
-          ...(info.client_secret !== undefined ? { client_secret: info.client_secret } : {}),
+          ...(client_secret !== undefined ? { client_secret } : {}),
         },
         actor_id: null,
         source: "oauth_callback",
@@ -243,7 +259,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       actor_id: null,
       request_source: this.request_source,
     });
-    this.clientRegistered = true;
+    this.clientRegistered = registered;
     logger.info({
       module: "mcp_oauth",
       action: "client.registered",
@@ -251,7 +267,8 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       tenant_id: this.tenant_id,
       connector_id: this.connector_id,
       state_prefix: this._state.slice(0, 8),
-      has_secret: info.client_secret !== undefined,
+      token_endpoint_auth_method: method ?? null,
+      has_secret: client_secret !== undefined,
     });
   }
 

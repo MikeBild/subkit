@@ -4637,8 +4637,8 @@ With interactive MCP OAuth, SubKit stores the authorization-server issuer togeth
 
 You can save such a connector before anyone has signed in, also from a chat. It then waits in the state “needs sign-in”, and a 401 from the server before the sign-in does not stop the save. The sign-in link from the connector or the chat starts the browser sign-in with PKCE:
 
-- **Dynamic client registration:** you enter no client. On the first sign-in SubKit registers a client at the authorization server and stores it with the issuer. A repeated or interrupted sign-in reuses this client and does not register a new one.
-- **Pre-registered public client:** a client ID without a secret is configuration, not a secret. Set `config.mcp.auth.client_id` and `config.mcp.auth.issuer`, optionally `token_endpoint_auth_method: "none"`. A client secret always goes through the secure form.
+- **Dynamic client registration:** you enter no client. On the first sign-in SubKit registers a client at the authorization server and stores it with the issuer. If the server allows public clients (`none` in `token_endpoint_auth_methods_supported`), SubKit registers as a public client with PKCE and stores no secret. Otherwise it registers a confidential client. A repeated or interrupted sign-in reuses this client and does not register a new one.
+- **Pre-registered client:** a client ID without a secret is configuration, not a secret. Set `config.mcp.auth.client_id`, optionally `token_endpoint_auth_method: "none"`. A client secret always goes through the secure form. Without `config.mcp.auth.issuer`, SubKit discovers the authorization server from the server's metadata when you save and binds the client to it. If that fails, SubKit refuses the save with `mcp_oauth_issuer_unresolved`. Then set `config.mcp.auth.issuer` to the authorization server URL yourself.
 
 ### Older credentials without dynamic registration
 
