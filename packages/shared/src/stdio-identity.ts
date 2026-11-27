@@ -86,3 +86,11 @@ export function withoutStdioServerManagedFields(
   for (const field of STDIO_SERVER_MANAGED_FIELDS) delete cleaned[field];
   return { ...config, mcp: cleaned };
 }
+
+function quoteArg(value: string): string {
+  return /^[A-Za-z0-9_./:=@%+,-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+export function stdioCommandLine(spec: Pick<StdioCommandSpec, "command" | "args">): string {
+  return [spec.command, ...spec.args].map(quoteArg).join(" ");
+}

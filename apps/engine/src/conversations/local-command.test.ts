@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stdioCommandDisplay, stdioCommandHash, stdioSpecFromConfig } from "../mcp/index.ts";
 import {
   detectLocalCommand,
   isConfirmedLocalCommand,
@@ -119,5 +120,18 @@ describe("local command identity", () => {
         cwd: null,
       }),
     ).toBe("node 'my server.js'");
+  });
+
+  test("the fingerprint and command line match what the MCP connector confirms", () => {
+    const spec = readLocalCommand(config);
+    const stdioSpec = stdioSpecFromConfig(config);
+    if (!spec || !stdioSpec) throw new Error("spec expected");
+    expect(localCommandFingerprint(spec)).toBe(stdioCommandHash(stdioSpec));
+    expect(literalCommandLine(spec)).toBe(stdioCommandDisplay(stdioSpec).command_line);
+    const withoutCwd = { ...config, mcp: { ...config.mcp, cwd: undefined } };
+    const bare = readLocalCommand(withoutCwd);
+    const bareStdio = stdioSpecFromConfig(withoutCwd);
+    if (!bare || !bareStdio) throw new Error("spec expected");
+    expect(localCommandFingerprint(bare)).toBe(stdioCommandHash(bareStdio));
   });
 });
