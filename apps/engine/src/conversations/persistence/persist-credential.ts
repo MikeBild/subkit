@@ -5,6 +5,27 @@ import type { Db } from "../../db/client.ts";
 import { connectors as connectorsTable } from "../../db/schema/index.ts";
 import type { AtomicCredentialInput } from "./save-connector.ts";
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function mcpAuthBlock(config: Record<string, unknown>): Record<string, unknown> {
+  return asRecord(asRecord(config.mcp).auth);
+}
+
+export function withMcpOAuthClient(
+  config: Record<string, unknown>,
+  client_id: string,
+): Record<string, unknown> {
+  const mcp = asRecord(config.mcp);
+  return {
+    ...config,
+    mcp: { ...mcp, auth: { kind: "oauth2", ...mcpAuthBlock(config), client_id } },
+  };
+}
+
 export async function persistCredential(p: {
   tenant_id: string;
   connector_id: string;
@@ -12,6 +33,7 @@ export async function persistCredential(p: {
   actor_id: string | null;
   credential: AtomicCredentialInput;
   connectorConfig?: Record<string, unknown> | null;
+  driver?: string;
   db: Db;
 }): Promise<void> {
   const cred = p.credential;
@@ -123,6 +145,33 @@ export async function persistCredential(p: {
       },
       p.db,
     );
+    return;
+  }
+  if (cred.mode === "oauth2" && p.driver === "mcp") {
+    const nextConfig = withMcpOAuthClient(p.connectorConfig ?? {}, cred.client_id);
+    await p.db
+      .update(connectorsTable)
+      .set({ config: nextConfig })
+      .where(eq(connectorsTable.id, p.connector_id));
+    if (cred.client_secret !== undefined) {
+      const issuer = mcpAuthBlock(nextConfig).issuer;
+      await upsertCredential(
+        {
+          tenant_id: p.tenant_id,
+          connector_id: p.connector_id,
+          environment: p.environment,
+          mode: "oauth2_client",
+          value: {
+            mode: "oauth2_client",
+            client_id: cred.client_id,
+            client_secret: cred.client_secret,
+            ...(typeof issuer === "string" ? { issuer } : {}),
+          },
+          actor_id: p.actor_id,
+        },
+        p.db,
+      );
+    }
     return;
   }
   if (cred.mode === "oauth2") {

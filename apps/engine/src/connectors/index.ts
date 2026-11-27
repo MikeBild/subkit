@@ -29,6 +29,7 @@ export * from "./health.ts";
 export * from "./health-state.ts";
 export * from "./local-command.ts";
 export * from "./local-egress.ts";
+export * from "./mcp-sign-in-state.ts";
 export * from "./mcp-tool-trust.ts";
 export * from "./oauth-origin.ts";
 export * from "./oauth-scope-diff.ts";

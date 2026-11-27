@@ -15,6 +15,7 @@ import {
 import { resetCircuitBreaker } from "./circuit-breaker.ts";
 import type { ConnectorHealth } from "./health.ts";
 import { setConnectorHealth } from "./health-state.ts";
+import { MCP_SIGN_IN_PENDING_REASON } from "./mcp-sign-in-state.ts";
 import { connectorSignIn } from "./sign-in.ts";
 import type { ConnectorView } from "./types.ts";
 
@@ -46,6 +47,19 @@ export async function markConnectorNeedsReauth(
     });
   }
   return { transitioned };
+}
+
+export { connectorSignsInInteractively } from "./mcp-sign-in-state.ts";
+
+export async function holdConnectorForSignIn(
+  db: Executor,
+  connector: Pick<
+    ConnectorView,
+    "tenant_id" | "id" | "driver" | "auth_type" | "config" | "template_snapshot"
+  >,
+): Promise<{ state: "needs_sign_in"; start: string | null }> {
+  await markConnectorNeedsReauth(db, connector.tenant_id, connector.id, MCP_SIGN_IN_PENDING_REASON);
+  return { state: "needs_sign_in", start: connectorSignIn(connector)?.start ?? null };
 }
 
 export async function clearConnectorReauth(

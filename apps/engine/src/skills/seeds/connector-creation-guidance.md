@@ -9,7 +9,7 @@ idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
 audience: [runtime]
-version: 12
+version: 13
 ---
 
 # Connector Creation Guidance
@@ -428,6 +428,21 @@ says MCP, or when the user gives a command to start. `probe_connector_draft`
 then runs an MCP `initialize` + `tools/list` handshake, and a green handshake
 saves the connector like any other draft. `POST /v1/connectors` and
 `subkit connectors create --file` remain the definition-based paths.
+
+**Interactive OAuth (`auth_type: "oauth2"`, `config.mcp.auth.kind: "oauth2"`).**
+The server signs the person in through its own authorization server, so there
+is no credential before the browser sign-in. Do not ask for one and do not
+treat the 401 of a probe as a blocker: save the draft, and it is persisted in
+the state `needs_sign_in` (the save result carries `sign_in`). Then call
+`request_connector_reauth` for the one-time sign-in link.
+
+- Dynamic client registration needs nothing from the person: the sign-in
+  registers the client once and every later sign-in reuses it.
+- A pre-registered public client (PKCE, no secret) is plain configuration:
+  `update_connector_draft({ config: { mcp: { auth: { kind: "oauth2", issuer,
+  client_id, token_endpoint_auth_method: "none" } } } })`. Never collect a
+  public client id with a password field. Only a client secret goes through
+  `ask_user_form(sensitive: true)`.
 
 ### Local servers (all drivers)
 

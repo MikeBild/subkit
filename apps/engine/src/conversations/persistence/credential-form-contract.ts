@@ -24,6 +24,7 @@ export const CREDENTIAL_FORM_FIELDS: Readonly<
 };
 
 export interface SeedModeConnectorView {
+  driver?: string | null;
   auth_type?: string | null;
   config?: Record<string, unknown> | null;
   template_slug?: string | null;
@@ -35,6 +36,11 @@ interface DraftSeedModeResolution {
   authType: string | null;
   oauthGrantType: string | null;
   templateSlug: string | null;
+}
+
+function mcpClientId(config: Record<string, unknown> | null | undefined): unknown {
+  const mcp = config?.mcp as { auth?: { client_id?: unknown } } | undefined;
+  return mcp?.auth?.client_id;
 }
 
 export async function resolveDraftCredentialSeedMode(p: {
@@ -80,6 +86,8 @@ export async function resolveDraftCredentialSeedMode(p: {
     authType === "query"
   ) {
     seedMode = authType;
+  } else if (authType === "oauth2" && p.connector?.driver === "mcp") {
+    seedMode = "oauth2";
   } else if (authType === "oauth2") {
     if (grantType === "cognito_user_password") seedMode = "cognito_user_password";
     else if (grantType === "password") seedMode = "basic";
@@ -92,7 +100,8 @@ export async function resolveDraftCredentialSeedMode(p: {
   const seedOverrides: Record<string, unknown> = {};
   const region = draftCfg.aws_region ?? templateAwsRegion;
   if (typeof region === "string") seedOverrides.aws_region = region;
-  const clientId = draftOauthCfg.client_id ?? templateOauth?.client_id;
+  const clientId =
+    draftOauthCfg.client_id ?? templateOauth?.client_id ?? mcpClientId(p.connector?.config);
   if (typeof clientId === "string") seedOverrides.client_id = clientId;
   return {
     seedMode,

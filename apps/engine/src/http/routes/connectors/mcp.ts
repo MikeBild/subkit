@@ -17,6 +17,8 @@ import {
   discardMcpOAuthState,
   getConnector,
   insertMcpOAuthState,
+  mcpSignInStartSteps,
+  mcpSignInTransition,
   type OAuthFlowOrigin,
   oauthFlowOrigin,
   readMcpAuthorizationUrl,
@@ -408,6 +410,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id,
         connector_slug,
         state_prefix: stateRow.state.slice(0, 8),
+        sign_in_state: signInStateAfter({ type: "consent_granted" }),
       });
 
       if (origin === "cockpit") {
@@ -436,6 +439,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id,
         connector_id,
         state_prefix: stateRow.state.slice(0, 8),
+        sign_in_state: signInStateAfter({ type: "sign_in_failed" }),
         error_class: err instanceof Error ? err.name : "Error",
         error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
       });
@@ -443,6 +447,11 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       return failed("exchange_failed");
     }
   });
+}
+
+function signInStateAfter(event: { type: "consent_granted" } | { type: "sign_in_failed" }) {
+  const step = mcpSignInTransition("awaiting_consent", event);
+  return step.ok ? step.to : step.from;
 }
 
 type McpAuthorizationStart =
@@ -511,6 +520,9 @@ async function startMcpAuthorization(p: {
       throw new Error(`unexpected auth() result for interactive flow: ${result}`);
     }
 
+    const lifecycle = mcpSignInStartSteps(connector.needs_reauth ? "needs_sign_in" : "connected", {
+      registered_client: provider.registeredClient,
+    });
     const authorizationUrl = await readMcpAuthorizationUrl(db, tenant_id, state);
     if (!authorizationUrl) {
       throw new Error("authorization URL was not persisted by the OAuth provider");
@@ -536,6 +548,9 @@ async function startMcpAuthorization(p: {
       connector_slug: server.slug,
       origin: p.origin,
       state_prefix: state.slice(0, 8),
+      sign_in_state: lifecycle.state,
+      sign_in_path: lifecycle.path,
+      registered_client: provider.registeredClient,
     });
 
     return { ok: true, flow: { authorization_url: authorizationUrl, state } };
@@ -559,6 +574,8 @@ async function startMcpAuthorization(p: {
       tenant_id,
       connector_id: id,
       connector_slug: server.slug,
+      state_prefix: state.slice(0, 8),
+      sign_in_state: signInStateAfter({ type: "sign_in_failed" }),
       error_class: err instanceof Error ? err.name : "Error",
       error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
     });

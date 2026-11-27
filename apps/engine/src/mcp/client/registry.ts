@@ -35,6 +35,7 @@ export interface McpAuthConfig {
   scope?: string;
   algorithm?: string;
   redirect_uri?: string;
+  token_endpoint_auth_method?: "none" | "client_secret_basic" | "client_secret_post";
 }
 
 export const McpAuthConfigSchema = z
@@ -53,6 +54,9 @@ export const McpAuthConfigSchema = z
     scope: z.string().optional(),
     algorithm: z.string().optional(),
     redirect_uri: z.string().url().optional(),
+    token_endpoint_auth_method: z
+      .enum(["none", "client_secret_basic", "client_secret_post"])
+      .optional(),
   })
   .strict();
 
@@ -453,6 +457,8 @@ export function parseAuthConfig(raw: Record<string, unknown> | null): McpAuthCon
   if (parsed.scope !== undefined) out.scope = parsed.scope;
   if (parsed.algorithm !== undefined) out.algorithm = parsed.algorithm;
   if (parsed.redirect_uri !== undefined) out.redirect_uri = parsed.redirect_uri;
+  if (parsed.token_endpoint_auth_method !== undefined)
+    out.token_endpoint_auth_method = parsed.token_endpoint_auth_method;
   return out;
 }
 

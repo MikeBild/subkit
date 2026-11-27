@@ -4,60 +4,15 @@ import { mcpAuthKindForType } from "../../connectors/config-schemas.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { type AuthType, DriverEnum } from "../../connectors/types.ts";
 import { log } from "../../logging/index.ts";
-import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
+import { findCredentialKeyPath } from "../credential-shape.ts";
 import { confirmationFieldIn, isStdioConfig } from "../local-command.ts";
 import { clearDraftCredential, getDraftCredential } from "../persistence/draft-credential-cache.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-
-const CREDENTIAL_KEY_RE =
-  /^(token|api[_-]?key|password|credential|secret|.*_token|authorization|access[_-]?token|client[_-]?secret|private[_-]?key)$/i;
-
-const NON_SECRET_KEYS = new Set<string>([
-  "token_endpoint",
-  "authorization_endpoint",
-  "token_url",
-  "authorization_url",
-  "issuer_url",
-  "token_auth_method",
-  "token_content_type",
-  "env_secret_names",
-]);
-
-function containsCredentialShape(value: unknown, path: string, depth: number): string | null {
-  if (depth > 12) return null;
-  if (value === null || value === undefined) return null;
-
-  if (typeof value === "string") {
-    for (const { regex } of SECRET_PATTERNS) {
-      regex.lastIndex = 0;
-      if (regex.test(value)) {
-        regex.lastIndex = 0;
-        return path;
-      }
-      regex.lastIndex = 0;
-    }
-    return null;
-  }
-
-  if (typeof value !== "object" || Array.isArray(value)) return null;
-
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    const childPath = path ? `${path}.${key}` : key;
-    if (!NON_SECRET_KEYS.has(key.toLowerCase())) {
-      if (SENSITIVE_KEY_PATTERN.test(key) || CREDENTIAL_KEY_RE.test(key)) {
-        return childPath;
-      }
-    }
-    const hit = containsCredentialShape(child, childPath, depth + 1);
-    if (hit !== null) return hit;
-  }
-  return null;
-}
 
 const AUTH_PARAM_CONFIG_KEY_RE =
   /^((auth_|query_)(param|parameter|query|token|key|arg)(_(name|param|parameter|key|arg))*|(param|parameter|query|token|key|arg)(_(name|param|parameter|key|arg))+)$/i;
@@ -257,7 +212,7 @@ export const updateConnectorDraftTool: ConversationTool = {
         };
       }
 
-      const hitPath = containsCredentialShape(args.config, "", 0);
+      const hitPath = findCredentialKeyPath(args.config);
       if (hitPath !== null) {
         log.connector.draft.credential_rejected({
           conversation_id: ctx.conversation_id,
@@ -285,7 +240,7 @@ export const updateConnectorDraftTool: ConversationTool = {
     }
 
     if (args.env !== undefined) {
-      const envHit = containsCredentialShape({ env: args.env }, "mcp", 0);
+      const envHit = findCredentialKeyPath({ env: args.env }, "mcp");
       if (envHit !== null) {
         return {
           ok: false,

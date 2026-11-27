@@ -7,7 +7,11 @@ import {
 } from "../../audit/recorders/index.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { toPublicConnector } from "../../connectors/public-view.ts";
-import { completeConnectorReauthorization } from "../../connectors/reauth.ts";
+import {
+  completeConnectorReauthorization,
+  connectorSignsInInteractively,
+  holdConnectorForSignIn,
+} from "../../connectors/reauth.ts";
 import { createConnector, getConnector, updateConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { ConnectorView, UpdateConnectorInput } from "../../connectors/types.ts";
@@ -179,6 +183,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           actor_id: ctx.actor_id,
           credential: p.credential,
           connectorConfig: (existing.config ?? {}) as Record<string, unknown>,
+          driver: existing.driver,
           db: ctx.db as Db,
         });
         credential_persisted = true;
@@ -290,10 +295,12 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       connector.driver === "s3" ||
       connector.driver === "sftp" ||
       connector.driver === "mcp");
+  const signsInLater = connectorSignsInInteractively(connector);
   const requiresCredential =
     connector.auth_type !== undefined &&
     connector.auth_type !== null &&
-    connector.auth_type !== "none";
+    connector.auth_type !== "none" &&
+    !signsInLater;
   const blocking_reasons = [
     ...(draft.summary?.blocked_by ?? []).filter(
       (reason) =>
@@ -327,7 +334,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   }
 
   let credential = p.credential;
-  if (requiresCredential && !credential) {
+  if ((requiresCredential || signsInLater) && !credential) {
     const cached = getDraftCredential(ctx.conversation_id);
     if (cached && credentialModeMatchesAuthType(cached.mode, connector.auth_type ?? ""))
       credential = cached;
@@ -477,11 +484,13 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       actor_id: ctx.actor_id,
       credential,
       connectorConfig: (saved.config ?? {}) as Record<string, unknown>,
+      driver: saved.driver,
       db: ctx.db as Db,
     });
     credential_persisted = true;
   }
   clearDraftCredential(ctx.conversation_id);
+  const sign_in = signsInLater ? await awaitInteractiveSignIn(ctx, saved) : null;
 
   if (p.emitAutoPersistAudit) {
     await recordConnectorCreated({
@@ -624,7 +633,25 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         driver: saved.driver,
       }),
       ...(credential_persisted ? { credential_persisted: true } : {}),
+      ...(sign_in ? { sign_in } : {}),
       ...(analysis ? { document_analysis: analysis } : {}),
     },
   };
+}
+
+async function awaitInteractiveSignIn(
+  ctx: ToolContext,
+  saved: ConnectorView,
+): Promise<{ state: "needs_sign_in"; start: string | null; next_best_actions: string[] }> {
+  const { state, start } = await holdConnectorForSignIn(ctx.db, saved);
+  logger.info({
+    module: "conversation_persistence",
+    action: "save_connector.sign_in_pending",
+    msg: "connector saved before its interactive sign-in; it waits for the OAuth sign-in",
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    connector_id: saved.id,
+    sign_in_state: state,
+  });
+  return { state, start, next_best_actions: ["request_connector_reauth"] };
 }

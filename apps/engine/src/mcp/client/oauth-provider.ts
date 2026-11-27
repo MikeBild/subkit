@@ -5,6 +5,7 @@ import type {
 } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   OAuthClientInformation,
+  OAuthClientInformationMixed,
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
@@ -57,6 +58,11 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     { generation: number | undefined; credential_id: string | undefined } | null
   >();
   private responseCredentialCapacityReached = false;
+  private clientRegistered = false;
+
+  get registeredClient(): boolean {
+    return this.clientRegistered;
+  }
 
   readonly fetch = async (
     target: Parameters<typeof fetch>[0],
@@ -182,7 +188,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     return this._state;
   }
 
-  async clientInformation(): Promise<OAuthClientInformation | undefined> {
+  async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
     const cred = await getOAuth2ClientCredential(
       this.tenant_id,
       this.connector_id,
@@ -196,7 +202,14 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       return info;
     }
     if (this.auth.client_id && this.auth.issuer) {
-      return { client_id: this.auth.client_id, issuer: this.auth.issuer };
+      return this.auth.token_endpoint_auth_method
+        ? {
+            client_id: this.auth.client_id,
+            issuer: this.auth.issuer,
+            redirect_uris: [this.redirect_uri],
+            token_endpoint_auth_method: this.auth.token_endpoint_auth_method,
+          }
+        : { client_id: this.auth.client_id, issuer: this.auth.issuer };
     }
     return undefined;
   }
@@ -230,12 +243,14 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       actor_id: null,
       request_source: this.request_source,
     });
+    this.clientRegistered = true;
     logger.info({
       module: "mcp_oauth",
       action: "client.registered",
       msg: "persisted dynamically-registered OAuth client for external MCP server",
       tenant_id: this.tenant_id,
       connector_id: this.connector_id,
+      state_prefix: this._state.slice(0, 8),
       has_secret: info.client_secret !== undefined,
     });
   }
@@ -379,6 +394,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       msg: "persisted oauth2 tokens for external MCP server",
       tenant_id: this.tenant_id,
       connector_id: this.connector_id,
+      state_prefix: this._state.slice(0, 8),
       has_refresh: refresh != null,
       expires_at: expiresAt?.toISOString() ?? null,
     });
