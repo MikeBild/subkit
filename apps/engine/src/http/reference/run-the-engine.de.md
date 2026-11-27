@@ -132,7 +132,7 @@ es und liefere die Browser-Lizenzen mit. Dieser Weg ist nicht Teil der Release-P
 ### Lokale Dienste aus dem Container
 
 Im Container ist `localhost` die Engine selbst. Einen Dienst auf deinem Server, etwa einen
-lokalen MCP-Server, erreichst du über `http://host.docker.internal:<port>`. Die
+lokalen MCP-Server, erreichst du über `http://host.docker.internal:8931`. Die
 `docker-compose.yml` leitet `host.docker.internal` über `extra_hosts` auf deinen Server.
 Unter Linux muss der Dienst dafür an `0.0.0.0` oder an der Docker-Bridge lauschen, nicht nur
 an `127.0.0.1`.

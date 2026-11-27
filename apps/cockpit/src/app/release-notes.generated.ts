@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "045c277e0573a732cf65add81969e6e74f99d680",
+  "source": "21171562ba6388963ed7c7c8e818e759f327ae59",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2450,9 +2450,19 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     }
   ],
   "unpublished": {
-    "version": null,
-    "notes": [],
-    "highlights": null
+    "version": "13.3.0",
+    "notes": [
+      "connect local services and MCP servers over http, https and stdio"
+    ],
+    "highlights": [
+      "Local services by default: connectors reach servers on your own machine at localhost, 127.0.0.1, [::1] or, from Docker, host.docker.internal, over http or https. SubKit Cloud stays shut off from local addresses.",
+      "Local MCP servers by command: start stdio servers such as `docker mcp gateway run` from SubKit Desktop. A command runs only after an owner or admin confirms it, and again after every change.",
+      "Every way to sign in: no sign-in, an API key as Bearer or in your own header, or OAuth with a local authorization server, even without a public engine address.",
+      "Local https: trust a local certificate authority such as mkcert per connector, or skip the certificate check for local addresses only.",
+      "Fewer needless keys: connector discovery no longer asks for a key when an API only declares one as optional.",
+      "The same in chat and by hand: the chat sets up local connectors without asking for a key, and the Cockpit form accepts local addresses and commands.",
+      "Fixes: Desktop finds tools like docker through your login shell, and OAuth sign-in on a local engine no longer needs server.public_base_url."
+    ]
   },
   "highlights": {
     "12.1.0": [

@@ -19,7 +19,7 @@ SubKit can only reach a local service when the engine runs on the same computer.
 | --- | --- |
 | SubKit Desktop on macOS, local workspace | Yes, including stdio MCP servers |
 | Engine started directly on your computer (`bun`) | Yes; stdio MCP servers after you turn them on |
-| Engine in Docker on your computer | Yes, through `http://host.docker.internal:<port>`; no stdio MCP servers |
+| Engine in Docker on your computer | Yes, through `http://host.docker.internal:8931`; no stdio MCP servers |
 | SubKit Cloud | No |
 | SubKit Desktop connected to SubKit Cloud | No, because the engine runs in the cloud |
 | SubKit Desktop on Windows | No, the local workspace is not available on Windows yet |
@@ -121,7 +121,7 @@ You do not need `egress.mode: permissive` for local services. That setting opens
 
 | What you see | Cause | What to do |
 | --- | --- | --- |
-| “Connection refused” with `localhost` while the engine runs in Docker | Inside the container, `localhost` is the engine itself. | Use `http://host.docker.internal:<port>`. On Linux, the service must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`. |
+| “Connection refused” with `localhost` while the engine runs in Docker | Inside the container, `localhost` is the engine itself. | Use `http://host.docker.internal:8931`. On Linux, the service must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`. |
 | TLS or certificate error on `https://localhost` | SubKit does not know the local CA. | Add the CA as PEM to the connector (for `mkcert`: `rootCA.pem`). |
 | `mcp_local_command_unconfirmed` | Nobody has confirmed the command yet, or it changed after the confirmation. | Ask a person with `connectors:confirm_local_command` to confirm it. |
 | `mcp_stdio_unavailable_in_container` | The engine runs in a Docker container. | Run the server over `http` and connect it through `host.docker.internal`, or use SubKit Desktop or an engine on your computer. |

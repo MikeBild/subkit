@@ -132,7 +132,7 @@ and ship the browser licenses. This path is not part of the release checks.
 ### Local services from the container
 
 Inside the container, `localhost` is the engine itself. To reach a service on your server,
-such as a local MCP server, use `http://host.docker.internal:<port>`. `docker-compose.yml`
+such as a local MCP server, use `http://host.docker.internal:8931`. `docker-compose.yml`
 maps `host.docker.internal` to your server through `extra_hosts`. On Linux, the service
 must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`.
 

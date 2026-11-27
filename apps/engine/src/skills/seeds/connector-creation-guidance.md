@@ -450,7 +450,7 @@ addresses, never placeholders: do not replace them and do not ask the user to
   for `http`/`graphql` and in `config.mcp.tls` for `mcp`. Both work only for
   local targets; tell the user that skip_verify accepts any certificate.
 - **Docker engine.** Inside the container `localhost` is the engine itself.
-  Use `http://host.docker.internal:<port>`; on Linux the host service must
+  Use `http://host.docker.internal:8931`; on Linux the host service must
   listen on the Docker bridge or `0.0.0.0`, not only on `127.0.0.1`.
 - **Limits.** SubKit Cloud and a Desktop connected to SubKit Cloud cannot reach
   local servers; the engine runs elsewhere. An admin can switch local servers
@@ -489,7 +489,7 @@ variable name. Secret values never go into `env`.
 - **Where it runs.** stdio runs on SubKit Desktop (macOS) and on an engine
   started on the host. A Docker engine answers `mcp_stdio_unavailable_in_container`:
   run the server on the host and connect over
-  `http://host.docker.internal:<port>/mcp` instead. `mcp_stdio_disabled` means
+  `http://host.docker.internal:8931/mcp` instead. `mcp_stdio_disabled` means
   an admin switched local commands off (`connectors.mcp.stdio`).
 
 What you CAN do from here, once the connector exists:

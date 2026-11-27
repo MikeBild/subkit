@@ -369,7 +369,7 @@ and ship the browser licenses. This path is not part of the release checks.
 ### Local services from the container
 
 Inside the container, `localhost` is the engine itself. To reach a service on your server,
-such as a local MCP server, use `http://host.docker.internal:<port>`. `docker-compose.yml`
+such as a local MCP server, use `http://host.docker.internal:8931`. `docker-compose.yml`
 maps `host.docker.internal` to your server through `extra_hosts`. On Linux, the service
 must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`.
 
@@ -4979,7 +4979,7 @@ SubKit can only reach a local service when the engine runs on the same computer.
 | --- | --- |
 | SubKit Desktop on macOS, local workspace | Yes, including stdio MCP servers |
 | Engine started directly on your computer (`bun`) | Yes; stdio MCP servers after you turn them on |
-| Engine in Docker on your computer | Yes, through `http://host.docker.internal:<port>`; no stdio MCP servers |
+| Engine in Docker on your computer | Yes, through `http://host.docker.internal:8931`; no stdio MCP servers |
 | SubKit Cloud | No |
 | SubKit Desktop connected to SubKit Cloud | No, because the engine runs in the cloud |
 | SubKit Desktop on Windows | No, the local workspace is not available on Windows yet |
@@ -5081,7 +5081,7 @@ You do not need `egress.mode: permissive` for local services. That setting opens
 
 | What you see | Cause | What to do |
 | --- | --- | --- |
-| “Connection refused” with `localhost` while the engine runs in Docker | Inside the container, `localhost` is the engine itself. | Use `http://host.docker.internal:<port>`. On Linux, the service must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`. |
+| “Connection refused” with `localhost` while the engine runs in Docker | Inside the container, `localhost` is the engine itself. | Use `http://host.docker.internal:8931`. On Linux, the service must listen on `0.0.0.0` or on the Docker bridge, not only on `127.0.0.1`. |
 | TLS or certificate error on `https://localhost` | SubKit does not know the local CA. | Add the CA as PEM to the connector (for `mkcert`: `rootCA.pem`). |
 | `mcp_local_command_unconfirmed` | Nobody has confirmed the command yet, or it changed after the confirmation. | Ask a person with `connectors:confirm_local_command` to confirm it. |
 | `mcp_stdio_unavailable_in_container` | The engine runs in a Docker container. | Run the server over `http` and connect it through `host.docker.internal`, or use SubKit Desktop or an engine on your computer. |
@@ -8956,7 +8956,7 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `connectors.http.max_response_bytes` | number | `104857600` | tenant | no | no | Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB). |
-| `connectors.local_servers` | enum("allow" \| "deny") | `"allow"` | global | no | no | Lets connectors whose own address is local (localhost, 127.0.0.0/8, ::1, host.docker.internal) reach that address on self-hosted workspaces. Hosted self-service workspaces are always denied. |
+| `connectors.local_servers` | enum("allow" \| "deny") | `"allow"` | global | no | no | Lets connectors whose own address is local (localhost, any 127.x.x.x address, ::1, host.docker.internal) reach that address on self-hosted workspaces. Hosted self-service workspaces are always denied. |
 | `connectors.mcp.per_server_manifest_byte_cap` | number | `30000` | tenant | no | no | Byte cap on one external MCP connector's serialized tool manifest; the heaviest tools are dropped first when exceeded |
 | `connectors.mcp.remote_tool_call_timeout_ms` | number | `30000` | tenant | no | no | Bounded timeout (ms) for one remote external MCP tools/call invocation |
 | `connectors.mcp.stdio` | enum("auto" \| "on" \| "off") | `"auto"` | global | no | no | Starts stdio MCP servers by command on the engine host. auto enables it in the desktop local workspace only; on is refused inside a container. |

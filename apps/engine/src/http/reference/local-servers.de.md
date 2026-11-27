@@ -19,7 +19,7 @@ SubKit erreicht einen lokalen Dienst nur, wenn die Engine auf demselben Rechner 
 | --- | --- |
 | SubKit Desktop unter macOS, lokaler Arbeitsbereich | Ja, auch stdio-MCP-Server |
 | Engine direkt auf deinem Rechner gestartet (`bun`) | Ja; stdio-MCP-Server, nachdem du sie eingeschaltet hast |
-| Engine in Docker auf deinem Rechner | Ja, über `http://host.docker.internal:<port>`; keine stdio-MCP-Server |
+| Engine in Docker auf deinem Rechner | Ja, über `http://host.docker.internal:8931`; keine stdio-MCP-Server |
 | SubKit Cloud | Nein |
 | SubKit Desktop, verbunden mit SubKit Cloud | Nein, weil die Engine in der Cloud läuft |
 | SubKit Desktop unter Windows | Nein, den lokalen Arbeitsbereich gibt es unter Windows noch nicht |
@@ -121,7 +121,7 @@ Für lokale Dienste brauchst du `egress.mode: permissive` nicht. Diese Einstellu
 
 | Was du siehst | Ursache | Was du tust |
 | --- | --- | --- |
-| „Connection refused“ bei `localhost`, während die Engine in Docker läuft | Im Container ist `localhost` die Engine selbst. | Nutze `http://host.docker.internal:<port>`. Unter Linux muss der Dienst an `0.0.0.0` oder an der Docker-Bridge lauschen, nicht nur an `127.0.0.1`. |
+| „Connection refused“ bei `localhost`, während die Engine in Docker läuft | Im Container ist `localhost` die Engine selbst. | Nutze `http://host.docker.internal:8931`. Unter Linux muss der Dienst an `0.0.0.0` oder an der Docker-Bridge lauschen, nicht nur an `127.0.0.1`. |
 | TLS- oder Zertifikatsfehler bei `https://localhost` | SubKit kennt die lokale CA nicht. | Füge die CA als PEM in den Connector ein (bei `mkcert`: `rootCA.pem`). |
 | `mcp_local_command_unconfirmed` | Noch niemand hat den Befehl bestätigt, oder er wurde nach der Bestätigung geändert. | Bitte eine Person mit `connectors:confirm_local_command`, ihn zu bestätigen. |
 | `mcp_stdio_unavailable_in_container` | Die Engine läuft in einem Docker-Container. | Betreibe den Server über `http` und verbinde ihn über `host.docker.internal`, oder nutze SubKit Desktop oder eine Engine auf deinem Rechner. |

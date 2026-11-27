@@ -1660,7 +1660,7 @@ const ConnectorsSection = z
       .enum(["allow", "deny"])
       .default("allow")
       .describe(
-        "Lets connectors whose own address is local (localhost, 127.0.0.0/8, ::1, host.docker.internal) reach that address on self-hosted workspaces. Hosted self-service workspaces are always denied.",
+        "Lets connectors whose own address is local (localhost, any 127.x.x.x address, ::1, host.docker.internal) reach that address on self-hosted workspaces. Hosted self-service workspaces are always denied.",
       )
       .meta(global()),
     web_scraper: WebScraperSection,
