@@ -171,8 +171,8 @@ export async function persistCredential(p: {
       .digest("hex");
     const receiptId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
     const outcome = await withTenantScope(p.db, p.tenant_id, async (tx) => {
-      await tx
-        .select({ id: connectorsTable.id })
+      const [connector] = await tx
+        .select({ config: connectorsTable.config })
         .from(connectorsTable)
         .where(
           and(eq(connectorsTable.id, p.connector_id), eq(connectorsTable.tenant_id, p.tenant_id)),
@@ -205,7 +205,7 @@ export async function persistCredential(p: {
         },
         tx,
       );
-      const nextConfig = withMcpOAuthClient(p.connectorConfig ?? {}, cred.client_id);
+      const nextConfig = withMcpOAuthClient(asRecord(connector?.config), cred.client_id);
       await tx
         .update(connectorsTable)
         .set({ config: nextConfig })
