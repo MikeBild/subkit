@@ -23,8 +23,8 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-function authorizationServer() {
-  const registrations: unknown[] = [];
+function authorizationServer(methods: string[] = ["none", "client_secret_post"]) {
+  const registrations: Array<Record<string, unknown>> = [];
   const fetchFn = async (target: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = String(target);
     if (url.includes("oauth-protected-resource"))
@@ -37,15 +37,17 @@ function authorizationServer() {
         registration_endpoint: `${issuer}/register`,
         response_types_supported: ["code"],
         code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+        token_endpoint_auth_methods_supported: methods,
       });
     if (url === `${issuer}/register`) {
-      registrations.push(JSON.parse(String(init?.body)));
+      const requested = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      registrations.push(requested);
       return Response.json(
         {
           client_id: "dcr-client-1",
+          client_secret: "issued-secret",
           redirect_uris: [redirectUri],
-          token_endpoint_auth_method: "none",
+          token_endpoint_auth_method: requested.token_endpoint_auth_method,
         },
         { status: 201 },
       );
@@ -100,6 +102,8 @@ test("a repeated sign-in reuses the dynamically registered client", async () => 
 
   const stored = await getOAuth2ClientCredential(tenantId, connector.id, "prod", ctx.db);
   expect(stored?.client_id).toBe("dcr-client-1");
+  expect(stored?.client_secret).toBeUndefined();
+  expect(server.registrations[0]?.token_endpoint_auth_method).toBe("none");
   const url = new URL((await readMcpAuthorizationUrl(ctx.db, tenantId, "dcr-state-second")) ?? "");
   expect(url.searchParams.get("client_id")).toBe("dcr-client-1");
   expect(url.searchParams.get("code_challenge_method")).toBe("S256");
@@ -132,4 +136,22 @@ test("a configured public client signs in with PKCE and never registers", async 
   const url = new URL((await readMcpAuthorizationUrl(ctx.db, tenantId, "public-state")) ?? "");
   expect(url.searchParams.get("client_id")).toBe("public-client-1");
   expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+});
+
+test("a server without public clients still gets a confidential registration", async () => {
+  const auth: McpAuthConfig = { kind: "oauth2" };
+  const connector = await seedMcpConnector(ctx.db, {
+    tenant_id: tenantId,
+    slug: "dcr-confidential",
+    url: serverUrl,
+    auth,
+  });
+  const server = authorizationServer(["client_secret_post"]);
+
+  const provider = await startSignIn(connector.id, auth, "dcr-state-confidential");
+  expect(await authorize(provider, { serverUrl, fetchFn: server.fetchFn })).toBe("REDIRECT");
+
+  expect(server.registrations[0]?.token_endpoint_auth_method).toBe("client_secret_post");
+  const stored = await getOAuth2ClientCredential(tenantId, connector.id, "prod", ctx.db);
+  expect(stored?.client_secret).toBe("issued-secret");
 });

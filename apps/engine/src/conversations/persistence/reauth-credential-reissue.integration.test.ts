@@ -155,7 +155,7 @@ describe("request_connector_reauth + credential re-issue", () => {
           circuit_state: "open",
           circuit_failure_count: 5,
           auth_type: "oauth2",
-          config: { mcp: { auth: { kind: "oauth2" } } },
+          config: { mcp: { auth: { kind: "oauth2", issuer: "https://issuer.example.test" } } },
         })
         .where(eq(connectors.id, connectorId));
       await markConnectorNeedsReauth(ctx.testDb.db, ctx.tenant_id, connectorId, "token_expired");
@@ -186,7 +186,17 @@ describe("request_connector_reauth + credential re-issue", () => {
       expect(after?.circuit_failure_count).toBe(5);
       await ctx.testDb.db
         .update(connectors)
-        .set({ config: { mcp: { auth: { kind: "oauth2", client_id: "newer-client" } } } })
+        .set({
+          config: {
+            mcp: {
+              auth: {
+                kind: "oauth2",
+                issuer: "https://issuer.example.test",
+                client_id: "newer-client",
+              },
+            },
+          },
+        })
         .where(eq(connectors.id, connectorId));
       expect((await save()).ok).toBe(true);
       const [replayed] = await ctx.testDb.db
@@ -194,7 +204,13 @@ describe("request_connector_reauth + credential re-issue", () => {
         .from(connectors)
         .where(eq(connectors.id, connectorId));
       expect(replayed?.config).toEqual({
-        mcp: { auth: { kind: "oauth2", client_id: "newer-client" } },
+        mcp: {
+          auth: {
+            kind: "oauth2",
+            issuer: "https://issuer.example.test",
+            client_id: "newer-client",
+          },
+        },
       });
       const receipts = await ctx.testDb.db
         .select()

@@ -45,6 +45,7 @@ import { connectorPersistEnvelopeFields } from "../tools/usage-guidance.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
 import { credentialModeMatchesAuthType } from "./credential-form-contract.ts";
 import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
+import { bindMcpClientIssuer } from "./mcp-client-issuer.ts";
 import { persistCredential } from "./persist-credential.ts";
 
 export function connectorFieldPatch(
@@ -175,6 +176,18 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       }
 
       let credential_persisted = false;
+      let discoveredMcpIssuer: string | undefined;
+      if (p.credential && existing.driver === "mcp" && existing.auth_type === "oauth2") {
+        const bound = await bindMcpClientIssuer(ctx, {
+          base_url: existing.base_url,
+          config: (existing.config ?? {}) as Record<string, unknown>,
+          credential: p.credential,
+        });
+        if (!bound.ok) return bound.result;
+        if (bound.discovered) {
+          discoveredMcpIssuer = (bound.config.mcp as { auth: { issuer: string } }).auth.issuer;
+        }
+      }
       if (p.credential) {
         const outcome = await persistCredential({
           tenant_id: ctx.tenant_id,
@@ -184,6 +197,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           credential: p.credential,
           correlation_id: ctx.tool_call_id ?? ctx.conversation_id,
           connectorConfig: (existing.config ?? {}) as Record<string, unknown>,
+          ...(discoveredMcpIssuer ? { discoveredMcpIssuer } : {}),
           driver: existing.driver,
           db: ctx.db as Db,
         });
@@ -434,12 +448,23 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       }),
     };
   }
+  const issuerBinding = signsInLater
+    ? await bindMcpClientIssuer(ctx, {
+        base_url: connector.base_url,
+        config: (connector.config ?? {}) as Record<string, unknown>,
+        credential,
+      })
+    : null;
+  if (issuerBinding && !issuerBinding.ok) return issuerBinding.result;
+  const persistable = issuerBinding?.discovered
+    ? { ...connector, config: issuerBinding.config }
+    : connector;
   const saved = await createConnector(
     {
       tenant_id: ctx.tenant_id,
       actor_id: ctx.actor_id,
       actor: connectorActorFromToolContext(ctx),
-      input: toCreateConnectorInput(connector),
+      input: toCreateConnectorInput(persistable),
     },
     ctx.db,
   );
@@ -603,7 +628,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   const nextDraft = withConnectorPersisted(
     postSaveDraft,
     {
-      ...connector,
+      ...persistable,
       validation,
       saved_connector_id: saved.id,
     },

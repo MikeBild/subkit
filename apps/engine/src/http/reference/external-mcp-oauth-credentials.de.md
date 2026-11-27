@@ -23,8 +23,8 @@ Bei interaktivem MCP-OAuth speichert SubKit den Aussteller des Autorisierungsser
 
 Du kannst einen solchen Connector speichern, bevor sich jemand angemeldet hat, auch aus einem Chat. Er wartet dann im Zustand „Anmeldung nötig“, und ein 401 des Servers vor der Anmeldung verhindert das Speichern nicht. Der Anmeldelink am Connector oder im Chat startet die Browser-Anmeldung mit PKCE:
 
-- **Dynamische Client-Registrierung:** Du trägst keinen Client ein. Bei der ersten Anmeldung registriert SubKit einen Client beim Autorisierungsserver und speichert ihn mit dem Aussteller. Eine wiederholte oder abgebrochene Anmeldung verwendet diesen Client weiter und registriert keinen neuen.
-- **Vorab registrierter öffentlicher Client:** Eine Client-ID ohne Secret ist Konfiguration, kein Geheimnis. Setze `config.mcp.auth.client_id` und `config.mcp.auth.issuer`, optional `token_endpoint_auth_method: "none"`. Ein Client-Secret geht immer über das sichere Formular.
+- **Dynamische Client-Registrierung:** Du trägst keinen Client ein. Bei der ersten Anmeldung registriert SubKit einen Client beim Autorisierungsserver und speichert ihn mit dem Aussteller. Erlaubt der Server öffentliche Clients (`none` in `token_endpoint_auth_methods_supported`), registriert sich SubKit als öffentlicher Client mit PKCE und speichert kein Secret. Sonst registriert es einen vertraulichen Client. Eine wiederholte oder abgebrochene Anmeldung verwendet diesen Client weiter und registriert keinen neuen.
+- **Vorab registrierter Client:** Eine Client-ID ohne Secret ist Konfiguration, kein Geheimnis. Setze `config.mcp.auth.client_id`, optional `token_endpoint_auth_method: "none"`. Ein Client-Secret geht immer über das sichere Formular. Ohne `config.mcp.auth.issuer` ermittelt SubKit beim Speichern den Autorisierungsserver aus den Metadaten des Servers und bindet den Client daran. Klappt das nicht, lehnt SubKit das Speichern mit `mcp_oauth_issuer_unresolved` ab. Trag dann `config.mcp.auth.issuer` mit der Adresse des Autorisierungsservers selbst ein.
 
 ### Ältere Zugangsdaten ohne dynamische Registrierung
 
