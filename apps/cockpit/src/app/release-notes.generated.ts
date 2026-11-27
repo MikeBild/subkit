@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "fa8329bed07fdba6e9748e66e2afe3a6154f31b5",
+  "source": "a847670767908b417879e19ee3c6622c56caa6c9",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2429,6 +2429,14 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "Waiting for an OAuth sign-in reads the pending credential through the tenant row scope, also on superuser database logins. Docker Compose no longer needs an init script for the tenant role, the engine creates it.",
         "Many smaller fixes for the inbox, paging, prompt caching, connector checks and security scans."
       ]
+    },
+    {
+      "version": "v13.1.2",
+      "notes": [],
+      "highlights": [
+        "SubKit Desktop for Windows: the desktop app now ships for Windows x64 with automatic updates. Builds are not code signed yet, so every update is checked against the signed checksums before it installs.",
+        "Smaller fixes for the desktop build on Windows."
+      ]
     }
   ],
   "unpublished": {
@@ -2548,6 +2556,12 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     "13.1.2": [
       "SubKit Desktop for Windows: the desktop app now ships for Windows x64 with automatic updates. Builds are not code signed yet, so every update is checked against the signed checksums before it installs.",
       "Smaller fixes for the desktop build on Windows."
+    ],
+    "13.2.0": [
+      "Workflows can remove what they created: a step records the id it created, and a later step may delete exactly that id, once, in the same environment. Any other id is refused before anything is sent, and a repeated removal returns the stored outcome instead of sending again.",
+      "Webhooks wait for approval: until a person approves the workflow, SubKit keeps each signed delivery and answers `202` with `held`. After the approval every kept delivery runs exactly once. Kept deliveries expire after 7 days.",
+      "Voice dictation counts against the AI spend limit when it uses the operator's key. Each recording carries a `client_request_id`, so a retry returns the first text and is booked once. Update the `subkit` CLI to dictate against a 13.2 engine that pays with the operator's key.",
+      "Fixes: long dictations settle correctly in cloud workspaces, shared values in request bodies are no longer marked as circular, skill examples load in MCP prompts, and the documentation keeps the current heading in view."
     ]
   }
 };
