@@ -21,6 +21,11 @@ Für Connectors mit `oauth2_client_credentials` oder `oauth2_private_key_jwt` tr
 
 Bei interaktivem MCP-OAuth speichert SubKit den Aussteller des Autorisierungsservers zusammen mit den verschlüsselten Client-Daten und Tokens. Ältere gespeicherte Zugangsdaten ohne Aussteller verwendet SubKit nicht weiter. Bei Anbietern mit dynamischer Client-Registrierung startest du über das OAuth-Setup des Connectors eine neue Anmeldung.
 
+Du kannst einen solchen Connector speichern, bevor sich jemand angemeldet hat, auch aus einem Chat. Er wartet dann im Zustand „Anmeldung nötig“, und ein 401 des Servers vor der Anmeldung verhindert das Speichern nicht. Der Anmeldelink am Connector oder im Chat startet die Browser-Anmeldung mit PKCE:
+
+- **Dynamische Client-Registrierung:** Du trägst keinen Client ein. Bei der ersten Anmeldung registriert SubKit einen Client beim Autorisierungsserver und speichert ihn mit dem Aussteller. Eine wiederholte oder abgebrochene Anmeldung verwendet diesen Client weiter und registriert keinen neuen.
+- **Vorab registrierter öffentlicher Client:** Eine Client-ID ohne Secret ist Konfiguration, kein Geheimnis. Setze `config.mcp.auth.client_id` und `config.mcp.auth.issuer`, optional `token_endpoint_auth_method: "none"`. Ein Client-Secret geht immer über das sichere Formular.
+
 ### Ältere Zugangsdaten ohne dynamische Registrierung
 
 Ob sich ältere vertrauliche Clients bei Anbietern ohne dynamische Registrierung über die öffentlichen Setup-APIs wiederherstellen lassen, ist noch nicht geprüft. Geh nicht davon aus, dass ein nachgetragener Aussteller diese Zugangsdaten wiederherstellt. Nimm solche Verbindungen erst in Betrieb, wenn ihre Wiederherstellung geprüft ist. Bearbeite gespeicherte Zugangsdaten nicht, um diese Prüfung zu umgehen.

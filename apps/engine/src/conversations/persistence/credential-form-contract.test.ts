@@ -198,6 +198,30 @@ describe("resolveDraftCredentialSeedMode — db-free paths", () => {
     }
   });
 
+  it("routes an mcp oauth2 draft to the oauth2 seed and seeds its configured client id", async () => {
+    const bare = await resolveDraftCredentialSeedMode({
+      connector: {
+        driver: "mcp",
+        auth_type: "oauth2",
+        config: { mcp: { auth: { kind: "oauth2" } } },
+      },
+      db: stubDb,
+      tenant_id: "t-1",
+    });
+    expect(bare.seedMode).toBe("oauth2");
+    expect(bare.seedOverrides).toEqual({});
+    const configured = await resolveDraftCredentialSeedMode({
+      connector: {
+        driver: "mcp",
+        auth_type: "oauth2",
+        config: { mcp: { auth: { kind: "oauth2", client_id: "public-client" } } },
+      },
+      db: stubDb,
+      tenant_id: "t-1",
+    });
+    expect(configured.seedOverrides).toEqual({ client_id: "public-client" });
+  });
+
   it("routes oauth2 + password grant to the basic shape (RFC 6749 §4.3)", async () => {
     const res = await resolveDraftCredentialSeedMode({
       connector: { auth_type: "oauth2", config: { oauth: { grant_type: "password" } } },
