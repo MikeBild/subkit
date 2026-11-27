@@ -6,6 +6,7 @@ import {
   STDIO_SERVER_MANAGED_FIELDS,
   type StdioCommandSpec,
   type StdioConfirmation,
+  stdioCommandLine,
   stdioConfirmationFromConfig,
   stdioSpecFromConfig,
   withoutStdioServerManagedFields,
@@ -19,6 +20,7 @@ export {
   STDIO_SERVER_MANAGED_FIELDS,
   type StdioCommandSpec,
   type StdioConfirmation,
+  stdioCommandLine,
   stdioConfirmationFromConfig,
   stdioSpecFromConfig,
   withoutStdioServerManagedFields,
@@ -30,14 +32,6 @@ export function stdioCommandHash(spec: StdioCommandSpec): string {
 
 export function stdioIdentity(spec: StdioCommandSpec): string {
   return `${STDIO_IDENTITY_PREFIX}${stdioCommandHash(spec)}`;
-}
-
-function quoteArg(value: string): string {
-  return /^[A-Za-z0-9_./:=@%+,-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-export function stdioCommandLine(spec: StdioCommandSpec): string {
-  return [spec.command, ...spec.args].map(quoteArg).join(" ");
 }
 
 export interface StdioCommandDisplay {

@@ -1,10 +1,10 @@
 import {
   STDIO_SERVER_MANAGED_FIELDS,
-  stdioCommandDisplay,
-  stdioCommandHash,
+  stdioCommandLine,
   stdioConfirmationFromConfig,
   stdioSpecFromConfig,
-} from "../mcp/index.ts";
+} from "@shared/stdio-identity.ts";
+import { commandSpecDigest } from "../crypto/index.ts";
 
 export interface LocalCommandSpec {
   command: string;
@@ -153,13 +153,7 @@ export function readLocalCommand(
 }
 
 export function localCommandFingerprint(spec: LocalCommandSpec): string {
-  return stdioCommandHash({
-    command: spec.command,
-    args: spec.args,
-    env: spec.env,
-    env_secret_names: spec.env_secret_names,
-    ...(spec.cwd ? { cwd: spec.cwd } : {}),
-  });
+  return commandSpecDigest(spec);
 }
 
 export function sameLocalCommand(a: LocalCommandSpec | null, b: LocalCommandSpec | null): boolean {
@@ -168,13 +162,7 @@ export function sameLocalCommand(a: LocalCommandSpec | null, b: LocalCommandSpec
 }
 
 export function literalCommandLine(spec: LocalCommandSpec): string {
-  return stdioCommandDisplay({
-    command: spec.command,
-    args: spec.args,
-    env: spec.env,
-    env_secret_names: spec.env_secret_names,
-    ...(spec.cwd ? { cwd: spec.cwd } : {}),
-  }).command_line;
+  return stdioCommandLine(spec);
 }
 
 export function describeLocalCommand(spec: LocalCommandSpec): string {
