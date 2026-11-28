@@ -9,6 +9,8 @@ import {
   type TurnFacts,
   turnPerson,
   turnRunSource,
+  VAULT_CHAT_NOTE,
+  vaultChatNote,
 } from "./palette.ts";
 
 const ANNA = "anna";
@@ -203,5 +205,15 @@ describe("the personal boundary of a device", () => {
       sites: { entered_by_person: ["http://192.168.1.10"] },
       paths: { os: "darwin", data_dir: null, keep_out: ["/Users/anna/Private"] },
     });
+  });
+});
+
+describe("vault guidance in the chat", () => {
+  test("is sent only when a vault tool is on the turn's tools", () => {
+    expect(vaultChatNote([])).toBeNull();
+    expect(vaultChatNote(["list_workflows", "browser_open", "browser_snapshot"])).toBeNull();
+    expect(vaultChatNote(["browser_open", "browser_sign_in"])).toBe(VAULT_CHAT_NOTE);
+    expect(vaultChatNote(new Set(["browser_pay"]))).toBe(VAULT_CHAT_NOTE);
+    expect(VAULT_CHAT_NOTE).toContain("***REDACTED:card***");
   });
 });

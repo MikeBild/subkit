@@ -4,6 +4,7 @@ import {
   pendingPermittedRemedy,
 } from "../../llm/runtime/permitted-remedy.ts";
 import { logger } from "../../logging/index.ts";
+import { vaultChatNote } from "../core/device-tools/palette.ts";
 import { hasBoundSavedWorkflowTarget } from "../core/loop.ts";
 import { turnExecutionSuppression } from "../execution-suppression.ts";
 import {
@@ -225,6 +226,8 @@ export async function resolveTurnPalette(
   });
 
   appendVolatileSystemContext(prompt, UNTRUSTED_CONTENT_NOTE);
+  const vaultNote = vaultChatNote(Object.keys(tools));
+  if (vaultNote) appendVolatileSystemContext(prompt, vaultNote);
 
   state.paletteSkills = loadedSkills;
   state.paletteIntakeItems = intakeReviewInProgress(state.draft);
