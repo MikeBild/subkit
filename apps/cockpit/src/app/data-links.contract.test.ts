@@ -72,12 +72,6 @@ function engineHrefs(dir = ENGINE_SRC): { file: string; href: string }[] {
   return out;
 }
 
-function attentionReasons(): string[] {
-  const source = readFileSync(join(ENGINE_SRC, "operator", "core", "attention.ts"), "utf8");
-  const block = /ATTENTION_REASONS = \[([^\]]*)\]/.exec(source)?.[1] ?? "";
-  return [...block.matchAll(/"([a-z_]+)"/g)].map((m) => m[1] ?? "");
-}
-
 function workerNotify(): { scopedHref(href: string, base: string): string } {
   const self: Record<string, unknown> = {
     location: { origin: "http://localhost" },
@@ -140,7 +134,9 @@ isolated("every link the cockpit builds from data opens a page under both base p
   ])
     expect(producers.has(known)).toBe(true);
   const engineAttention = engine.filter((entry) => entry.file.startsWith("operator/"));
-  const reasons = attentionReasons();
+  const { ATTENTION_REASONS: reasons } = (await import(
+    join(ENGINE_SRC, "operator", "core", "attention.ts")
+  )) as { ATTENTION_REASONS: readonly string[] };
   expect(reasons).toContain("intake_collected");
   expect(reasons).toContain("version_needs_repair");
   const notify = workerNotify();
