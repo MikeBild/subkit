@@ -1,5 +1,5 @@
+import { discoverMcpOAuthIssuer } from "../../connectors/index.ts";
 import { logger } from "../../logging/index.ts";
-import { discoverMcpOAuthIssuer } from "../../mcp/index.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 
 function asRecord(value: unknown): Record<string, unknown> {

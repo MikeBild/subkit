@@ -4,7 +4,6 @@ export {
   workflowToolName,
 } from "./capabilities/catalog-budget.ts";
 export { listWorkflowTools } from "./capabilities/tools-helpers.ts";
-export { discoverMcpOAuthIssuer, type McpIssuerDiscovery } from "./client/issuer-discovery.ts";
 export type { RemoteToolAnnotations } from "./client/manifest.ts";
 export {
   McpDbOAuthClientProvider,
