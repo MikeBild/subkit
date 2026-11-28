@@ -1,11 +1,9 @@
-import {
-  connectorLocalScope,
-  type EgressGuardContext,
-  getDriverFetch,
-  guardedFetch,
-} from "../../connectors/index.ts";
+import { discoverOAuthServerInfo } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Executor } from "../../db/index.ts";
-import { sdkDiscoverServerInfo } from "./sdk-auth.ts";
+import { getDriverFetch } from "../drivers/fetch-seam.ts";
+import { guardedFetch } from "../egress-fetch.ts";
+import type { EgressGuardContext } from "../egress-guard.ts";
+import { connectorLocalScope } from "../local-egress.ts";
 
 export type McpIssuerDiscovery =
   | { ok: true; issuer: string }
@@ -24,7 +22,7 @@ export async function discoverMcpOAuthIssuer(p: {
     ...(local_mcp ? { local_mcp } : {}),
   };
   try {
-    const info = await sdkDiscoverServerInfo(p.base_url, {
+    const info = await discoverOAuthServerInfo(p.base_url, {
       fetchFn: guardedFetch(context, getDriverFetch()),
     });
     return info.authorizationServerMetadata

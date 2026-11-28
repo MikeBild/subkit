@@ -1,3 +1,7 @@
+export {
+  discoverMcpOAuthIssuer,
+  type McpIssuerDiscovery,
+} from "./adapters/mcp-issuer-discovery.ts";
 export { runProbePathV1Backfill } from "./backfills/probe-path-v1.ts";
 export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
