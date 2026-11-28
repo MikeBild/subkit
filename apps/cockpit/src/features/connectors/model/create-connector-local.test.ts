@@ -270,7 +270,7 @@ describe("an MCP server started as a local command", () => {
       address: "https://ignored.example.com",
       command,
     });
-    expect(body.base_url).toBeNull();
+    expect(body).not.toHaveProperty("base_url");
     expect(body.auth_type).toBe("header");
     expect(body.config).toEqual({
       mcp: {
@@ -295,6 +295,19 @@ describe("an MCP server started as a local command", () => {
     });
     expect(open.auth_type).toBe("none");
     expect(open.config).toMatchObject({ mcp: { auth: { kind: "none" } } });
+  });
+
+  test("the serialized command body omits base_url so the engine accepts it", () => {
+    const body = connectorCreateBody({
+      target: "mcp",
+      source: "command",
+      signIn: "none",
+      name: "Gateway",
+      slug: "gateway",
+      address: "",
+      command,
+    });
+    expect(Object.keys(JSON.parse(JSON.stringify(body)))).not.toContain("base_url");
   });
 
   test("secret values go into the credential, and only when there are some", () => {
