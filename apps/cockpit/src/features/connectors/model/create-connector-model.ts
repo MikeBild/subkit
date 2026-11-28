@@ -276,10 +276,6 @@ function oauthBlock(oauth: OAuthClientFields): Record<string, string> {
   };
 }
 
-export type ManualConnectorBody = Omit<CreateConnectorBody, "base_url"> & {
-  base_url?: string | null;
-};
-
 export function connectorCreateBody(p: {
   target: ConnectorTarget;
   signIn: ConnectorSignIn;
@@ -291,7 +287,7 @@ export function connectorCreateBody(p: {
   keyMode?: KeyMode;
   command?: LocalCommandFields;
   tls?: TlsFields;
-}): ManualConnectorBody {
+}): CreateConnectorBody {
   const base = {
     name: p.name.trim(),
     slug: p.slug,
@@ -302,13 +298,12 @@ export function connectorCreateBody(p: {
     const command = p.command ?? EMPTY_LOCAL_COMMAND;
     return {
       ...base,
-      base_url: null,
       auth_type: hasSecretEnv(command) ? "header" : "none",
       config: { mcp: stdioBlock(command) },
     };
   }
   const header = offersHeaderName(p.target, p.signIn) && p.keyMode === "header";
-  const body: ManualConnectorBody = {
+  const body: CreateConnectorBody = {
     ...base,
     base_url: p.address.trim(),
     auth_type: header ? "header" : AUTH_TYPE[p.signIn],
