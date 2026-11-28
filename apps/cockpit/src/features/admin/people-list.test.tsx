@@ -1,14 +1,17 @@
 import { expect, mock, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { FilterBarLayoutContext } from "@ui/organisms/filter-bar";
+import { loginHref } from "@/app/login-href";
 import { renderInRouter } from "@/components/cockpit/patterns/test-utils";
 
 mock.module("@/app/session", () => ({
+  loginHref,
   useSession: () => ({
     permissions: ["identity:read", "identity:write"],
     principal: { id: "me" },
     tenant: { origin: "hosted" },
   }),
+  useSessionUpdate: () => () => {},
 }));
 const { PeopleTab } = await import("./people-tab");
 

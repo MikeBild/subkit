@@ -313,6 +313,7 @@ describe("subkit vault request bodies match the engine contract", () => {
         environment: "prod",
         version: 1,
         connector: "",
+        summary: "",
         last_used_at: "",
       },
     ]);
