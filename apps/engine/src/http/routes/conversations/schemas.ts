@@ -3,6 +3,8 @@ import { CONVERSATION_REFERENCE_TYPES } from "@shared/conversation-reference.ts"
 import { LOCAL_CONFIRMATION_KIND, LOCAL_CONFIRMATION_PROMPT } from "@shared/device/confirmation.ts";
 import type { ConversationTurnOutcome } from "../../../conversations/public/authoring.ts";
 import {
+  CONFIRM_PROMPT_KINDS,
+  type ConfirmPromptKind,
   PlaybookViewSchema,
   ResumeFormFieldSchema,
 } from "../../../conversations/public/authoring.ts";
@@ -31,15 +33,7 @@ export const ToolCallRespondParam = z.object({
   tool_call_id: z.string().uuid(),
 });
 
-export const CONFIRM_PROMPT_KINDS = [
-  "save_workflow_draft",
-  "external_write",
-  "generic",
-  "partial_diff_approval",
-  "mcp_local_command",
-] as const;
-
-export type ConfirmPromptKind = (typeof CONFIRM_PROMPT_KINDS)[number];
+export { CONFIRM_PROMPT_KINDS, type ConfirmPromptKind };
 
 export const RespondElicitationBody = z
   .object({

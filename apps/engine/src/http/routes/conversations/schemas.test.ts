@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { ContextSnapshotSchema } from "./schemas.ts";
+import { CONFIRM_PROMPT_KINDS as AUTHORING_CONFIRM_PROMPT_KINDS } from "../../../conversations/public/authoring.ts";
+import { CONFIRM_PROMPT_KINDS, ContextSnapshotSchema } from "./schemas.ts";
+
+test("conversation confirm kinds share the authoring contract and retain local MCP commands", () => {
+  expect(CONFIRM_PROMPT_KINDS).toBe(AUTHORING_CONFIRM_PROMPT_KINDS);
+  expect(CONFIRM_PROMPT_KINDS).toContain("mcp_local_command");
+});
 
 const resourceSchema = ContextSnapshotSchema.shape.persisted_resources.element;
 const legacyResource = {

@@ -18,6 +18,7 @@ import { resolveConversationPrincipal } from "../permission-gate.ts";
 import type { ModelCommitIntent } from "./commit-intent.ts";
 import { commitIntentSchema, describePatchOps, withApprovalHandle } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
+import { CONFIRM_PROMPT_KINDS } from "./confirm-kinds.ts";
 
 function toolForCommitIntent(intent: ModelCommitIntent): string {
   switch (intent.kind) {
@@ -177,15 +178,7 @@ function askedInsideTaskRun(ctx: Pick<ToolContext, "task_run" | "getDraft">): bo
 const inputSchema = z
   .object({
     question: z.string().min(1),
-    kind: z
-      .enum([
-        "save_workflow_draft",
-        "external_write",
-        "generic",
-        "partial_diff_approval",
-        "mcp_local_command",
-      ])
-      .default("generic"),
+    kind: z.enum(CONFIRM_PROMPT_KINDS).default("generic"),
     summary: z.string().optional(),
     diff: z.unknown().optional(),
     diffs: z.array(z.object({ label: z.string(), preview: z.string().optional() })).optional(),

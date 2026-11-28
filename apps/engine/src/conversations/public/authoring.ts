@@ -42,6 +42,10 @@ export {
 export { keepResolvableCitations } from "../source-faithful.ts";
 export { serializeEvent } from "../streaming.ts";
 export { messageOrigin, TASK_RUN_CONTINUATION_ORIGIN } from "../task-run-continuation.ts";
+export {
+  CONFIRM_PROMPT_KINDS,
+  type ConfirmPromptKind,
+} from "../tools/ask-user/confirm-kinds.ts";
 export { importConnectorFromSpecInputSchema } from "../tools/import-connector-from-spec-contract.ts";
 export const importConnectorDraftFromSpec = async (params: unknown) => {
   const tool = await import("../tools/import-connector-from-spec.ts");
