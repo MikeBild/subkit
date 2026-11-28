@@ -40,6 +40,12 @@ describe("confirmPromptFields", () => {
     expect(confirmPromptFields([{ kind: "generic" }])).toEqual({});
   });
 
+  test("carries the kind of a paused local mcp command confirm", () => {
+    expect(confirmPromptFields({ question: "Run it?", kind: "mcp_local_command" })).toEqual({
+      kind: "mcp_local_command",
+    });
+  });
+
   test("the contract lists exactly the kinds the confirm tool accepts", () => {
     const shape = (askUserConfirmTool.inputSchema as z.ZodObject<z.ZodRawShape>).shape;
     const kind = shape.kind as unknown as { unwrap(): { options: readonly string[] } };
@@ -63,6 +69,12 @@ describe("pendingPrompt for a confirm question", () => {
       kind: "partial_diff_approval",
       diffs: [{ label: "replace /steps/0", preview: "return 2;" }],
     });
+  });
+
+  test("copies the kind of a local mcp command confirm", () => {
+    expect(
+      pendingPrompt({ question: "Run it?", kind: "mcp_local_command" }, "ask_user_confirm").prompt,
+    ).toEqual({ question: "Run it?", kind: "mcp_local_command" });
   });
 
   test("ignores kind and diffs of other questions and of an unnamed tool", () => {
