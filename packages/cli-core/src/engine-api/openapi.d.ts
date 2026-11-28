@@ -40379,7 +40379,7 @@ export interface components {
                          * @description Confirm kind of an ask_user_confirm question, as in the live prompt; drives the confirm card.
                          * @enum {string}
                          */
-                        kind?: "save_workflow_draft" | "external_write" | "generic" | "partial_diff_approval" | "local_confirmation";
+                        kind?: "save_workflow_draft" | "external_write" | "generic" | "partial_diff_approval" | "mcp_local_command" | "local_confirmation";
                         /** @description Changes the person approves one by one (kind partial_diff_approval), as in the live prompt. */
                         diffs?: {
                             label: string;

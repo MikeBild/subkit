@@ -42151,6 +42151,7 @@
                           "external_write",
                           "generic",
                           "partial_diff_approval",
+                          "mcp_local_command",
                           "local_confirmation"
                         ],
                         "description": "Confirm kind of an ask_user_confirm question, as in the live prompt; drives the confirm card."
