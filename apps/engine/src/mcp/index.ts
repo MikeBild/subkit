@@ -4,6 +4,7 @@ export {
   workflowToolName,
 } from "./capabilities/catalog-budget.ts";
 export { listWorkflowTools } from "./capabilities/tools-helpers.ts";
+export { mcpLocalScope } from "./client/egress-context.ts";
 export type { RemoteToolAnnotations } from "./client/manifest.ts";
 export {
   McpDbOAuthClientProvider,

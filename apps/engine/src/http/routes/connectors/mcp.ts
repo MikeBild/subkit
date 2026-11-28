@@ -7,39 +7,30 @@ import {
   AuditAction,
   readRequestSource,
   recordConnectorMcpAuthorizationFailed,
-  recordConnectorMcpAuthorizationStarted,
   recordConnectorMcpAuthorized,
 } from "../../../audit/index.ts";
 import {
   claimMcpOAuthState,
-  connectorSignIn,
   consumeStartGrant,
-  discardMcpOAuthState,
-  getConnector,
-  insertMcpOAuthState,
-  mcpSignInStartSteps,
-  mcpSignInTransition,
-  type OAuthFlowOrigin,
   oauthFlowOrigin,
-  readMcpAuthorizationUrl,
   settleConnectorReauthorization,
 } from "../../../connectors/index.ts";
-import type { Db } from "../../../db/client.ts";
 import { logger } from "../../../logging/index.ts";
 import {
-  buildMcpOAuthRedirectUri,
   clearMcpConnectorFailure,
   evictServer,
   getMcpConnector,
   MCP_CREDENTIAL_ENVIRONMENT,
   MCP_OAUTH_CALLBACK_PATH,
   makeMcpOAuthProvider,
+  mcpLocalScope,
   redactUpstreamDetail,
   sdkAuth,
 } from "../../../mcp/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import { now } from "../../../utils/clock.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { LOG_MODULE, signInStateAfter, startMcpAuthorization } from "./mcp-authorize-start.ts";
 import {
   cockpitReturn,
   connectorBacklink,
@@ -49,10 +40,6 @@ import {
   signInFailedPage,
 } from "./signin-result.ts";
 import { signalSignInFailed, signalSignInSucceeded } from "./signin-signals.ts";
-
-const LOG_MODULE = "mcp_oauth";
-
-const STATE_TTL_MS = 10 * 60_000;
 
 const AuthorizeResponse = z
   .object({
@@ -241,6 +228,8 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
     const auth = server?.auth ?? { kind: "none" as const };
     const issuerForAudit =
       ("issuer" in auth && auth.issuer ? auth.issuer : server?.url) ?? q.iss ?? "";
+    const local_mcp = server ? mcpLocalScope(server) : undefined;
+    const local_target = Boolean(local_mcp);
 
     const origin = oauthFlowOrigin(stateRow.origin);
     const failed = async (
@@ -304,6 +293,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "external authorization server returned an error",
         tenant_id,
         connector_id,
+        local_target,
         state_prefix: stateRow.state.slice(0, 8),
         provider_error: q.error,
       });
@@ -331,6 +321,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "callback had neither code nor error",
         tenant_id,
         connector_id,
+        local_target,
         state_prefix: stateRow.state.slice(0, 8),
       });
       await failAudit("missing_code");
@@ -345,6 +336,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
           msg: "callback iss origin does not match the resource the flow began against",
           tenant_id,
           connector_id,
+          local_target,
           state_prefix: stateRow.state.slice(0, 8),
         });
         await failAudit("issuer_mismatch");
@@ -363,6 +355,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         auth,
         interactive: true,
         request_source: requestSource,
+        ...(local_mcp ? { local_mcp } : {}),
       });
       const result = await sdkAuth(provider, {
         serverUrl: server.url,
@@ -408,6 +401,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "external MCP server authorized via interactive OAuth",
         tenant_id,
         connector_id,
+        local_target,
         connector_slug,
         state_prefix: stateRow.state.slice(0, 8),
         sign_in_state: signInStateAfter({ type: "consent_granted" }),
@@ -438,6 +432,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "token exchange or credential write failed",
         tenant_id,
         connector_id,
+        local_target,
         state_prefix: stateRow.state.slice(0, 8),
         sign_in_state: signInStateAfter({ type: "sign_in_failed" }),
         error_class: err instanceof Error ? err.name : "Error",
@@ -447,140 +442,6 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       return failed("exchange_failed");
     }
   });
-}
-
-function signInStateAfter(event: { type: "consent_granted" } | { type: "sign_in_failed" }) {
-  const step = mcpSignInTransition("awaiting_consent", event);
-  return step.ok ? step.to : step.from;
-}
-
-type McpAuthorizationStart =
-  | { ok: true; flow: { authorization_url: string; state: string } }
-  | { ok: false; failure: "not_found" }
-  | { ok: false; failure: "not_this_route"; route: string | null }
-  | { ok: false; failure: "no_public_address" }
-  | { ok: false; failure: "start_failed" };
-
-async function startMcpAuthorization(p: {
-  db: Db;
-  req: Request;
-  tenant_id: string;
-  connector_id: string;
-  actor_id: string | null;
-  actor_type: "user" | "system_account" | null;
-  origin: OAuthFlowOrigin;
-  request_source: RequestSource;
-}): Promise<McpAuthorizationStart> {
-  const { db, tenant_id, connector_id: id, actor_id } = p;
-
-  const connector = await getConnector(tenant_id, id, db);
-  if (!connector) return { ok: false, failure: "not_found" };
-  const signIn = connectorSignIn(connector);
-  if (signIn?.kind !== "mcp") {
-    return { ok: false, failure: "not_this_route", route: signIn?.start ?? null };
-  }
-  const server = await getMcpConnector(db, tenant_id, id);
-  if (!server) return { ok: false, failure: "not_found" };
-  const auth = server.auth;
-  if (auth.kind !== "oauth2") return { ok: false, failure: "not_this_route", route: null };
-
-  const redirect_uri = buildMcpOAuthRedirectUri({ req: p.req });
-  if (!redirect_uri) return { ok: false, failure: "no_public_address" };
-
-  const state = crypto.randomUUID();
-
-  await insertMcpOAuthState(db, {
-    tenant_id,
-    connector_id: id,
-    state,
-    code_verifier: "",
-    redirect_uri,
-    requested_scopes: auth.scope ?? null,
-    started_by_actor_id: actor_id,
-    started_by_actor_type: p.actor_type,
-    origin: p.origin,
-    expires_at: new Date(now() + STATE_TTL_MS),
-  });
-
-  const issuerForAudit = auth.issuer ?? server.url;
-  try {
-    const provider = makeMcpOAuthProvider({
-      db,
-      tenant_id,
-      connector_id: id,
-      environment: MCP_CREDENTIAL_ENVIRONMENT,
-      redirect_uri,
-      state,
-      auth,
-      interactive: true,
-      request_source: p.request_source,
-    });
-    const result = await sdkAuth(provider, { serverUrl: server.url, fetchFn: provider.fetch });
-    if (result !== "REDIRECT") {
-      throw new Error(`unexpected auth() result for interactive flow: ${result}`);
-    }
-
-    const lifecycle = mcpSignInStartSteps(connector.needs_reauth ? "needs_sign_in" : "connected", {
-      registered_client: provider.registeredClient,
-    });
-    const authorizationUrl = await readMcpAuthorizationUrl(db, tenant_id, state);
-    if (!authorizationUrl) {
-      throw new Error("authorization URL was not persisted by the OAuth provider");
-    }
-
-    await recordConnectorMcpAuthorizationStarted({
-      tenant_id,
-      actor_id,
-      ...(p.actor_type ? { actor_type: p.actor_type } : {}),
-      request_source: p.request_source,
-      connector_id: id,
-      connector_slug: server.slug,
-      issuer: issuerForAudit,
-      executor: db,
-    });
-
-    logger.info({
-      module: LOG_MODULE,
-      action: "authorize.started",
-      msg: "issued interactive OAuth authorization URL for external MCP server",
-      tenant_id,
-      connector_id: id,
-      connector_slug: server.slug,
-      origin: p.origin,
-      state_prefix: state.slice(0, 8),
-      sign_in_state: lifecycle.state,
-      sign_in_path: lifecycle.path,
-      registered_client: provider.registeredClient,
-    });
-
-    return { ok: true, flow: { authorization_url: authorizationUrl, state } };
-  } catch (err) {
-    await discardMcpOAuthState(db, tenant_id, state);
-    await recordConnectorMcpAuthorizationFailed({
-      tenant_id,
-      actor_id,
-      ...(p.actor_type ? { actor_type: p.actor_type } : {}),
-      request_source: p.request_source,
-      connector_id: id,
-      connector_slug: server.slug,
-      issuer: issuerForAudit,
-      reason: "discovery_or_registration_failed",
-      executor: db,
-    });
-    logger.warn({
-      module: LOG_MODULE,
-      action: "authorize.failed",
-      msg: "interactive OAuth authorization could not be started for external MCP server",
-      tenant_id,
-      connector_id: id,
-      connector_slug: server.slug,
-      state_prefix: state.slice(0, 8),
-      sign_in_state: signInStateAfter({ type: "sign_in_failed" }),
-      error_class: err instanceof Error ? err.name : "Error",
-      error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
-    });
-    return { ok: false, failure: "start_failed" };
-  }
 }
 
 function sameOrigin(a: string, b: string): boolean {
