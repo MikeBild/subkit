@@ -1,7 +1,7 @@
 import type { DeviceCapability } from "@shared/device/protocol.ts";
 import { type LocalRunSource, taskRunSource } from "../../../devices/core/run-source.ts";
 import type { PersonalBoundary } from "../../instruction-cover/job.ts";
-import { DEVICE_TOOL_SPECS, type DeviceToolSpec } from "./catalog.ts";
+import { DEVICE_TOOL_SPECS, type DeviceToolSpec, isVaultTool } from "./catalog.ts";
 
 export interface DeviceFacts {
   readonly device_id: string;
@@ -53,6 +53,13 @@ export function eligibleDevices(
 export function paletteTools(eligible: readonly EligibleDevice[]): DeviceToolSpec[] {
   const capabilities = new Set(eligible.flatMap((device) => device.capabilities));
   return DEVICE_TOOL_SPECS.filter((tool) => capabilities.has(tool.capability));
+}
+
+export const VAULT_CHAT_NOTE =
+  "VAULT IN CHAT: never ask for a password, card number, CVV, IBAN or one-time code in the chat. A card number, CVV or code the person types into the chat is withheld from you (`***REDACTED:card***`, `cvv`, `otp`); do not ask again, point them to the vault, the payment approval or a private form.";
+
+export function vaultChatNote(toolNames: Iterable<string>): string | null {
+  return [...toolNames].some(isVaultTool) ? VAULT_CHAT_NOTE : null;
 }
 
 export type DevicePick =

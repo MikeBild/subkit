@@ -31,6 +31,12 @@ const attentionSnooze =
 const heldDeliveryStaging =
   "Signed inbound deliveries held while their workflow waits for a first approval, bounded per hook by a row cap, per row by a byte check constraint and in time by expiry; a replay admits each one as an execution, where its input is metered.";
 
+const vaultUseState =
+  "Per-use audit and approval rows of a vault sign-in or payment, not a storage line item: no vault values, only ids, an origin, a card's last four digits and closed purposes and states held by check constraints, one row per device command by a unique key; must stay writable so a tenant at its limit can still settle, decline or expire a use that is under way, so a use is never replayed. The vault item is metered in vault_items, and every payment waits for the card owner's own approval and expires after 15 minutes.";
+
+const vaultTicketStaging =
+  "Single-use ticket that carries the encrypted values of one vault use to the device, not a storage line item: one per use by a unique key, deleted when the device claims it or when it expires after 60 seconds; the vault item is metered in vault_items.";
+
 export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   attention_snoozes: attentionSnooze,
   caller_budget_units: ledger,
@@ -77,6 +83,9 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
     "Pending pair approval of one workflow version: the proposed grant is bounded to 4 KB by a check constraint and becomes metered in workflow_execution_authorities once approved, and the row must stay writable so a tenant at its limit can still decline, withdraw or let a request expire.",
   transactional_mail_receipts:
     "Delivery outcome receipt without content: must stay writable to record whether an already sent mail was delivered, so a retry never sends it twice.",
+  vault_payments: vaultUseState,
+  vault_uses: vaultUseState,
+  vault_secret_tickets: vaultTicketStaging,
   owned_resources:
     "Ownership ledger of ids a workflow created at a connector (an id bounded to 1024 characters by a check constraint and a closed state): must stay writable so a tenant at its limit still records what it created and settles a removal, so a removal is never sent twice.",
 };

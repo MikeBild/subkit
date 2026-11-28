@@ -21,6 +21,14 @@ function makeHint(mode: AuthoringSurfaceMode): AuthoringPromptHint {
 const ANCHOR = "subkit's authoring + operator assistant";
 
 describe("persona-variant selection", () => {
+  test("the always-on rules leave the vault guidance to turns with vault tools", async () => {
+    for (const surface of ["chat", "web", "mcp", "sk_headless", "sk_interactive"] as const) {
+      const rendered = await generateMainAgentSystemPrompt({ surface });
+      expect(rendered.content).not.toContain("***REDACTED:card***");
+      expect(rendered.content).not.toContain("VAULT IN CHAT");
+    }
+  });
+
   test("every surface keeps intake provenance and human admission explicit", async () => {
     for (const surface of ["chat", "web", "mcp", "sk_headless", "sk_interactive"] as const) {
       const rendered = await generateMainAgentSystemPrompt({ surface });
